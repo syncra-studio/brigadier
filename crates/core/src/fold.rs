@@ -370,7 +370,11 @@ impl Fold {
                 }
                 if item["parent"].is_null() && self.agents.remove(&str_of("id")) {
                     self.pending.ended(&str_of("id"), self.turns.is_empty());
-                    self.pending.agent |= self.turns.is_empty();
+                    // The turn open now deals with its end, unless it started it; else its wake does [D48].
+                    match self.turns.first_mut() {
+                        Some(t) => t.took |= !t.tools.contains(&str_of("id")),
+                        None => self.pending.agent = true,
+                    }
                 }
                 self.run_done(item, ts);
                 if let Some(t) = self.turns.first_mut() {
