@@ -426,7 +426,11 @@ pub fn sweep(f: &Fold, dir: &Path) -> usize {
         .sum()
 }
 
-/// The backend's CLI version, cached by executable path and modification time.
+/// The most an agent's `--version` may take: a send or switch asks it before a renewal.
+const VERSION_SECS: u64 = 10;
+
+/// The backend's CLI version, cached by executable path and modification time; empty, and not
+/// kept, when it didn't answer in its time.
 pub fn cli_version(spec: &Spec, a: &dyn adapters::Adapter) -> String {
     let Some(exe) = a.exe() else {
         return String::new();
@@ -451,21 +455,16 @@ pub fn cli_version(spec: &Spec, a: &dyn adapters::Adapter) -> String {
     {
         return v.clone();
     }
-    let out = std::process::Command::new(&exe)
+    let mut command = std::process::Command::new(&exe);
+    command
         .arg("--version")
         .env_clear()
-        .env("HOME", adapters::home_path(""))
-        .output();
-    let version = out
-        .map(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .next()
-                .unwrap_or("")
-                .trim()
-                .to_string()
-        })
-        .unwrap_or_default();
+        .env("HOME", adapters::home_path(""));
+    let Ok(out) = adapters::setup::run(&mut command, VERSION_SECS) else {
+        return String::new();
+    };
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let version = stdout.lines().next().unwrap_or("").trim().to_string();
     map.insert(key, (mtime, version.clone()));
     let _ = write_atomic(&cache, &serde_json::to_vec(&map).unwrap_or_default());
     version
