@@ -357,7 +357,10 @@ impl Fold {
             self.plans.now = Value::Null;
             if !turn.quiet {
                 self.finished = ts;
-                if turn.took || turn.origin.starts_with("result:") {
+                // A worker's ask a Steer made tell is no result: only `took` says one went in [D48].
+                let result =
+                    turn.origin.starts_with("result:") && !turn.origin.starts_with("result:asks:");
+                if turn.took || result {
                     self.dealt = ts;
                 }
             }
