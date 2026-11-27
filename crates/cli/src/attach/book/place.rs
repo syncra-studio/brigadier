@@ -381,3 +381,16 @@ pub(crate) fn crash_at(point: &str) {
         std::process::abort();
     }
 }
+
+/// Drill hook: the first input or spawn gets no answer, as from a host that stalled on it.
+pub(crate) fn stalls(
+    call: impl Fn(Value) -> io::Result<Value>,
+) -> impl Fn(Value) -> io::Result<Value> {
+    let stall = std::cell::Cell::new(
+        std::env::var("BRIGADIER_CRASH_AT").is_ok_and(|at| at == "send:stall"),
+    );
+    move |req| match matches!(req["op"].as_str(), Some("input" | "spawn")) && stall.take() {
+        true => Err(io::Error::other("no answer (drill)")),
+        false => call(req),
+    }
+}

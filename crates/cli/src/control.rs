@@ -454,16 +454,7 @@ pub(crate) fn send(
     })()
     .map_err(unsent)?;
     let cid = cid.map_or_else(new_cid, String::from);
-    let call = call_fn(data, &spec.id);
-    // Drill hook: the first input or spawn gets no answer, as from a host that stalled on it.
-    let stall = std::cell::Cell::new(
-        std::env::var("BRIGADIER_CRASH_AT").is_ok_and(|at| at == "send:stall"),
-    );
-    let call =
-        |req: Value| match matches!(req["op"].as_str(), Some("input" | "spawn")) && stall.take() {
-            true => Err(io::Error::other("no answer (drill)")),
-            false => call(req),
-        };
+    let call = crate::attach::book::stalls(call_fn(data, &spec.id));
     let held = crate::workers::with_next(data, &spec.id, Some(&cid), &mut msg);
     let go = || -> io::Result<Value> {
         let f = core::fold(&spec.dir, true)?;
