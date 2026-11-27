@@ -290,6 +290,8 @@ impl Fold {
             "exited" => self.exited(item, ts),
             "turn_start" => {
                 let of = self.woke_of();
+                // Only the wake a subagent's end starts is proven to deal with it: a message's turn
+                // that starts first may not, so it doesn't count and the flag ends here [D48].
                 let agent = std::mem::take(&mut self.pending.agent);
                 // The agent woke: what a held turn's subagent asked ends, as at any new turn.
                 if self.turns.first().is_some_and(|t| t.held) {
@@ -370,14 +372,14 @@ impl Fold {
                 }
                 if item["parent"].is_null() && self.agents.remove(&str_of("id")) {
                     self.pending.ended(&str_of("id"), self.turns.is_empty());
-                    // The turn open now deals with its end, unless it started it; else the next one,
-                    // not a held one [D48].
+                    // The turn open now deals with its end, unless it started it; else its wake does,
+                    // not a held turn, a summary's or an ask's [D48].
                     let open = self.turns.first_mut();
                     if open
                         .as_ref()
                         .is_none_or(|t| !t.tools.contains(&str_of("id")))
                     {
-                        match open.filter(|t| !t.held) {
+                        match open.filter(|t| !t.held && !t.quiet) {
                             Some(t) => t.took = true,
                             None => self.pending.agent = true,
                         }
