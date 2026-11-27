@@ -112,11 +112,13 @@ pub fn starts() -> Vec<(u32, u64)> {
         .collect()
 }
 
-/// shortcut: no process groups on Windows, so pgid is 0 and the drill's group checks stay red;
-/// phase 2's named job per child gives the group.
+/// A pgid is frames' group: the pid of the child whose job holds the process, else 0.
 pub fn ps() {
     // Not itself: ps isn't listed on the other systems either.
     let me = std::process::id();
+    let groups: std::collections::HashMap<i32, i32> = (brigadier_frames::procs::all().iter())
+        .map(|p| (p.pid, p.pgid))
+        .collect();
     for e in processes()
         .iter()
         .filter(|e| e.th32ProcessID != 0 && e.th32ProcessID != me)
@@ -130,7 +132,11 @@ pub fn ps() {
             .filter(|l| !l.is_empty())
             .unwrap_or(name)
             .replace(['\r', '\n'], " ");
-        println!("{} 0 {} R {cmd}", e.th32ProcessID, e.th32ParentProcessID);
+        let pgid = groups.get(&(e.th32ProcessID as i32)).copied().unwrap_or(0);
+        println!(
+            "{} {pgid} {} R {cmd}",
+            e.th32ProcessID, e.th32ParentProcessID
+        );
     }
 }
 
