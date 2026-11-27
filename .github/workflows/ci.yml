@@ -59,3 +59,29 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
         continue-on-error: true
+
+  # The drill off macOS [D135 D159]: its own process lister must pass; killloop starts and stays red
+  # until each system's phase ports the product.
+  port-drill:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    env:
+      BIN: ${{ github.workspace }}/target/debug
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show active-toolchain || rustup toolchain install
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - run: cargo build --locked -p brigadier-procs
+      - run: cargo build --locked --workspace --keep-going
+        continue-on-error: true
+      - run: node drills/drill.mjs procs
+      - run: node drills/drill.mjs killloop 5
+        timeout-minutes: 10
+        continue-on-error: true
