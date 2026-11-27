@@ -1,7 +1,8 @@
 //! The app's live read of computer use, and its Test screen access [D911, D912, C91].
 
 use super::{
-    CALL_WAIT, Fail, HUB, START_WAIT, grants, helper_app, launch, lock, on, verbs, waited,
+    CALL_WAIT, Fail, HUB, START_WAIT, grants, helper_app, launch, lock, on, stop_helper, verbs,
+    waited,
 };
 use serde_json::{Value, json};
 use std::path::Path;
@@ -89,6 +90,10 @@ pub(super) fn test(
     thread::spawn(move || {
         let capture = |shot| waited(&data, "get_window_state", shot, ALERT_WAIT, &|| false);
         let found = verbs::shot::throwaway(shot, capture);
+        // Still unanswered: the driver would hold every later call behind it, so the helper goes.
+        if matches!(found, Err(Fail::Unknown)) {
+            stop_helper();
+        }
         verbs::test_done();
         let _ = to.send(found);
     });

@@ -385,8 +385,8 @@ pub(crate) fn grants(data: &Path) -> Result<(bool, bool), Fail> {
     );
     *lock(&HUB.grants) = Some(both);
     let stale = lock(&HUB.launched).is_none_or(|at| at.elapsed() > RECHECK);
-    // A restart drops the driver's reads, so never under a session that holds the computer.
-    if !(both.0 && both.1) && stale && verbs::holder().is_none() {
+    // A restart drops the driver's reads, so never under a session or a test that holds the computer.
+    if !(both.0 && both.1) && stale && verbs::holder().is_none() && !verbs::testing() {
         let _ = launch(data, None);
     }
     Ok(both)
