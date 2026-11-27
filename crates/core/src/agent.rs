@@ -388,6 +388,8 @@ pub(crate) fn plain_words(c: &str) -> Option<Vec<String>> {
             (Some('\''), '\'') | (Some('"'), '"') => quote = None,
             (Some('"'), '\\') => escaped = true,
             (Some('"'), '$' | '`' | '!') => return None,
+            // cmd reads no single quotes: what they hold must be plain to it too.
+            (Some('\''), ch) if cfg!(windows) && "&|<>()\"!".contains(ch) => return None,
             (Some(_), ch) => word.push(ch),
             (None, '\'' | '"') => (quote, open) = (Some(ch), true),
             (None, ch) if ch.is_whitespace() => {
