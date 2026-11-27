@@ -109,7 +109,8 @@ pub(super) fn row(
             cx.visible(a(1)?)?;
             match a(2)? {
                 "--check" if n == 4 => plain(a(3)?)?,
-                "--latest" if n == 3 => *need = fresh::signed(args),
+                // `--check` on the latest answer, a read too [beat-competitors D87].
+                "--latest" if n == 3 => {}
                 new => {
                     plain(new)?;
                     let f = Flags::parse(rest(3), &FORK)?;
