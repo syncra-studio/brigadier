@@ -1,5 +1,6 @@
 //! The hand-off's text helpers: a section's start, end and lines within its most, and git's word.
 
+use std::path::Path;
 use std::process::Command;
 
 /// The first `max` characters, on a character boundary, marked where cut.
@@ -33,6 +34,20 @@ pub(super) fn fill(lines: impl IntoIterator<Item = String>, max: usize, more: &s
         out += &format!("({left} more: {more})\n");
     }
     out
+}
+
+/// The most one git call of the hand-off or its check may take: a renewal never waits on it.
+pub(super) const GIT_SECS: u64 = 5;
+
+/// Git in the session's folder as the hand-off asks it: no network (a partial clone's missing
+/// object isn't fetched), no prompt, no hook, no file monitor, no lock taken.
+pub(super) fn git_in(cwd: &str) -> Command {
+    let mut command = crate::worktrees::command(Path::new(cwd));
+    command
+        .args(["-c", "core.fsmonitor=false"])
+        .env("GIT_NO_LAZY_FETCH", "1")
+        .env("GIT_OPTIONAL_LOCKS", "0");
+    command
 }
 
 /// A git command's output in the session's folder; empty outside a repository.

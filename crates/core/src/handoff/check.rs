@@ -3,10 +3,10 @@
 //! user's own message, and each path and commit is looked for. It only labels: nothing is
 //! deleted, and it can't prove a line reads its source right, so the records stay the authority.
 
+use crate::adapters::setup;
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::process::Command;
 
 /// Where a quote was found: an item written before the summary input, under its reference.
 #[derive(Clone)]
@@ -137,12 +137,26 @@ fn named(p: &str) -> Option<&str> {
     (p.contains('/') || bare).then_some(p)
 }
 
-fn commit(cwd: &str, h: &str) -> bool {
-    let out = Command::new("git")
-        .args(["-c", "credential.helper=", "-C", cwd, "cat-file", "-e"])
-        .arg(format!("{h}^{{commit}}"))
-        .output();
-    out.is_ok_and(|o| o.status.success())
+/// Which of `hashes` name a commit in `cwd`'s repository, asked in one bounded call that never
+/// fetches: None outside a repository; Err when git didn't answer, so each is marked unchecked.
+fn commits<'a>(cwd: &str, hashes: &[&'a str]) -> Option<Result<HashSet<&'a str>, ()>> {
+    if hashes.is_empty() {
+        return Some(Ok(HashSet::new()));
+    }
+    let ask: String = hashes.iter().map(|h| format!("{h}^{{commit}}\n")).collect();
+    let mut git = super::text::git_in(cwd);
+    git.args(["cat-file", "--batch-check"]);
+    let stop = std::sync::atomic::AtomicBool::new(false);
+    let out = match setup::run_fed(&mut git, super::text::GIT_SECS, &stop, Some(&ask)) {
+        Ok(o) if o.status.success() => o,
+        Ok(_) => return None,
+        Err(_) => return Some(Err(())),
+    };
+    let found = String::from_utf8_lossy(&out.stdout);
+    // One answer a line, in order: `<sha> commit <size>`, or the question then `missing`.
+    let yes = hashes.iter().zip(found.lines());
+    let yes = yes.filter(|(_, l)| l.split(' ').nth(1) == Some("commit"));
+    Some(Ok(yes.map(|(h, _)| *h).collect()))
 }
 
 /// Checks `text` against where its quotes were `found`, in folder `cwd`; `was` is the folder the
@@ -151,12 +165,13 @@ fn commit(cwd: &str, h: &str) -> bool {
 pub fn check(text: &str, found: &Found, cwd: &str, was: Option<&str>) -> Value {
     let (mut cites, mut marks) = (vec![], vec![]);
     let mut n = json!({"lines": 0, "found": 0, "missing": 0, "no_source": 0, "user_claims": 0,
-        "not_users": 0, "paths_missing": 0, "commits_missing": 0});
+        "not_users": 0, "paths_missing": 0, "commits_missing": 0, "commits_unchecked": 0});
     let mut bump = |k: &str| n[k] = (n[k].as_u64().unwrap_or(0) + 1).into();
-    let repo = Command::new("git")
-        .args(["-C", cwd, "rev-parse", "--git-dir"])
-        .output()
-        .is_ok_and(|o| o.status.success());
+    let words = text.split(|c: char| !c.is_ascii_alphanumeric());
+    let mut hashes: Vec<&str> = words.filter(|w| hash(w)).collect();
+    hashes.sort_unstable();
+    hashes.dedup();
+    let known = commits(cwd, &hashes);
     let mut start = 0;
     for line in text.split_inclusive('\n') {
         let base = start;
@@ -228,15 +243,23 @@ pub fn check(text: &str, found: &Found, cwd: &str, was: Option<&str>) -> Value {
             off += p.len() + 1 + after.len() + 1;
         }
         // A commit named by its hash, in that folder's repository: a blob's or a tree's fails too.
-        if repo {
+        if let Some(known) = &known {
             let mut at = base;
             for w in body.split(|c: char| !c.is_ascii_alphanumeric()) {
                 let here = body[at - base..].find(w).map_or(at, |i| at + i);
                 at = here + w.len();
-                if hash(w) && !commit(cwd, w) {
-                    bump("commits_missing");
-                    marks.push(json!({"at": at, "kind": "commit"}));
-                }
+                let kind = match known {
+                    _ if !hash(w) => continue,
+                    Ok(yes) if yes.contains(w) => continue,
+                    Ok(_) => "commit",
+                    Err(()) => "unchecked",
+                };
+                bump(if kind == "commit" {
+                    "commits_missing"
+                } else {
+                    "commits_unchecked"
+                });
+                marks.push(json!({"at": at, "kind": kind}));
             }
         }
     }
@@ -267,6 +290,7 @@ pub fn render(id: &str, note: &Value) -> String {
             "not_users" => format!("(not the user's words: from {n})"),
             "no_user" => "(no user message says this)".into(),
             "path" => "(not on disk now)".into(),
+            "unchecked" => "(commit not checked)".into(),
             _ => "(no such commit)".into(),
         };
         at.push((m["at"].as_u64().unwrap_or(0) as usize, format!(" {shown}")));
