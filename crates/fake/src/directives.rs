@@ -28,6 +28,8 @@ const TOOLS: &[&str] = &[
     "bg",
     "escape",
     "detach",
+    "mcp",
+    "build",
 ];
 
 /// The tool hook's refusal, as `brigadier hook tool` gives it; none while no summary flag is there.
@@ -192,6 +194,16 @@ impl Agent {
                     return false;
                 }
             }
+            // `build:N`: N seconds of a build's steps, short programs and 1.2 s ones, one at a time.
+            "build" => {
+                let cmd = format!(
+                    "end=$((SECONDS+{left})); while [ $SECONDS -lt $end ]; do true; cat /dev/null; sleep 1.2; done"
+                );
+                if !self.tool(word, n, done_before, false, &cmd) {
+                    return false;
+                }
+            }
+            "mcp" => self.mcp(n),
             // `serve:N`: a shell step that starts `sleep N` and leaves it running, as a dev server [D105].
             "serve" => {
                 self.tools += 1;

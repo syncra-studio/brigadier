@@ -8,6 +8,24 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 impl Agent {
+    /// `mcp:N`: a step during which its CLI starts an MCP server, its own `brigadier mcp-server`
+    /// line, which runs `sleep N` through the shell on its pipes [D114].
+    pub(super) fn mcp(&mut self, n: u64) {
+        self.tools += 1;
+        let id = format!("tl{}-{}", self.tools, now());
+        emit(json!({"t": "tool", "id": id, "name": "shell", "command": "use the MCP server"}));
+        let server = std::process::Command::new(std::env::current_exe().unwrap_or_default())
+            .args(["brigadier", "mcp-server"])
+            .env("FAKE_MCP_SECS", n.to_string())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn();
+        emit(json!({"t": "tool_done", "id": id, "ok": server.is_ok()}));
+        // On its own pipes, as a CLI keeps its MCP servers, for as long as it runs.
+        std::mem::forget(server);
+    }
+
     /// Runs `cmd` as a tool for up to `secs`, with a heartbeat each second unless `quiet`. Progress
     /// is saved, so a resumed session continues what is left rather than starting over.
     /// False when the user stopped the turn inside it.

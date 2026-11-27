@@ -452,6 +452,11 @@ fn main() {
         Some("--version") => println!("fake 1"),
         // The `detach` directive's tool: it waits to be found and stopped.
         Some("hold") => thread::sleep(Duration::from_secs(300)),
+        // The `mcp` directive's server: a shell step on its own pipes, as long as it runs.
+        Some("brigadier") => {
+            let secs = env::var("FAKE_MCP_SECS").unwrap_or_else(|_| "300".into());
+            let _ = sh().args(["-c", &format!("sleep {secs}")]).status();
+        }
         Some("gen") => {
             let (dir, bytes) = (PathBuf::from(&args[1]), args[2].parse().unwrap_or(1 << 20));
             let id = dir

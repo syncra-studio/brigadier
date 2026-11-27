@@ -102,3 +102,7 @@ jobs:
         run: node drills/drill.mjs hang
         timeout-minutes: 10
         continue-on-error: true
+      - if: runner.os == 'Windows'
+        run: node drills/drill.mjs detach
+        timeout-minutes: 5
+        continue-on-error: true

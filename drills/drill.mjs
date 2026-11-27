@@ -82,6 +82,8 @@ const kill = (p, sig = 'SIGKILL') => {
   return ok
 }
 const record = (pid) => ps().find((p) => p.pid === pid)
+// Every process running `sleep n`, whatever group or job it is in: what left them shows here.
+const sleeps = (n) => ps().filter((p) => new RegExp(`(^|/)sleep ${n}$`).test(p.cmd)).length
 const ownerPid = (id) => cli(['owner', id]).out.pid
 const owner = (id) => record(ownerPid(id))
 // Only processes of this run: its own data folder or its own binaries, never a shell or this script.
@@ -502,27 +504,60 @@ async function killloop(minutes) {
   })
 }
 
-// A tool that double-forks into a session of its own (port phase 3): its session's row shows it as
-// left running, and its Stop there ends it.
+// Tools that double-fork into a session of their own (port phase 3): their session's row shows them
+// as left running, the session's Stop keeps them, and each one's own Stop ends it alone. An MCP
+// server's shell tree, started during a step, is never one of them, and ends with the Stop [D114].
 async function detach() {
   freshData('detach')
   startDaemon()
   startFake('t1')
   const held = () => ps().filter((p) => p.cmd.includes('brigadier-fake hold') && p.cmd.includes(`${DATA}/`))
+  const mcp = () => sleeps(131)
+  // A hold, or on Windows the shell's stub for one, its parent: an exec of a native program keeps it.
+  const isHold = (j, hs = held()) => hs.some((p) => (p.pid === j.pid || (WIN && p.ppid === j.pid)) && (p.pid === j.pid ? p.start_us : record(j.pid)?.start_us) === j.start_us)
   const r = { send: cli(['send', 't1', `${cid()} detach:1`]).out.result }
   r.started = (await waitFor(() => held().length, 5000)).ok
   r.reparented = held().length > 0 && held().every((p) => !agentsOf('t1').some((a) => a.pid === p.ppid))
-  let job
-  for (const t = now(); !job && now() - t < 15000; await sleep(250)) {
-    const row = (await daemonCall({ op: 'subscribe' }, 1000))?.rows?.find((x) => x.id === 't1')
-    job = row?.background?.find((j) => held().some((p) => p.pid === j.pid && p.start_us === j.start_us))
-    r.found_ms = job ? now() - t : null
+  cli(['send', 't1', `${cid()} detach:1`])
+  cli(['send', 't1', `${cid()} mcp:131`])
+  const background = async () => (await daemonCall({ op: 'subscribe' }, 1000))?.rows?.find((x) => x.id === 't1')?.background ?? []
+  let jobs = []
+  for (const t = now(); jobs.length < 2 && now() - t < 15000; await sleep(250)) {
+    jobs = (await background()).filter((j) => isHold(j))
+    r.found_ms = jobs.length >= 2 ? now() - t : null
   }
-  r.stop = job ? cli(['jobs', 't1', 'stop', String(job.pid), String(job.start_us)]).out : null
-  r.stopped_ms = (await waitFor(() => !held().length, 10000)).ok ? 0 : null
+  // Past a look of its host's, and a list of the daemon's.
+  await sleep(3000)
+  r.mcp = { running: mcp(), listed: (await background()).filter((j) => !isHold(j)).map((j) => `${j.pid} ${record(j.pid)?.cmd.slice(0, 80)}`) }
+  cli(['stop', 't1'])
+  await sleep(1500)
+  r.after_session_stop = { detached: held().length, mcp: mcp() }
+  const [a, b] = jobs
+  r.stop = b ? cli(['jobs', 't1', 'stop', String(a.pid), String(a.start_us)]).out : null
+  r.one_gone = (await waitFor(() => !alive(a?.pid), 10000)).ok
+  r.other_alive = !!b && alive(b.pid)
+  r.stop2 = b ? cli(['jobs', 't1', 'stop', String(b.pid), String(b.start_us)]).out : null
+  r.both_gone = (await waitFor(() => !held().length, 10000)).ok
+  // Windows: what Cygwin's process reads cost in a busy build, and none while nothing runs.
+  if (WIN) {
+    const reads = () => +(fs.existsSync(`${DATA}/sessions/t1/placed`) && fs.readFileSync(`${DATA}/sessions/t1/placed`, 'utf8').match(/^reads (\d+)/)?.[1] || 0)
+    const b0 = reads()
+    cli(['send', 't1', `${cid()} build:30`])
+    await sleep(32000)
+    r.build_reads_per_min = (reads() - b0) * 2
+    const i0 = reads()
+    await sleep(10000)
+    r.idle_reads = reads() - i0
+  }
   r.leftovers = cleanup()
   log({ drill: 'detach', units: UNITS, ...r })
-  verdict('detach', { started: r.started, reparented: r.reparented, found: !!job, stopped: r.stop?.ok === true && r.stopped_ms !== null, no_leftovers: r.leftovers.length === 0 })
+  verdict('detach', {
+    started: r.started, reparented: r.reparented, found: jobs.length >= 2,
+    mcp_not_listed: r.mcp.running > 0 && r.mcp.listed.length === 0, session_stop_keeps_detached: r.after_session_stop.detached === 2,
+    session_stop_ends_mcp: r.after_session_stop.mcp === 0, own_stop_ends_one: r.stop?.ok === true && r.one_gone && r.other_alive,
+    own_stop_ends_other: r.stop2?.ok === true && r.both_gone, ...(WIN && { idle_no_reads: r.idle_reads === 0 }),
+    no_leftovers: r.leftovers.length === 0,
+  })
 }
 
 // The drill's own process lister and checked signals, on any system [D97 D100] (proposed): a child of
@@ -552,7 +587,8 @@ async function hang() {
   startDaemon()
   const r = {}
   for (const id of ['h1', 'h2', 'h3']) startFake(id)
-  for (const id of ['h1', 'h2', 'h3']) cli(['send', id, `${cid()} tree:120`])
+  // A length each, so a count of every `sleep N` tells whose tool's escaped its job.
+  for (const id of ['h1', 'h2', 'h3']) cli(['send', id, `${cid()} tree:${120 + +id[1]}`])
   await sleep(1500)
   // A stuck reader: a follower frozen with the log open.
   const reader = follow('h3', 0)
@@ -572,6 +608,8 @@ async function hang() {
   r.stop = { ms: Math.round(stop.ms), result: stop.out }
   r.h1_after_stop = status(['h1']).h1.state
   r.h1_processes_left = agentsOf('h1').length + ps().filter((p) => p.ppid === agent.pid).length
+  // Windows: what Git's shell ran left the group's job; the stop ends it too.
+  if (WIN) r.h1_escaped_left = (await waitFor(() => !sleeps(121), 3000)).ok ? 0 : sleeps(121)
   kill(reader.child, 'SIGKILL')
   // Kill the agent child: one clear state and one recovery.
   const a2 = agentsOf('h2')[0]
@@ -590,6 +628,7 @@ async function hang() {
   const shown = await waitFor(() => status(['h3']).h3.state === 'interrupted', 5000, 50)
   const freed = await waitFor(() => tree.every((p) => !alive(p)), 5000, 50)
   r.owner_killed = { interrupted_shown_ms: shown.ok ? shown.ms : null, agent_tree_gone_ms: freed.ok ? now() - k0 : null, survivors_after_5s: tree.filter(alive).length }
+  if (WIN) r.owner_killed.escaped_left = (await waitFor(() => !sleeps(123), 5000)).ok ? 0 : sleeps(123)
   const rec3 = cli(['recover', 'h3'])
   await sleep(500)
   r.owner_killed.recover = rec3.out.recovered ?? rec3.out.error
@@ -664,18 +703,41 @@ async function hang() {
   const freed6 = await waitFor(() => tree6.every((p) => !alive(p)), 5000, 50)
   r.moved_host.tree = tree6.length
   r.moved_host.tree_gone_ms = freed6.ok ? now() - k6 : null
+  // A host started from inside a session: a lead's `brigadier send` wakes its worker's host through
+  // the daemon, outside the lead's jobs, so the lead's stop and its host's end leave it running.
+  startFake('w7')
+  startFake('h7')
+  const w7 = owner('w7')
+  kill(w7)
+  await waitFor(() => !cli(['owner', 'w7']).out.pid, 5000)
+  // An agent's send names sessions the daemon lists: both, before h7 sends.
+  const listed7 = async () => { const ids = (await daemonList(2000))?.ids.map((x) => x.split(' ')[0]) ?? []; return ids.includes('w7') && ids.includes('h7') }
+  for (const t = now(); now() - t < 10000 && !(await listed7()); ) await sleep(200)
+  const [c7, c8] = [cid('n'), cid('n')]
+  cli(['send', 'h7', `${cid()} brigadier:send+w7+'${c7}+say:1'`])
+  const got7 = await waitFor(() => (ledger().recv[c7] ?? 0) > 0, 15000)
+  const host7 = ownerJson('w7')
+  r.nested_host = { delivered: got7.ok, new_host: !!host7.pid && host7.pid !== w7?.pid && alive(host7.pid) }
+  cli(['stop', 'h7'])
+  kill(owner('h7'))
+  await sleep(2000)
+  const after7 = ownerJson('w7')
+  r.nested_host.same_host = after7.pid === host7.pid && after7.start_us === host7.start_us && alive(host7.pid)
+  cli(['send', 'w7', `${c8} say:1`])
+  r.nested_host.answered = (await waitFor(() => (ledger().recv[c8] ?? 0) > 0, 10000)).ok
   r.leftovers = cleanup()
   if (WIN) fs.rmSync(`${path.dirname(BIN)}/current`, { force: true })
   log({ drill: 'hang', ...r })
   verdict('hang', {
     stall_shown: r.stalled_shown_ms !== null, others_still_work: r.others_while_stalled.every((x) => x === 'working'), logs_past_a_frozen_reader: r.h3_still_logging_with_frozen_reader,
-    stop_ends_it: r.h1_after_stop === 'stopped' && r.h1_processes_left === 0, agent_killed: r.child_killed.state === 'interrupted' && r.child_killed.recover === 'continued' && r.child_killed.after === 'idle',
-    host_killed: r.owner_killed.interrupted_shown_ms !== null && r.owner_killed.agent_tree_gone_ms !== null && r.owner_killed.survivors_after_5s === 0 && r.owner_killed.recover === 'continued' && r.owner_killed.after_recover === 'idle',
+    stop_ends_it: r.h1_after_stop === 'stopped' && r.h1_processes_left === 0 && !r.h1_escaped_left, agent_killed: r.child_killed.state === 'interrupted' && r.child_killed.recover === 'continued' && r.child_killed.after === 'idle',
+    host_killed: r.owner_killed.interrupted_shown_ms !== null && r.owner_killed.agent_tree_gone_ms !== null && r.owner_killed.survivors_after_5s === 0 && !r.owner_killed.escaped_left && r.owner_killed.recover === 'continued' && r.owner_killed.after_recover === 'idle',
     host_frozen: r.owner_frozen.state === 'unresponsive' && r.owner_frozen.owners_running === 1 && r.owner_frozen.send.ms < 10000,
     host_and_watchdog: r.host_and_watchdog_killed.swept_ms !== null && r.host_and_watchdog_killed.survivors === 0,
     killed_at_spawn: r.killed_at_spawn.gone_ms !== null && r.killed_at_spawn.survivors === 0 && !r.killed_at_spawn.agent_got_it,
     moved_host: WIN ? r.moved_host.moved_ms !== null && r.moved_host.replaced && r.moved_host.tree > 0 && r.moved_host.tree_gone_ms !== null
       : r.moved_host.moved_ms !== null && r.moved_host.same_pid && r.moved_host.old_watchdog_gone && r.moved_host.watchdogs === 1 && r.moved_host.zombies === 0 && r.moved_host.tree_gone_ms !== null,
+    nested_host: r.nested_host.delivered && r.nested_host.new_host && r.nested_host.same_host && r.nested_host.answered,
     no_leftovers: r.leftovers.length === 0,
   })
 }
