@@ -61,8 +61,11 @@ export function Rows({ session, onOlder = older }: { session: Session; onOlder?:
 /** The worktree's setup row under its input, as the desktop's thread.tsx places it [D70, D77, D85]. */
 function withSetup(rows: Line[], session: Session): Line[] {
   const setup = session.setup;
-  const at = setup?.after ? rows.findIndex((row) => row.id === setup.after) : -1;
-  if (!setup || at < 0) return rows;
+  if (!setup) return rows;
+  // Before its input is in (a start still setting up, or one that failed doing it), it is the newest row.
+  if (setup.after === null) return [...rows, { type: "setup", id: `${session.id}:setup`, gap: rows.length ? "turn" : "first", setup }];
+  const at = rows.findIndex((row) => row.id === setup.after);
+  if (at < 0) return rows;
   // Its turn's work's first item: folded away with it.
   const next = rows[at + 1];
   if (next?.type === "work" && next.open === false) return rows;
