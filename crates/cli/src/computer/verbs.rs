@@ -26,7 +26,7 @@ use apps::{apps, find, menu_path};
 use calls::{UNLOGGED, sent};
 use holder::take;
 pub use holder::turn_ended;
-pub(super) use holder::{holder, release_all};
+pub(super) use holder::{holder, release_all, test_done, test_take, testing};
 use open::press;
 use serde_json::{Value, json};
 use shot::{drag, screenshot};

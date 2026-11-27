@@ -3,9 +3,32 @@
 use super::{SESSIONS, asks, lock, refuse};
 use serde_json::Value;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// The session using the computer now, and when it last took it (ms) [D907].
 static HOLDER: Mutex<Option<(String, u64)>> = Mutex::new(None);
+/// The user's Test screen access has the computer until its capture is answered [C91].
+static TESTING: AtomicBool = AtomicBool::new(false);
+
+pub(in crate::computer) fn testing() -> bool {
+    TESTING.load(Ordering::SeqCst)
+}
+
+/// Takes the computer for the user's test, under the lock a session takes it with, or says why not.
+pub(in crate::computer) fn test_take() -> Result<(), &'static str> {
+    let holder = lock(&HOLDER);
+    match holder.is_some() {
+        true => Err("An agent is using the computer now. Test again after its turn."),
+        false if TESTING.swap(true, Ordering::SeqCst) => {
+            Err("Brigadier is testing screen access already.")
+        }
+        false => Ok(()),
+    }
+}
+
+pub(in crate::computer) fn test_done() {
+    TESTING.store(false, Ordering::SeqCst);
+}
 
 /// A turn ended, stopped or crashed at `finished` (ms): its session lets the computer go [D907].
 /// The daemon may hear of it late: a hold its next turn took since stays.
@@ -33,6 +56,11 @@ pub(in crate::computer) fn release_all() {
 /// user (a question, an approval) has let it go: its turn goes on only once they answer.
 pub(super) fn take(me: &str, rows: &dyn Fn() -> Vec<Value>) -> Result<(), Value> {
     let mut holder = lock(&HOLDER);
+    if testing() {
+        return Err(refuse(
+            "The user is testing screen access in Settings. Try again in a moment.",
+        ));
+    }
     if let Some(id) = holder
         .as_ref()
         .map(|(h, _)| h.as_str())

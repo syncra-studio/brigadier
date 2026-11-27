@@ -185,6 +185,17 @@ pub(crate) fn tool(
     args: Value,
     cancel: &dyn Fn() -> bool,
 ) -> Result<Result<Value, String>, Fail> {
+    waited(data, name, args, CALL_WAIT, cancel)
+}
+
+/// `tool`, waiting at most `wait` for the answer.
+fn waited(
+    data: &Path,
+    name: &str,
+    args: Value,
+    wait: Duration,
+    cancel: &dyn Fn() -> bool,
+) -> Result<Result<Value, String>, Fail> {
     ready(data)?;
     if let Some(session) = args.get("session").filter(|_| name != SHOW_CURSOR) {
         sync_cursor(data, session, cancel);
@@ -199,7 +210,7 @@ pub(crate) fn tool(
     let answer = send(
         "tools/call",
         json!({"name": name, "arguments": args}),
-        CALL_WAIT,
+        wait,
         cancel,
     )?;
     if let Some(e) = answer.get("error") {
