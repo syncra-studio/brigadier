@@ -45,7 +45,8 @@ export function QueueCard({ items, running, paused, resuming, steer, canEdit, er
   /** Edit pulls a message back into the field, so only into an empty one. */
   canEdit: boolean;
   error: string | null;
-  onResume: () => void;
+  /** None in a worker's own tab, whose Resume is the worker's [D293]. */
+  onResume?: () => void;
   onBackground: (command: { id: string; line: string }) => void;
   onSteer: (id: string) => void;
   onRemove: (id: string) => void;
@@ -78,7 +79,7 @@ export function QueueCard({ items, running, paused, resuming, steer, canEdit, er
         <View style={st.line}>
           <View style={st.dot} />
           <Text style={st.muted} numberOfLines={1}>Queue paused because you interrupted</Text>
-          <Small title="Resume" icon="play" disabled={resuming} onPress={onResume} />
+          {onResume ? <Small title="Resume" icon="play" disabled={resuming} onPress={onResume} /> : null}
         </View>
       ) : null}
       {running.map((command) => (

@@ -603,7 +603,7 @@ export function Composer({ id }: { id: string }) {
         steer={canSteer && running}
         canEdit={empty}
         error={(stuck ? `Not sent: ${stuck.error}. ${stuck.to ? "Edit it, delete it or send it to the session instead." : "Edit or delete it to go on."}` : null) ?? (items.length > 0 ? error : null)}
-        onResume={resume}
+        onResume={worker ? undefined : resume}
         onBackground={(command) => setPower({ ...backgroundPower(id, command.id, command.line), then: (reply) => setPowerError(reply.ok ? null : refusal(reply)) })}
         onSteer={steerQueued}
         onRemove={(qid) => (lost(qid) ? sending.discard(run, id, lost(qid)!) : act({ kind: "remove", qid }, ["remove", qid]))}
