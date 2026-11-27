@@ -70,7 +70,7 @@ pub fn recover(
             if !resume.is_some_and(|id| a.accepted(&run, id, cid))
                 && resume.is_some_and(|id| a.missed(&run, id, cid))
             {
-                return resend(spec, f, child, call, turn, now);
+                return resend(spec, f, child, call, turn, more);
             }
             if !resume.is_some_and(|id| a.accepted(&run, id, cid)) {
                 let e = format!(
@@ -94,7 +94,7 @@ pub fn recover(
             }) {
                 return taken(spec, child, call, more, cid);
             }
-            resend(spec, f, child, call, turn, now)
+            resend(spec, f, child, call, turn, more)
         }
         "interrupted" => {
             let swept = sweep(f, &spec.dir);
@@ -128,7 +128,7 @@ pub fn recover(
                 call,
                 &cid,
                 "system",
-                &Message::plain(text),
+                &followed(Message::plain(text), more),
                 Some(&backend),
                 Some(&root),
             );
@@ -177,8 +177,7 @@ pub fn recover(
                     msg.parts = json!({"back": m.parts["back"]});
                 }
             }
-            msg.agent += &more.agent;
-            msg.took = more.took;
+            let msg = followed(msg, more);
             let mut reply = with_back(
                 spec,
                 f,
@@ -196,10 +195,17 @@ pub fn recover(
         }
         // Steers its turn ended before confirming, with no turn left to recover [D66].
         _ if f.turns.is_empty() && f.acking.values().any(|i| gone(f, child, i)) => {
-            left(spec, f, child, call)
+            left(spec, f, child, call, more)
         }
         _ => json!({"ok": false, "error": format!("nothing to recover: {state}")}),
     }
+}
+
+/// Every recovery input takes the results held for Resume, after its own words [D329].
+fn followed(mut msg: Message, more: &Message) -> Message {
+    msg.agent += &more.agent;
+    msg.took |= more.took;
+    msg
 }
 
 /// `msg` sent as `cid` after the words of the steers a gone child never confirmed and its agent's
@@ -230,16 +236,16 @@ pub fn with_back(
 }
 
 /// Steers a gone child never confirmed, outside any turn: each settled by its agent's record, and
-/// those it never took sent again, once, as an input of their own [D66].
-fn left(spec: &Spec, f: &Fold, child: Running, call: Call) -> Value {
+/// those it never took sent again, once, with Resume's held results [D66, D329].
+fn left(spec: &Spec, f: &Fold, child: Running, call: Call, more: &Message) -> Value {
     let back = match unconfirmed(spec, f, child, call) {
         Ok(back) => back,
         Err(reply) => return reply,
     };
     let cid = format!("rb{}", log::now_ms());
     let mut reply = json!({"ok": true, "recovered": "checked"});
-    if !back.ids.is_empty() {
-        let mut msg = Message::plain("");
+    if !back.ids.is_empty() || !more.agent.is_empty() {
+        let mut msg = more.clone();
         carry(&mut msg, &back);
         reply = send(spec, f, child, call, &cid, "system", &msg, None, None);
         (reply["recovered"], reply["cid"]) = ("resent".into(), cid.as_str().into());
@@ -268,17 +274,25 @@ fn taken(spec: &Spec, child: Running, call: Call, more: &Message, cid: &str) -> 
     reply
 }
 
-/// The turn's own message again, under a new id that names it [D54].
-fn resend(spec: &Spec, f: &Fold, child: Running, call: Call, turn: &fold::Turn, now: u64) -> Value {
+/// The turn's own message again, with Resume's held results, under a new id that names it [D54].
+fn resend(
+    spec: &Spec,
+    f: &Fold,
+    child: Running,
+    call: Call,
+    turn: &fold::Turn,
+    more: &Message,
+) -> Value {
     let old = turn.cid.clone().unwrap_or_default();
     if let Err(e) = call(
         json!({"op": "note", "data": {"event": "interrupted", "reason": {"undelivered": old}}}),
     ) {
         return json!({"ok": false, "error": e.to_string()});
     }
-    let cid = format!("{old}.r{now}");
+    let cid = format!("{old}.r{}", log::now_ms());
     let mut msg = again(spec, &turn.text, &turn.parts);
     carry(&mut msg, &Back::default());
+    let msg = followed(msg, more);
     let carried = turn.parts["back"].clone();
     let mut reply = send(
         spec,
