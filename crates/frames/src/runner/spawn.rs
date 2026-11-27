@@ -164,6 +164,12 @@ impl Runner {
         let _ = child.go();
         let (done, pumped) = mpsc::channel();
         let pumps = outputs.len();
+        // Windows hands the child's pipes to whatever it starts that inherits handles: once the
+        // child is gone, a process left running mustn't keep the pumps, and the host, busy.
+        #[cfg(windows)]
+        let cancel: Vec<File> = (outputs.iter())
+            .filter_map(|(_, s)| s.try_clone().ok())
+            .collect();
         self.pumping.fetch_add(pumps, Ordering::SeqCst);
         for (kind, stream) in outputs {
             let (me, done) = (self.clone(), done.clone());
@@ -194,12 +200,25 @@ impl Runner {
             // Log the exit after the output it produced: wait for the pipes to end, but not for long,
             // since a background job may hold them open.
             let deadline = Instant::now() + Duration::from_secs(2);
-            for _ in 0..pumps {
-                if pumped
-                    .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-                    .is_err()
-                {
-                    break;
+            let mut left = pumps;
+            while left > 0
+                && (pumped.recv_timeout(deadline.saturating_duration_since(Instant::now()))).is_ok()
+            {
+                left -= 1;
+            }
+            // Again until each pump ends, as one between reads has nothing to cancel yet; never
+            // so long that the exit goes unlogged.
+            #[cfg(windows)]
+            let until = Instant::now() + Duration::from_secs(3);
+            #[cfg(windows)]
+            while left > 0 && Instant::now() < until {
+                use std::os::windows::io::AsRawHandle;
+                for f in &cancel {
+                    let h = f.as_raw_handle();
+                    unsafe { windows_sys::Win32::System::IO::CancelIoEx(h, std::ptr::null()) };
+                }
+                if pumped.recv_timeout(Duration::from_millis(100)).is_ok() {
+                    left -= 1;
                 }
             }
             let code = status.and_then(|s| s.code());
