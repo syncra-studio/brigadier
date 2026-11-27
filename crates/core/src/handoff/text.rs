@@ -40,19 +40,24 @@ pub(super) fn fill(lines: impl IntoIterator<Item = String>, max: usize, more: &s
 pub(super) const GIT_SECS: u64 = 5;
 
 /// Git in the session's folder as the hand-off asks it: no network (a partial clone's missing
-/// object isn't fetched), no prompt, no hook, no file monitor, no lock taken.
+/// object isn't fetched), no prompt, no hook, no file monitor, no signature check, no lock taken.
 pub(super) fn git_in(cwd: &str) -> Command {
     let mut command = crate::worktrees::command(Path::new(cwd));
     command
-        .args(["-c", "core.fsmonitor=false"])
+        .args([
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "log.showSignature=false",
+        ])
         .env("GIT_NO_LAZY_FETCH", "1")
         .env("GIT_OPTIONAL_LOCKS", "0");
     command
 }
 
-/// A git command's output in the session's folder; empty outside a repository.
+/// A git command's output in the session's folder; empty outside a repository or past its time.
 pub(super) fn git(cwd: &str, args: &[&str]) -> String {
-    let out = Command::new("git").arg("-C").arg(cwd).args(args).output();
+    let out = crate::adapters::setup::run(git_in(cwd).args(args), GIT_SECS);
     out.ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim_end().to_string())
