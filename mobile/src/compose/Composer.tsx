@@ -17,11 +17,12 @@ import { lists, thread } from "../mac/mac";
 import { color, text } from "../theme";
 import { ModelPill } from "./Model";
 import { QueueCard } from "./Queue";
-import { forMac, newId, run, withChips } from "./state";
+import { forMac, newId, withChips } from "./state";
 
 /** A session's row with what the composer needs from Rust, as the desktop's ComposerRow. */
 type ComposerRow = ModelRow & {
-  queue?: { paused: boolean; items: RustQueued[]; running?: string[] } | null;
+  /** `editing`: the message pulled back to edit, kept by Rust; any device's. */
+  queue?: { paused: boolean; items: RustQueued[]; editing?: { id: string; text: string; parts?: Draft; slot: number; to?: string; shell?: string } | null; running?: string[] } | null;
   steer?: boolean;
   /** The last turn was the user's Stop: Resume carries it on [D373]. */
   resumable?: boolean;
@@ -81,7 +82,7 @@ type Mention = { id: string; type: string; label: string; name?: string; detail?
 export function Composer({ id }: { id: string }) {
   const mac = forMac();
   const header = useHeaderHeight();
-  const { drafts, sends: sending, uncertain, chips: waitingChips, edits } = mac;
+  const { run, unsaved, drafts, sends: sending, uncertain, chips: waitingChips, edits } = mac;
   const row = useSyncExternalStore(lists.subscribe, () => lists.get().rows.find((each) => each.id === id)) as ComposerRow | undefined;
   const conn = useSyncExternalStore(lists.subscribe, () => (lists.get().ready ? streamNow() : -1));
   const connected = conn >= 0;
@@ -113,6 +114,15 @@ export function Composer({ id }: { id: string }) {
   const [stopping, setStopping] = useState(false);
   const editing = { get: () => edits.get(id) ?? null, set: (pulled: Pulled) => void (pulled ? edits.set(id, pulled) : edits.delete(id)) };
 
+  // A message pulled back to edit that this phone has no record of (a relaunch, or another device): its words come
+  // back if the field is empty, and a send goes back under its id and in its slot, so it never goes twice. One for a
+  // worker or a `!` command isn't this phone's to send.
+  const kept = row?.queue?.editing;
+  useEffect(() => {
+    if (!kept || kept.to || kept.shell !== undefined || editing.get()?.qid === kept.id) return;
+    editing.set({ qid: kept.id, slot: kept.slot, text: kept.text });
+    if (isEmpty({ parts: partsNow(), attachmentIds: [] })) setField(kept.parts?.parts ?? [kept.text], false);
+  }, [kept?.id]);
   // After a restart the draft is Rust's alone: it comes back unless something was typed first.
   useEffect(() => {
     void drafts.loadDraft(run, id).then((saved) => {
@@ -132,7 +142,10 @@ export function Composer({ id }: { id: string }) {
   );
   // Each connection: what waits above the field, read again; messages Rust may not hold handed to it, a Delete told instead (the desktop's sent.tsx `useHanding`).
   useEffect(() => {
-    if (connected) waitingChips.load(id);
+    if (!connected) return;
+    waitingChips.load(id);
+    // A save or read refused while away goes now, stale if it missed a give-back.
+    if (unsaved.delete(id)) drafts.resyncDraft(run, id);
   }, [conn]);
   useEffect(() => {
     if (!connected) return;
@@ -176,7 +189,8 @@ export function Composer({ id }: { id: string }) {
     if (op.kind === "remove") items = items.filter((each) => each.id !== op.qid);
     if (op.kind === "resume") paused = false;
     if (op.kind === "add" && !delivered.has(op.qid) && !items.some((each) => each.id === op.qid)) {
-      items = items.toSpliced(op.slot ?? items.length, 0, { id: op.qid, draft: { parts: [op.text ?? ""], attachmentIds: [] }, state: "local" });
+      items = [...items];
+      items.splice(op.slot ?? items.length, 0, { id: op.qid, draft: { parts: [op.text ?? ""], attachmentIds: [] }, state: "local" });
     }
   }
   items = [...items, ...queueGoing.filter((each) => !delivered.has(each.cid) && !items.some((one) => one.id === each.cid)).map((each): QueuedMessage => ({ id: each.cid, draft: each.draft, state: each.stuck === undefined ? "local" : each.reached === false ? "unadded" : "uncertain" }))];
@@ -232,9 +246,11 @@ export function Composer({ id }: { id: string }) {
     const parts = row?.queue?.items.find((each) => each.id === qid)?.parts?.parts ?? [message];
     editing.set({ qid, slot: Math.max(slot, 0), text: message });
     setField(parts);
+    const put = words$.current;
     act({ kind: "remove", qid }, ["edit", qid], () => {
-      editing.set(null);
-      setField([]);
+      if (editing.get()?.qid === qid) editing.set(null);
+      // Words typed while it was asked stay.
+      if (words$.current === put) setField([]);
     });
   };
   const submit = (other: boolean) => {
@@ -393,7 +409,7 @@ const tileOf = (chip: PanelChip) => {
 
 /** A message on its way, as the desktop's sent.tsx bubbles: sending, or why not with Try again, Discard and Edit. */
 function OnItsWay({ id, entry }: { id: string; entry: Going }) {
-  const { sends: sending } = forMac();
+  const { run, sends: sending } = forMac();
   const failed = entry.stuck;
   // One that may have reached its agent is only tried again, under its id [C75].
   const maybe = entry.reached !== false;
@@ -420,6 +436,7 @@ const Link = ({ title, onPress }: { title: string; onPress: () => void }) => (
 
 /** The `/` menu: Brigadier's tools first, then the agent's commands, asked again as a turn starts or ends. */
 function Commands({ id, query, fresh, onPick }: { id: string; query: string; fresh: boolean; onPick: (command: Command) => void }) {
+  const { run } = forMac();
   const [listed, setListed] = useState<Command[] | null>(null);
   useEffect(() => {
     let live = true;
@@ -435,7 +452,7 @@ function Commands({ id, query, fresh, onPick }: { id: string; query: string; fre
   const want = query.toLowerCase();
   const order = { command: 0, tool: 1, skill: 2, mcp: 3, prompt: 4 };
   const rank = (each: Command) => (each.label.slice(1).toLowerCase().startsWith(want) ? 0 : each.label.toLowerCase().includes(want) ? 1 : 2);
-  const shown = [...TOOLS, ...(listed ?? [])].filter((each) => rank(each) < 2).toSorted((a, b) => order[a.kind] - order[b.kind] || rank(a) - rank(b));
+  const shown = [...TOOLS, ...(listed ?? [])].filter((each) => rank(each) < 2).sort((a, b) => order[a.kind] - order[b.kind] || rank(a) - rank(b));
   return (
     <Menu loading={listed === null} empty="No commands">
       {shown.map((each) => <MenuRow key={each.id} title={each.label} detail={each.description} onPress={() => onPick(each)} />)}

@@ -22,8 +22,8 @@ if (!g.localStorage) {
 
 export const newId = (): string => crypto.randomUUID();
 
-/** A `brigadier` command on the Mac, answered with its reply, a refusal included; with no stream, refused with why. */
-export const run: Runner = (args) =>
+/** A `brigadier` command on the connected Mac, answered with its reply, a refusal included; with no stream, refused with why. */
+const ask: Runner = (args) =>
   new Promise((done) => {
     const closed = { ok: false, error: "closed", message: "Not connected to your Mac" };
     try {
@@ -39,7 +39,7 @@ const NONE: readonly PanelChip[] = [];
  * What waits above a session's composer for the agent (the Mac's diff comments, a Fix or Resolve with agent), as
  * Rust keeps it (`chips <id>`). A phone reads them and sends them with its next message, never adds or drops one.
  */
-function chipState(uncertain: ReturnType<typeof uncertainState>) {
+function chipState(uncertain: ReturnType<typeof uncertainState>, run: Runner) {
   const chips = store<ReadonlyMap<string, readonly PanelChip[]>>(new Map());
   // Taken by a message here: a read doesn't bring them back.
   const gone = new Set<string>();
@@ -71,12 +71,20 @@ function chipState(uncertain: ReturnType<typeof uncertainState>) {
 }
 
 function macState(pk: string) {
+  /** The sessions whose draft couldn't be saved or read here: their composer does it again once this Mac is connected. */
+  const unsaved = new Set<string>();
+  /** This Mac's commands, never another's: a save timed before a switch is refused, not sent to the Mac now connected. */
+  const run: Runner = async (args) => {
+    const reply = macNow() === pk ? await ask(args) : { ok: false, error: "closed", message: "Not connected to this Mac" };
+    if (args[0] === "draft" && reply.error === "closed") unsaved.add(args[1]);
+    return reply;
+  };
   const uncertain = uncertainState(`brigadier.uncertain.${pk}.`);
   const drafts = draftState(uncertain);
   const sends = sendState(uncertain, drafts, { connection: streamNow, sendFailed: () => {} });
   /** The queued message this phone pulled back to edit, by session: Rust's one `editing` may be another device's. */
   const edits = new Map<string, { qid: string; slot: number; text: string }>();
-  return { uncertain, drafts, sends, chips: chipState(uncertain), models: modelState(), edits };
+  return { run, unsaved, uncertain, drafts, sends, chips: chipState(uncertain, run), models: modelState(), edits };
 }
 
 const macs = new Map<string, ReturnType<typeof macState>>();

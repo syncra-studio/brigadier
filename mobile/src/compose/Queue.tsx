@@ -38,7 +38,7 @@ export function QueueCard({ items, paused, resuming, steer, canEdit, error, onRe
   // The order the user made, held by id until every move has settled, so Rust's order never undoes one in flight.
   const [held, setHeld] = useState<{ order: readonly string[]; moving: number } | null>(null);
   const rank = new Map(held?.order.map((id, at) => [id, at]));
-  const shown = held ? items.toSorted((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity)) : items;
+  const shown = held ? [...items].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity)) : items;
   const move = (id: string, to: number) => {
     const order = shown.filter((each) => each.id !== id).map((each) => each.id);
     order.splice(to, 0, id);

@@ -6,7 +6,8 @@ import { asGroups, choiceOf, loadModels, type Model, type ModelChoice, type Mode
 import { failure } from "../../vendor/brigadier-shared/session/run";
 import { Button } from "../Button";
 import { color, text } from "../theme";
-import { forMac, newId, run } from "./state";
+import type { Runner } from "../../vendor/brigadier-shared/session/run";
+import { forMac, newId } from "./state";
 
 /** "xhigh" → "Extra high", "medium" → "Medium". */
 const effortLabel = (effort: string) => (effort === "xhigh" ? "Extra high" : effort.charAt(0).toUpperCase() + effort.slice(1));
@@ -15,11 +16,11 @@ const effortLabel = (effort: string) => (effort === "xhigh" ? "Extra high" : eff
 let freshAt = 0;
 
 /** A runner that fails on a refusal, as loadModels wants. */
-const strict = (args: string[]) => run(args).then((reply) => (reply.ok ? reply : Promise.reject(failure(reply))));
+const strict = (run: Runner) => (args: string[]) => run(args).then((reply) => (reply.ok ? reply : Promise.reject(failure(reply))));
 
 /** The pill under the field, and "‹Agent› after this turn · Switch now" while another agent waits for the turn's end [D557]. */
 export function ModelPill({ id, row, connected }: { id: string; row: ModelRow | undefined; connected: boolean }) {
-  const lists = forMac().models;
+  const { models: lists, run } = forMac();
   const [groups, setGroups] = useState<ModelGroup[] | null>(lists.last());
   if (groups) lists.keep(groups);
   const [pending, setPending] = useState<{ op: string; choice: ModelChoice } | null>(null);
@@ -37,7 +38,7 @@ export function ModelPill({ id, row, connected }: { id: string; row: ModelRow | 
     setOpen(true);
     if (Date.now() - freshAt < 60_000) return;
     freshAt = Date.now();
-    loadModels(strict, id, { list: (list, fresh) => setGroups((now) => (fresh || now === null ? list : now)), failed: (cause) => setError(String(cause)) });
+    loadModels(strict(run), id, { list: (list, fresh) => setGroups((now) => (fresh || now === null ? list : now)), failed: (cause) => setError(String(cause)) });
   };
   const change = (choice: ModelChoice) => {
     const op = newId();
@@ -71,6 +72,7 @@ function words(groups: ModelGroup[] | null, value: ModelChoice): string {
 }
 
 function SwitchAfter({ id, name, now, onError }: { id: string; name: string; now: boolean; onError: (error: string) => void }) {
+  const { run } = forMac();
   const [asked, setAsked] = useState(false);
   const go = () => {
     setAsked(true);
