@@ -50,6 +50,11 @@ impl Adapter for Codex {
             .map(|(_, m)| m.id.clone())
     }
 
+    /// The message writer's and the queue judge's, as Claude's Haiku is [beat-competitors D78].
+    fn cheap(&self, _current: Option<&str>, models: &[super::ModelInfo]) -> Option<String> {
+        self.glance(models)
+    }
+
     // `agents.default_subagent_*` are defaults its `spawn_agent` overrides [D376].
     fn draws_first(&self) -> bool {
         true
