@@ -102,9 +102,11 @@ export function useHanding(id: string, daemon: unknown, run: Runner): void {
 
 /** A message sent from outside the composer, with its pending bubble and command-id recovery: the retry after a rewind (`retryOf`).
  * Not the field's words, so its revision is none: going or given back, it never clears what the field holds. */
-export function sendMessage(run: Runner, id: string, text: string, retryOf?: string, draft?: Draft | null): Promise<void> {
+export function sendMessage(run: Runner, id: string, text: string, retryOf?: string, draft?: Draft | null, origin = "user"): Promise<void> {
   const cid = newId();
   const op = sendOp(id, text, cid, { parts: draft ? JSON.stringify(draft) : undefined, retryOf });
+  // Another session's brief or a note is never the user's words to give back into their draft [D2034]: Rust's book passes it by, a refusal said on the rail.
+  if (origin !== "user") return run(op).then((reply) => void (reply.ok || reply.logged === true || reply.result === "logged" || sendFailed(cid)), () => sendFailed(cid));
   return go(run, id, { cid, kind: "send", op, draft: draft ?? { parts: [text], attachmentIds: [] }, at: Date.now() }, null);
 }
 

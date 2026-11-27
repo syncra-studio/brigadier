@@ -66,10 +66,10 @@ export function FailedActions({ turn, why, cause, state }: { turn: string; why: 
   const message = session?.items.findLast((item) => item.kind === "message" && item.role === "user");
   // An agent that never started left nothing to rewind: its message just goes again [D476].
   const fresh = why === "start-failed" && at && !at.offline && message?.kind === "message" && message.turnId === turn;
-  if (fresh) return <ErrorAction onClick={() => void sendMessage(daemonRun, at.id, message.text, turn, message.draft)}>Try again</ErrorAction>;
+  if (fresh) return <ErrorAction onClick={() => void sendMessage(daemonRun, at.id, message.text, turn, message.draft, message.origin)}>Try again</ErrorAction>;
   if (!at || at.offline || session?.id !== at.id || message?.kind !== "message" || message.turnId !== turn || !session.rewind?.includes(turn) || (retrying && retrying.turn !== turn)) return choose;
   if (retrying && !retrying.error) return <>{choose}<span className="shimmer">Retrying…</span></>;
-  const entry = retrying ?? { turn, text: message.text, draft: message.draft, op: newId(), asking: false };
+  const entry = retrying ?? { turn, text: message.text, draft: message.draft, origin: message.origin, op: newId(), asking: false };
   return (
     <>
       {choose}
@@ -158,7 +158,7 @@ function retiringNotice({ name, at, to }: Retiring): Notice {
 }
 
 // shortcut: pending retries survive navigation and reconnects; use durable commands when renderer-restart recovery is added.
-type Retrying = { turn: string; text: string; draft?: Draft | null; op: string; asking: boolean; unknown?: boolean; error?: string };
+type Retrying = { turn: string; text: string; draft?: Draft | null; origin?: string; op: string; asking: boolean; unknown?: boolean; error?: string };
 const retries = store<ReadonlyMap<string, Retrying>>(new Map());
 function keepRetry(id: string, entry: Retrying | null) {
   const next = new Map(retries.get());
@@ -175,7 +175,7 @@ function rewindRetry(run: Runner, id: string, entry: Retrying) {
       keepRetry(id, { ...entry, asking: false, unknown: back.error === "disconnected", error: String(back.message ?? back.error ?? "Refused") });
       return;
     }
-    await sendMessage(run, id, entry.text, entry.turn, entry.draft);
+    await sendMessage(run, id, entry.text, entry.turn, entry.draft, entry.origin);
     keepRetry(id, null);
   }, () => keepRetry(id, { ...entry, asking: false, unknown: true }));
 }
