@@ -60,7 +60,8 @@ menus; another profile's tabs show after `menu \"Window > <this window's profile
                                 refused in Chromium and Electron apps, where background keys aren't proved and no app is
                                 brought to the front: use `menu`, a button, or `open <browser> <url>`
   scroll <n> up|down [--pages N]
-  drag <n> <m>                  drags control [n] onto control [m]
+  drag <n> <m>                  drags control [n] onto control [m]; to move a file in Finder, menu \"Edit > Copy “<file>”\",
+                                then, in the folder, menu \"Edit > Move Item Here\"
   menu \"File > Save As…\"        picks an item in the app's menu bar, with or without a window;
                                 one name (menu Close) picks it from the menu open now, after a click --right
   run '<step>' '<step>' …        a few actions in one call: run 'click 4' 'type 5' 'key return'; stops at the first that

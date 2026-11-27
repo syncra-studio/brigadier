@@ -66,17 +66,22 @@ pub(super) fn act(
             )));
         }
         Ok(Err(why)) => return Err(refuse(&cap(&format!("{line}: failed. {}", ours(&why))))),
-        Ok(Ok(done)) if s.batch => {
-            return match done["effect"].as_str() {
-                Some(e @ ("refused" | "partial")) => Err(refuse(&format!(
-                    "{line}: {e}.{}",
-                    ours(&format!(" {}", done["hint"].as_str().unwrap_or("")))
-                ))),
-                _ => Ok(format!("{line}: sent.")),
-            };
-        }
         Ok(Ok(done)) => done,
     };
+    // A background drag drops only through a macOS drag-and-drop session: without one, a file
+    // wasn't moved, whatever the window shows [D129].
+    let undropped = name == "drag" && done["drag_session"] != true && done["effect"] != "refused";
+    if s.batch {
+        return match done["effect"].as_str() {
+            Some(e @ ("refused" | "partial")) => Err(refuse(&format!(
+                "{line}: {e}.{}",
+                ours(&format!(" {}", done["hint"].as_str().unwrap_or("")))
+            ))),
+            // The steps after it may count on the drop: the run stops here.
+            _ if undropped => Err(refuse(&format!("{line}: {NO_DROP}"))),
+            _ => Ok(format!("{line}: sent.")),
+        };
+    }
     let (seen, diff) = changes(data, me, s, here);
     let how = match done["effect"].as_str() {
         Some("refused") => format!(
@@ -91,8 +96,14 @@ pub(super) fn act(
         _ if seen == Seen::Unsure => "sent; I can't tell what it changed.".into(),
         _ => "change observed.".into(),
     };
+    let how = match undropped {
+        true => format!("{} {NO_DROP}", how.trim_end()),
+        false => how,
+    };
     Ok(format!("{line}: {}\n{diff}", how.trim_end()))
 }
+
+const NO_DROP: &str = "No drag-and-drop session started, so nothing was dropped. To move a file in Finder: select it, `menu \"Edit > Copy “<file>”\"`, open the folder, then `menu \"Edit > Move Item Here\"`.";
 
 /// Cua's background keys aren't proved in Chromium, and no app is brought to the front for them
 /// [D909 D2032].
