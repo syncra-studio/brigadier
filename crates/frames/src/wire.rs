@@ -136,6 +136,34 @@ pub fn read_frame(stream: &mut UnixStream) -> io::Result<String> {
     String::from_utf8(data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
+#[cfg(target_os = "linux")]
+fn peer_cred(stream: &UnixStream) -> io::Result<libc::ucred> {
+    let mut cred = libc::ucred {
+        pid: 0,
+        uid: 0,
+        gid: 0,
+    };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    let at = (&mut cred as *mut libc::ucred).cast();
+    let fd = stream.as_raw_fd();
+    if unsafe { libc::getsockopt(fd, libc::SOL_SOCKET, libc::SO_PEERCRED, at, &mut len) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(cred)
+}
+
+#[cfg(target_os = "linux")]
+pub fn peer_uid(stream: &UnixStream) -> io::Result<libc::uid_t> {
+    peer_cred(stream).map(|c| c.uid)
+}
+
+/// The pid of the process that connected.
+#[cfg(target_os = "linux")]
+pub fn peer_pid(stream: &UnixStream) -> io::Result<i32> {
+    peer_cred(stream).map(|c| c.pid)
+}
+
+#[cfg(target_os = "macos")]
 pub fn peer_uid(stream: &UnixStream) -> io::Result<libc::uid_t> {
     let (mut uid, mut gid) = (0, 0);
     if unsafe { libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) } != 0 {
@@ -145,6 +173,7 @@ pub fn peer_uid(stream: &UnixStream) -> io::Result<libc::uid_t> {
 }
 
 /// The pid of the process that connected.
+#[cfg(target_os = "macos")]
 pub fn peer_pid(stream: &UnixStream) -> io::Result<i32> {
     let mut pid: libc::pid_t = 0;
     let mut len = std::mem::size_of::<libc::pid_t>() as libc::socklen_t;

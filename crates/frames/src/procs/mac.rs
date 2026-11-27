@@ -1,12 +1,9 @@
 //! macOS's process facts: libproc and sysctl.
 
-use super::{Proc, group};
+use super::Proc;
 use std::collections::BTreeSet;
-use std::ffi::CString;
-use std::io;
 use std::mem::{MaybeUninit, size_of};
-use std::os::unix::ffi::{OsStrExt, OsStringExt};
-use std::path::Path;
+use std::os::unix::ffi::OsStringExt;
 
 pub fn info(pid: i32) -> Option<Proc> {
     let mut bsd = MaybeUninit::<libc::proc_bsdinfo>::zeroed();
@@ -66,7 +63,7 @@ pub fn args(pid: i32) -> Option<(Vec<String>, Vec<String>)> {
 
 /// A process's parent and short name. It answers for every user's processes, the walk's root
 /// ones too (`login`), where the full record doesn't.
-fn short(pid: i32) -> Option<(i32, Vec<u8>)> {
+pub(super) fn short(pid: i32) -> Option<(i32, Vec<u8>)> {
     let mut b = MaybeUninit::<libc::proc_bsdshortinfo>::zeroed();
     let size = size_of::<libc::proc_bsdshortinfo>() as i32;
     let n = unsafe {
@@ -84,26 +81,6 @@ fn short(pid: i32) -> Option<(i32, Vec<u8>)> {
         .map(|c| *c as u8)
         .collect();
     Some((b.pbsi_ppid as i32, name))
-}
-
-/// The session hosts above `pid`, nearest first: each one's pid, start time and the session folder
-/// it was started for. None when the walk couldn't reach the top, which is never the same as none.
-pub fn hosts_above(pid: i32) -> Option<Vec<(i32, u64, String)>> {
-    let mut found = vec![];
-    let mut ppid = short(pid)?.0;
-    // A parent of 1 is launchd: the top. The bound only guards against a cycle that can't be.
-    for _ in 0..256 {
-        if ppid <= 1 {
-            return Some(found);
-        }
-        let (next, name) = short(ppid)?;
-        if name == b"brigadier-host" {
-            let (argv, _) = args(ppid)?;
-            found.push((ppid, info(ppid)?.start_us, argv.get(1)?.clone()));
-        }
-        ppid = next;
-    }
-    None
 }
 
 /// The file a process runs.
@@ -190,37 +167,9 @@ pub fn children(pid: i32) -> Vec<i32> {
     pids
 }
 
-/// Signals every checked member of the group, one by one. Returns how many were signalled.
-pub fn signal_group(pgid: i32, not_before_us: u64, sig: i32) -> usize {
-    let members = group(&all(), pgid, not_before_us);
-    for p in &members {
-        unsafe { libc::kill(p.pid, sig) };
-    }
-    members.len()
-}
-
 /// Physical footprint in bytes, the figure Activity Monitor shows as Memory.
 pub fn footprint(pid: i32) -> Option<u64> {
     let mut info = MaybeUninit::<libc::rusage_info_v4>::zeroed();
     let r = unsafe { libc::proc_pid_rusage(pid, libc::RUSAGE_INFO_V4, info.as_mut_ptr().cast()) };
     (r == 0).then(|| unsafe { info.assume_init() }.ri_phys_footprint)
-}
-
-/// Fails as exec would for a program that isn't there or can't run. The spawn gate's own exec
-/// can't report that, so it's checked first: a path against `cwd`, a bare name along `path`.
-pub fn runnable(program: &str, path: Option<&str>, cwd: &str) -> io::Result<()> {
-    let ok = |p: &Path| {
-        p.is_file()
-            && CString::new(p.as_os_str().as_bytes())
-                .is_ok_and(|c| unsafe { libc::access(c.as_ptr(), libc::X_OK) } == 0)
-    };
-    let found = if program.contains('/') {
-        ok(&Path::new(cwd).join(program))
-    } else {
-        let dirs = path.unwrap_or("/usr/bin:/bin:/usr/sbin:/sbin");
-        dirs.split(':').any(|d| ok(&Path::new(d).join(program)))
-    };
-    found
-        .then_some(())
-        .ok_or_else(|| io::Error::from_raw_os_error(libc::ENOENT))
 }

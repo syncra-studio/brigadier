@@ -7,6 +7,14 @@ use std::path::Path;
 mod mac;
 #[cfg(target_os = "macos")]
 pub use mac::*;
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::*;
+#[cfg(unix)]
+mod unix;
+#[cfg(unix)]
+pub use unix::*;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Proc {

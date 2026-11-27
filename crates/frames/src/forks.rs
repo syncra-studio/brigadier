@@ -24,6 +24,7 @@ const LINES: usize = 4000;
 
 struct State {
     dir: PathBuf,
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     kq: i32,
     /// Each live one, and whether it's kept in the file.
     known: BTreeMap<(i32, u64), bool>,
@@ -37,11 +38,7 @@ pub struct Forks(Arc<Mutex<State>>);
 impl Forks {
     /// Carries on from the session's file: what's still alive of it.
     pub fn open(dir: &Path) -> io::Result<Forks> {
-        let kq = unsafe { libc::kqueue() };
-        if kq < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        unsafe { libc::fcntl(kq, libc::F_SETFD, libc::FD_CLOEXEC) };
+        let kq = queue()?;
         let mut state = State {
             dir: dir.to_path_buf(),
             kq,
@@ -82,6 +79,7 @@ impl Forks {
         }
     }
 
+    #[cfg(target_os = "macos")]
     fn run(&self, kq: i32) {
         let mut events: [libc::kevent; 64] = unsafe { std::mem::zeroed() };
         let mut due = Some(Instant::now());
@@ -115,10 +113,109 @@ impl Forks {
             }
         }
     }
+    /// Linux has no fork event: while anything is followed, each look reads the children of every
+    /// known one, the orphans this host adopted as their subreaper and, in a scope of its own, every
+    /// member of its control group, which a double fork can't leave (proposed). An exit is a known
+    /// one gone. It reaps the orphans it adopted, never a child of its own.
+    #[cfg(target_os = "linux")]
+    fn run(&self, _kq: i32) {
+        let me = std::process::id() as i32;
+        let scope = scope();
+        let mut due = Some(Instant::now());
+        let mut dead = std::collections::BTreeSet::new();
+        loop {
+            let idle = due.is_none() && self.0.lock().unwrap().known.is_empty();
+            thread::sleep(if idle { Duration::from_secs(1) } else { LOOK });
+            dead = reap(me, &dead);
+            let mut state = self.0.lock().unwrap();
+            let had: Vec<i32> = state.known.keys().map(|k| k.0).collect();
+            let gone = had.iter().any(|&p| !state.watch(p));
+            let mut new: Vec<i32> = had.iter().flat_map(|&p| procs::children(p)).collect();
+            new.extend(
+                procs::children(me)
+                    .into_iter()
+                    .filter(|&c| !procs::is_own(c)),
+            );
+            if let Some(scope) = &scope {
+                let members = fs::read_to_string(scope).unwrap_or_default();
+                new.extend(members.lines().filter_map(|l| l.parse::<i32>().ok()));
+            }
+            let before = state.known.len();
+            new.into_iter()
+                .filter(|&p| p != me)
+                .for_each(|p| state.see(p));
+            if gone || state.known.len() != before {
+                let soon = Instant::now() + LOOK;
+                due = Some(due.map_or(soon, |d| d.min(soon)));
+            }
+            if due.is_some_and(|d| d <= Instant::now()) {
+                due = state
+                    .look()
+                    .then(|| Instant::now() + Duration::from_secs(1));
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn queue() -> io::Result<i32> {
+    let kq = unsafe { libc::kqueue() };
+    if kq < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    unsafe { libc::fcntl(kq, libc::F_SETFD, libc::FD_CLOEXEC) };
+    Ok(kq)
+}
+
+#[cfg(target_os = "linux")]
+fn queue() -> io::Result<i32> {
+    Ok(-1)
+}
+
+/// This host's own control group's member list, when it runs in a scope of its own: the daemon
+/// names each host's scope `brigadier-<…>.scope` (proposed).
+#[cfg(target_os = "linux")]
+fn scope() -> Option<PathBuf> {
+    let text = fs::read_to_string("/proc/self/cgroup").ok()?;
+    let path = text.lines().find_map(|l| l.strip_prefix("0::"))?;
+    let name = path.rsplit('/').next()?;
+    (name.starts_with("brigadier-") && name.ends_with(".scope")).then(|| {
+        Path::new("/sys/fs/cgroup")
+            .join(path.trim_start_matches('/'))
+            .join("cgroup.procs")
+    })
+}
+
+/// Waits on the adopted orphans that have exited: a zombie child this host didn't start itself,
+/// seen dead on two looks in a row, so a child of its own is always its owner's to wait on.
+#[cfg(target_os = "linux")]
+fn reap(
+    me: i32,
+    was: &std::collections::BTreeSet<(i32, u64)>,
+) -> std::collections::BTreeSet<(i32, u64)> {
+    let mut now = std::collections::BTreeSet::new();
+    for pid in procs::children(me) {
+        let Some(p) = procs::info(pid).filter(|p| p.zombie && !procs::is_own(pid)) else {
+            continue;
+        };
+        if was.contains(&(pid, p.start_us)) {
+            unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) };
+        } else {
+            now.insert((pid, p.start_us));
+        }
+    }
+    now
 }
 
 impl State {
     /// False: it's gone already.
+    #[cfg(target_os = "linux")]
+    fn watch(&self, pid: i32) -> bool {
+        procs::info(pid).is_some_and(|p| !p.zombie)
+    }
+
+    /// False: it's gone already.
+    #[cfg(target_os = "macos")]
     fn watch(&self, pid: i32) -> bool {
         let event = libc::kevent {
             ident: pid as usize,

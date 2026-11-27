@@ -8,7 +8,10 @@ use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 
 // TIOCSCTTY isn't exported by libc for Apple targets; _IO('t', 97).
+#[cfg(target_os = "macos")]
 const TIOCSCTTY: libc::c_ulong = 0x2000_7461;
+#[cfg(target_os = "linux")]
+use libc::TIOCSCTTY;
 
 pub type Spawned = (std::process::Child, Option<File>, Vec<(u8, File)>);
 
@@ -22,7 +25,7 @@ pub fn spawn_pipes(command: &mut Command, keep_stdin: bool) -> io::Result<Spawne
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     command.process_group(0);
-    let mut child = command.spawn()?;
+    let mut child = crate::procs::spawn(command)?;
     let file = |fd: OwnedFd| File::from(fd);
     let input = child.stdin.take().map(|s| file(s.into()));
     let out = file(child.stdout.take().expect("piped").into());
@@ -44,7 +47,7 @@ pub fn spawn_pty(command: &mut Command, cols: u16, rows: u16) -> io::Result<Spaw
             &mut slave,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
-            &mut size,
+            &raw mut size,
         )
     } != 0
     {
@@ -69,7 +72,7 @@ pub fn spawn_pty(command: &mut Command, cols: u16, rows: u16) -> io::Result<Spaw
             Ok(())
         });
     }
-    let child = command.spawn()?;
+    let child = crate::procs::spawn(command)?;
     // The parent's slave copies were moved into `command` and close when it drops.
     Ok((child, Some(master.try_clone()?), vec![(log::PTY, master)]))
 }

@@ -441,14 +441,9 @@ fn curl(
     if !body.is_empty() {
         c.args(["--data-binary", "@-"]);
     }
-    let child = c
-        .arg("--")
-        .arg(&up.url)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn();
-    let mut child = match child {
+    c.arg("--").arg(&up.url);
+    c.stdin(Stdio::piped()).stdout(Stdio::piped());
+    let mut child = match brigadier_frames::procs::spawn(c.stderr(Stdio::null())) {
         Ok(c) => c,
         Err(e) => {
             let _ = fs::remove_file(&file);

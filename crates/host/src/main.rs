@@ -45,6 +45,12 @@ fn main() -> io::Result<()> {
             None => return Ok(()),
         },
     };
+    // What the session starts and leaves, a double fork's grandchild too, is adopted here rather
+    // than by init, so it stays in view; frames' forks reaps it (proposed).
+    #[cfg(target_os = "linux")]
+    unsafe {
+        libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1)
+    };
     let me = procs::info(process::id() as i32).map_or(0, |p| p.start_us);
     fs::write(
         dir.join("owner.json"),
@@ -136,13 +142,14 @@ fn main() -> io::Result<()> {
 
 /// The watchdog sits in its own process group, so stopping the agent's groups never hits it.
 fn spawn_watchdog(exe: &Path) -> io::Result<Child> {
-    Command::new(exe)
-        .process_group(0)
-        .arg("--watchdog")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
+    procs::spawn(
+        Command::new(exe)
+            .process_group(0)
+            .arg("--watchdog")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null()),
+    )
 }
 
 /// Takes over the session lock a moving host passed through exec, still held.
