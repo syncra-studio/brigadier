@@ -93,8 +93,10 @@ export function RewindForm({ preview, error, sharerName, onKeep, onRestore, onCa
           </Choice>
           <Choice value="restore" label="Undo the agent's file changes">
             <Note>
-              Undoes {files(paths.length)} the agent changed: {named(paths)}.
+              Undoes {files(paths.length)} changed during these turns: {named(paths)}.
             </Note>
+            {/* Snapshots can't tell who wrote a file mid-turn, so your edits then are in it [C98]. */}
+            <Note>Edits you made while the agent worked are included, and Redo brings them back.</Note>
             <Stays hand={hand} big={big} nested={nested} stale={stale} />
             {/* Snapshots keep no ignored files, so which ones changed can't be said [D1192]. */}
             <Note>Ignored files (like .env) aren't in snapshots and stay as they are.</Note>
