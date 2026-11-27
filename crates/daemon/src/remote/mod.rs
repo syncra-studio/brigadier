@@ -15,6 +15,7 @@ mod fresh;
 mod gateway;
 mod link;
 mod pair;
+mod power;
 mod powers;
 mod rows;
 
@@ -127,6 +128,12 @@ impl Remote {
             Err(e) => eprintln!("brigadierd: the phone gateway: {e}"),
         }
     }
+}
+
+/// The phone's Keep this Mac awake (remote design §4.6): held while it is asked for, Allow
+/// connections is on and the Mac is plugged in. The Mac's own `awake` setting is never changed.
+pub(super) fn awake(data: &Path) -> bool {
+    enabled() && data.join("remote/on").exists() && pair::awake_asked(data) && power::plugged_in()
 }
 
 /// Whether `pid` is the gateway or runs below it: its sandbox already keeps it off `daemon.sock`,

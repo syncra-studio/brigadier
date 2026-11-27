@@ -272,7 +272,18 @@ fn status(s: &State, data: &Path) -> Value {
     json!({"ok": true, "on": data.join("remote/on").exists(), "port": port,
         "name": name.unwrap_or_else(super::name),
         "offer": s.offer.as_ref().filter(|o| o.open()).map(|o| shown(s, o)),
-        "pending": pending, "warning": s.warning, "devices": devices, "awake": null})
+        "pending": pending, "warning": s.warning, "devices": devices, "awake": awake_asked(data)})
+}
+
+pub(super) fn awake_asked(data: &Path) -> bool {
+    fs::read_to_string(data.join("remote-awake")).is_ok_and(|s| s.trim() == "on")
+}
+
+fn remove(path: &Path) -> std::io::Result<()> {
+    match fs::remove_file(path) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    }
 }
 
 /// Keys, slots, sessions and streams: all of a device, at once.
@@ -323,7 +334,7 @@ pub(super) fn forget_again(s: &mut State, data: &Path) {
     });
 }
 
-/// `remote status | on | off | offer | allow | deny | revoke <device>`.
+/// `remote status | on | off | awake on|off | offer | allow | deny | revoke <device>`.
 pub(super) fn cli(data: &Path, args: &[String]) -> Value {
     let mut s = STATE.lock().unwrap();
     let done = |r: std::io::Result<()>| match r {
@@ -336,10 +347,13 @@ pub(super) fn cli(data: &Path, args: &[String]) -> Value {
             fs::create_dir_all(data.join("remote"))
                 .and_then(|()| brigadier_core::write_atomic(&data.join("remote/on"), b"on")),
         ),
-        (Some("off"), None) => done(match fs::remove_file(data.join("remote/on")) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
-            _ => Ok(()),
-        }),
+        (Some("off"), None) => done(remove(&data.join("remote/on"))),
+        (Some("awake"), Some(on)) if args.len() == 3 && on == "on" => done(
+            brigadier_core::write_atomic(&data.join("remote-awake"), b"on"),
+        ),
+        (Some("awake"), Some(off)) if args.len() == 3 && off == "off" => {
+            done(remove(&data.join("remote-awake")))
+        }
         (Some("offer"), None) => offer(&mut s, data),
         (Some("allow"), None) => answer(&mut s, true),
         (Some("deny"), None) => answer(&mut s, false),
@@ -349,7 +363,7 @@ pub(super) fn cli(data: &Path, args: &[String]) -> Value {
         }
         (Some("log"), Some(device)) if args.len() == 3 => super::powers::entries(data, device),
         _ => {
-            json!({"ok": false, "error": "usage: remote status|on|off|offer|allow|deny|revoke <device>|device <id> power <p> on|off|log <device>"})
+            json!({"ok": false, "error": "usage: remote status|on|off|awake on|off|offer|allow|deny|revoke <device>|device <id> power <p> on|off|log <device>"})
         }
     }
 }
