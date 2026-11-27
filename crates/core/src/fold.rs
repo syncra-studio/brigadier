@@ -290,8 +290,10 @@ impl Fold {
             "exited" => self.exited(item, ts),
             "turn_start" => {
                 let of = self.woke_of();
-                // Only the wake a subagent's end starts is proven to deal with it: a message's turn
-                // that starts first may not, so it doesn't count and the flag ends here [D48].
+                // Only the wake a subagent's end starts is proven to deal with it: a message's, an
+                // ask's or a summary's turn that starts first may take it in unseen, and a flag kept
+                // past it could be taken by a later wake for other work. It ends here, so a held
+                // follow-up waits longer, by design: never early [D48, D108].
                 let agent = std::mem::take(&mut self.pending.agent);
                 // The agent woke: what a held turn's subagent asked ends, as at any new turn.
                 if self.turns.first().is_some_and(|t| t.held) {
@@ -372,17 +374,14 @@ impl Fold {
                 }
                 if item["parent"].is_null() && self.agents.remove(&str_of("id")) {
                     self.pending.ended(&str_of("id"), self.turns.is_empty());
-                    // The turn open now deals with its end, unless it started it; else its wake does,
-                    // not a held turn, a summary's or an ask's [D48].
-                    let open = self.turns.first_mut();
-                    if open
-                        .as_ref()
-                        .is_none_or(|t| !t.tools.contains(&str_of("id")))
-                    {
-                        match open.filter(|t| !t.held && !t.quiet) {
-                            Some(t) => t.took = true,
-                            None => self.pending.agent = true,
-                        }
+                    // The turn open now deals with its end, unless it started it; with none, or a
+                    // held one, its wake does [D48]. An ask's or a summary's turn takes it in but tells
+                    // nothing, and leaves no flag a later wake for other work could take: a held
+                    // follow-up waits longer, by design [D108].
+                    match self.turns.first_mut() {
+                        Some(t) if t.tools.contains(&str_of("id")) || t.quiet => {}
+                        Some(t) if !t.held => t.took = true,
+                        _ => self.pending.agent = true,
                     }
                 }
                 self.run_done(item, ts);
