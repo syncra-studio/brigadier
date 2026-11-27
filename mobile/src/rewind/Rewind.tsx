@@ -47,15 +47,16 @@ export function Rewind({ id, cid, text, draft, onClose }: { id: string; cid: str
   });
   // One request at a time, taps before the spinner shows included; none once it's done.
   const going = useRef(false);
+  // Moved on by a refused rewind: what it was shown may be stale, so it's read again before another try.
+  const [tries, setTries] = useState(0);
   useEffect(() => {
     if (going.current) return;
     let live = true;
     setPreview(null);
     setRestore(false);
-    setError(null);
     void run(["rewind", id, cid, "--preview"]).then((reply) => live && (reply.ok ? setPreview(previewOf(reply)) : setError(why(reply))));
     return () => void (live = false);
-  }, [turns]);
+  }, [turns, tries]);
   const go = () => {
     if (going.current || !preview) return;
     going.current = true;
@@ -65,6 +66,7 @@ export function Rewind({ id, cid, text, draft, onClose }: { id: string; cid: str
       setBusy(false);
       if (!reply.ok) {
         going.current = false;
+        setTries((n) => n + 1);
         return setError(why(reply));
       }
       // The message back in the composer, above what's typed there, its files with it; a `!` command's report as the
