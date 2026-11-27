@@ -17,7 +17,7 @@ pub struct Active {
     #[serde(default)]
     dropped: Vec<String>,
     /// The frames each rewind dropped, from its message to its note: a note written later, made
-    /// at a frame among them (`seq`), goes too, whatever began its turn.
+    /// after one of them (`archive::place`), goes too, whatever began its turn.
     #[serde(default)]
     spans: Vec<(u64, u64)>,
     last: u64,
@@ -71,11 +71,11 @@ impl Active {
             Some("overnight" | "kept" | "summary")
         );
         // One noted after the rewind, as a night's deferred decision is, still names its turn, or
-        // the frame it was made at.
+        // stands where it was made: after a dropped message, before its rewind [§8].
         let turn = item["turn"].as_str();
-        let made = item["seq"].as_u64();
+        let made = crate::archive::place(item, &seq.to_string()).1;
         let gone = turn.is_some_and(|t| self.dropped.iter().any(|d| d == t))
-            || made.is_some_and(|m| self.spans.iter().any(|(a, b)| (*a..=*b).contains(&m)));
+            || self.spans.iter().any(|(a, b)| (*a..*b).contains(&made));
         if ran && gone {
             return false;
         }
