@@ -157,8 +157,19 @@ fn shell_open(
     let args = args.as_ref().map_or(std::ptr::null(), |a| a.as_ptr());
     let null = std::ptr::null();
     // SW_SHOWNORMAL; above 32 is success.
-    let done = unsafe { ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), file.as_ptr(), args, null, 1) };
-    Ok(std::process::ExitStatus::from_raw(u32::from(done as isize <= 32)))
+    let done = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            file.as_ptr(),
+            args,
+            null,
+            1,
+        )
+    };
+    Ok(std::process::ExitStatus::from_raw(u32::from(
+        done as isize <= 32,
+    )))
 }
 
 pub(crate) fn parts(args: &[String]) -> io::Result<Value> {
