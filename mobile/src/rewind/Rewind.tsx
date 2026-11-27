@@ -81,7 +81,9 @@ export function Rewind({ id, cid, text, draft, lost: was, onClose }: { id: strin
       setBusy(false);
       if (!reply.ok) {
         going.current = false;
-        const unknown = reply.error === "closed" || reply.error === "disconnected";
+        // A try after a lost one stays unknown when refused ("queued" comes before Rust looks for it done): only an
+        // answer that it went settles it.
+        const unknown = lost !== null || reply.error === "closed" || reply.error === "disconnected";
         setLost(unknown ? restore : null);
         keepLost(op, unknown ? { mac, id, cid, op, restore, text, draft } : null);
         if (!unknown) setTries((n) => n + 1);
