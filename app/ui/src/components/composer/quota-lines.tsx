@@ -2,8 +2,8 @@ import { countdown, tightest } from "../../accounts/usage";
 import type { Limit } from "../../accounts/api";
 import { UsageBar } from "../usage-bar";
 
-/** One signed-in account's limits as Rust serves them on a model group (C1): `used` and `resets` null where unknown. */
-export type Quota = { account: string; name: string; limits: { name: string; used: number | null; resets: number | null }[] };
+import type { Quota } from "../../../../shared/session/model";
+export type { Quota } from "../../../../shared/session/model";
 
 /**
  * What an account has left, as a bar of its tightest limit [D337, D2039]: only the window's name once its reset has

@@ -10,19 +10,9 @@ import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
 import { DETAIL, OpeningRow, ROW, StepIcon, Words } from "./activity-row";
+import { VERBS } from "../../../../shared/words";
+export { VERBS };
 
-/** A step's verb while it runs, once done and while it waits to start ("Reading", "Read", "read"), by kind. */
-export const VERBS: Record<StepKind, [string, string, string]> = {
-  read: ["Reading", "Read", "read"],
-  edit: ["Editing", "Edited", "edit"],
-  list: ["Listing files in", "Listed files in", "list files in"],
-  search: ["Searching for", "Searched for", "search for"],
-  run: ["Running", "Ran", "run"],
-  web: ["Searching the web for", "Searched the web for", "search the web for"],
-  agent: ["Running a subagent:", "Ran a subagent:", "run a subagent:"],
-  skill: ["Using", "Used", "use"],
-  other: ["Using", "Used", "use"],
-};
 
 /** What a step acted on: a command, a path, a query; another tool's own name, an MCP tool's server ("Atlassian"). */
 export const toolObject = (kind: StepKind, name: string, input: string, server?: string | null) =>

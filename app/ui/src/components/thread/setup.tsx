@@ -5,8 +5,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../collapsi
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
 import { Chevron, DETAIL, ROW, TOGGLE, Words } from "./activity-row";
+import { SETUP_TITLES as TITLES } from "../../../../shared/words";
 
-const TITLES = { running: "Creating a worktree", done: "Created a worktree", failed: "Worktree setup failed" };
 const ICONS = { running: Spinner, done: Check, failed: X };
 
 /** The old app's setupStepWords; Rust has already folded the states and ordered the steps. */

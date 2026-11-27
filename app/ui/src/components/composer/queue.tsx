@@ -15,28 +15,8 @@ import { FromPeer } from "../../peers/message";
 import { ToWorker } from "../../workers/to-chip";
 import { RailItem } from "./rail";
 
-/**
- * A message waiting for the running turn, as Rust holds it. PROPOSED to the owning runs. `local`: just sent,
- * not yet confirmed (its actions wait); `deciding`: the session is judging whether it joins the work in
- * progress; `delivered`: the session has it, so it can't be pulled back to edit. `uncertain`: no reply said where it
- * is, so it may not be there; `unadded`: no add of it ever ran. Both have Add again, Edit and Delete. PROPOSED.
- */
-export type QueuedMessage = {
-  id: string;
-  draft: Draft;
-  state: "local" | "queued" | "deciding" | "delivered" | "uncertain" | "unadded";
-  /** Another session's message: who sent it (null once that session is gone). It's never the user's to edit. */
-  peer?: { title: string | null };
-  /** The user's message for one of the session's workers, held until its turn is over: that worker's name; `ended`:
-   * it can't go to that worker any more [D96]. */
-  to?: { name: string | null; ended?: boolean };
-  /** A `!` command, run in its turn; never steered. */
-  shell?: boolean;
-  /** Why it waits, once the session decided so. */
-  waits?: string;
-  /** The agent couldn't be given it. */
-  refused?: boolean;
-};
+import type { QueuedMessage } from "../../../../shared/session/queued";
+export type { QueuedMessage };
 
 /** The row's words: the text with each mention's and command's name in place. */
 function preview(draft: Draft): string {

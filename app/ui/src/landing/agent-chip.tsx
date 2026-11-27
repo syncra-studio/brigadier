@@ -1,13 +1,8 @@
 import { Tile, TileRemove } from "../components/composer/attachments";
 import { Sparkles, XCircle } from "./icons";
 
-/**
- * What waits above the composer for the agent: a Resolve with agent or a failed run's Fix. Nothing is
- * sent until the user sends [D1019, D1027, D1044]. The composer carries it as an `agent` chip (panel/chips.ts).
- */
-export type AgentChip =
-  | { id: string; kind: "resolve"; conflicts: number; files: number; operation: "merging" | "rebasing" | "pulling"; onto: string }
-  | { id: string; kind: "run"; run: string; failed: string };
+export type { AgentChip } from "../../../shared/chips";
+import type { AgentChip } from "../../../shared/chips";
 
 const plural = (n: number, one: string) => (n === 1 ? `1 ${one}` : `${n} ${one}s`);
 

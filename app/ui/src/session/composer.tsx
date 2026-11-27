@@ -47,10 +47,11 @@ export type ComposerRow = Row & {
 };
 
 /** Runs a brigadier command and answers its whole reply, a refusal included. */
-export type Runner = (args: string[]) => Promise<Record<string, any>>;
+import type { Runner } from "../../../shared/session/run";
+export type { Runner } from "../../../shared/session/run";
+import { failure } from "../../../shared/session/run";
+export { failure };
 export const daemonRun: Runner = (args) => new Promise((resolve) => ask({ op: "run", args }, resolve));
-
-export const failure = (reply: Record<string, any>) => (reply.error === "disconnected" ? "Brigadier isn't running" : String(reply.message ?? reply.error ?? "Refused"));
 
 /** Nothing to send: a command with no words too. */
 const blank = (parts: Draft["parts"]) => isEmpty({ parts: isShell(parts) ? [plainText(parts).slice(1)] : parts, attachmentIds: [] });

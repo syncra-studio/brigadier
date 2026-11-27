@@ -3,55 +3,21 @@ import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } fro
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
 import type { ModelChoice, ModelGroup } from "../components/composer/model-picker";
+import { asGroups, choiceOf, loadModels, type ModelRow, modelState, pickLine, setArgs } from "../../../shared/session/model";
 import { ModelPill } from "../components/composer/model-pill";
-import type { Quota } from "../components/composer/quota-lines";
 import { SwitchDivider } from "../components/thread/cards";
 import { ChangeLine } from "../components/thread/line";
 import { showToast } from "../components/toast";
-import { type Row, threadSource } from "../daemon";
+import { threadSource } from "../daemon";
 import { useStart } from "../home/start";
 import { errorText, run, store } from "../onboarding/api";
 import { readRouting } from "../settings/routing";
 import { SetUpAgentDialog } from "./set-up";
 import { newId } from "./store";
 
-/** A session's row with what its next turn runs on, from Rust's fold [D129]; `picked` is another agent the next message goes to. */
-type ModelRow = Row & {
-  model?: string | null;
-  effort?: string | null;
-  /** On its model's fast tier. */
-  fast?: boolean;
-  /** `now`: the user said Switch now, so the turn stops for it [D557]. */
-  picked?: { backend: string; model: string; effort: string | null; fast?: boolean; now?: boolean } | null;
-  running?: boolean;
-  /** The last `set` Rust took, by the app's op id [D30]. */
-  setup_op?: string | null;
-};
-
-type Rust = {
-  provider: string;
-  label: string;
-  short: string | null;
-  mark: string | null;
-  unavailable: "install" | "sign-in" | null;
-  models: { id: string; name: string; efforts: string[]; default_effort: string | null; fast: string | null; legacy: boolean }[];
-  usage?: Quota[] | null;
-};
-
-/** Rust's groups in the kit picker's shape. */
-export const asGroups = (groups: Rust[]): ModelGroup[] =>
-  groups.map((group) => ({ ...group, models: group.models.map(({ default_effort, ...model }) => ({ ...model, defaultEffort: default_effort ?? undefined })) }));
-
-let lastGroups: ModelGroup[] | null = null;
-/** Whether a session's model takes images, by the last list read; unknown counts as yes [D2022 #14]. */
-export const takesImages = (provider?: string, model?: string | null) =>
-  lastGroups?.find((group) => group.provider === provider)?.models.find((each) => each.id === model)?.images !== false;
-
-/** The levels a model runs at, by `groups` (else the last list read): no Auto where its CLI says it has none. */
-export const levelsOf = <Level extends string>(levels: readonly Level[], provider?: string, model?: string | null, groups = lastGroups) => {
-  const listed = groups?.find((group) => group.provider === provider)?.models.find((each) => each.id === model);
-  return listed?.auto === false ? levels.filter((level) => level !== "auto") : levels;
-};
+const modelLists = modelState();
+export const { takesImages, levelsOf } = modelLists;
+export { asGroups } from "../../../shared/session/model";
 
 /** A model's pick, by session, until Rust's line for it is in [D76]: `agent` names another agent picked. */
 type Pick = { op: string; from: string | null; to: string; agent?: string };
@@ -130,8 +96,8 @@ export function useSessionModel(id: string, row: ModelRow | undefined, offline: 
   }, []);
   const starting = useStart(id)?.asking === true;
   // The last list any session read names this one's model in its first frame (a fork's), until its own lands.
-  const [groups, setGroups] = useState<ModelGroup[] | null>(lastGroups);
-  if (groups) lastGroups = groups;
+  const [groups, setGroups] = useState<ModelGroup[] | null>(modelLists.last());
+  if (groups) modelLists.keep(groups);
   const [listError, setListError] = useState<string | null>(null);
   const [pending, setPending] = useState<{ op: string; choice: ModelChoice } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -140,19 +106,16 @@ export function useSessionModel(id: string, row: ModelRow | undefined, offline: 
 
   const load = () => {
     const mine = ++asked.current;
-    const land = (reply: Record<string, any>, fresh: boolean) => {
-      if (mine !== asked.current) return;
-      setGroups((now) => fresh || now === null ? asGroups(reply.groups) : now);
-      if (fresh) setListError(null);
-    };
-    const fail = (cause: unknown) => mine === asked.current && setListError(errorText(cause));
-    // Cache fills an empty picker only; it never replaces a list already shown.
-    run(["models", "--session", id]).then((reply) => land(reply, false), () => {});
-    run(["models", "--session", id, "--fresh"]).then((reply) => {
-      land(reply, true);
+    loadModels(run, id, {
+      list(list, fresh) {
+        if (mine !== asked.current) return;
+        setGroups((now) => (fresh || now === null ? list : now));
+        if (fresh) setListError(null);
+      },
       // A new model list can make an offer; Rust works them out on a read [D386].
-      readRouting().catch(() => {});
-    }, fail);
+      refreshed: () => void readRouting().catch(() => {}),
+      failed: (cause) => mine === asked.current && setListError(errorText(cause)),
+    });
   };
   useEffect(() => {
     // Home opens this view before Rust has made the session and its worktree: until then the last list names its model.
@@ -172,11 +135,7 @@ export function useSessionModel(id: string, row: ModelRow | undefined, offline: 
   if (pending && row?.setup_op === pending.op) setPending(null);
 
   const picked = row?.picked;
-  const shown: ModelChoice | null = picked
-    ? { provider: picked.backend, model: picked.model, effort: picked.effort, fast: picked.fast === true }
-    : row?.model
-      ? { provider: row.backend, model: row.model, effort: row.effort ?? null, fast: row.fast === true }
-      : null;
+  const shown = choiceOf(row);
   const value = pending?.choice ?? shown;
 
   // What the list says of the model it runs, for the rail; another of its models names the suggested one.
@@ -195,16 +154,9 @@ export function useSessionModel(id: string, row: ModelRow | undefined, offline: 
     const op = newId();
     setPending({ op, choice });
     setError(null);
-    // Named as the picker names them; another agent, or this one picked back, as a switch.
-    const group = (provider?: string) => groups?.find((each) => each.provider === provider);
-    const name = (provider?: string, model?: string | null) => group(provider)?.models.find((each) => each.id === model)?.name ?? model ?? null;
-    const to = name(choice.provider, choice.model) ?? choice.model;
-    const agent = choice.provider !== row?.backend || picked ? (group(choice.provider)?.label ?? choice.provider) : undefined;
-    if (agent || choice.model !== shown?.model) pick(id, { op, from: agent ? (group(shown?.provider)?.label ?? null) : name(shown?.provider, shown?.model), to, agent });
-    const args = ["set", id, "--agent", choice.provider, "--model", choice.model, "--op", op];
-    if (choice.effort) args.push("--effort", choice.effort);
-    if (choice.fast) args.push("--fast");
-    run(args).then(() => settle(id, op), (cause) => {
+    const line = pickLine(groups, row, choice, op);
+    if (line) pick(id, line);
+    run(setArgs(id, choice, op)).then(() => settle(id, op), (cause) => {
       // Only this pick's refusal undoes it; a newer pick stands.
       setPending((now) => (now?.op === op ? null : now));
       if (picks.get().get(id)?.op === op) pick(id, null);

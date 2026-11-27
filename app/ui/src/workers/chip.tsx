@@ -3,6 +3,7 @@ import { createContext, type FC, useContext } from "react";
 import { cx } from "../components/cx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { WorkerGlyph } from "../icons/worker-glyphs";
+import type { WorkerStateKind } from "../../../shared/rows";
 
 /*
  * A worker named anywhere in the conversation, as the old app's WorkerChip, WorkerName and Glyphs: its chip (glyph
@@ -10,8 +11,7 @@ import { WorkerGlyph } from "../icons/worker-glyphs";
  * Drawn only: Rust will hand each worker's state word, its live line and its times [D3029].
  */
 
-/** A worker's state, first match wins in Rust, as the old `workerStateOf`; the ones wave 4 has a cause for [D3029]. */
-export type WorkerStateKind = "needsYou" | "limit" | "paused" | "cliEnded" | "freshContext" | "working" | "failed" | "stopped" | "merged" | "doneNotMerged" | "done";
+export type { WorkerStateKind } from "../../../shared/rows";
 
 /** One worker as the UI draws it. `word` is its state in a word or two ("Needs you", "Limit until 15:10"). */
 export type Worker = {

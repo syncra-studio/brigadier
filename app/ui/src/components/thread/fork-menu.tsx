@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
   MenuRow,
 } from "../menu";
+import { FORK_FILES as FILES, FORK_REPO_FILES as REPO_FILES } from "../../../../shared/words";
 
 /**
  * What Rust's one check offers on an answer [D1068]; the UI writes the words. `worktree`: the new worktree
@@ -37,21 +38,6 @@ export type ForkOffer = {
 /** Where a pick sends the fork; `to`, another agent, model, effort or speed, goes by the one destination rule (proposed). */
 export type ForkPick = { where: "worktree" | "chat" } | { to: ModelChoice };
 
-// Proposed words, shown to the owner on screen [D1068].
-const FILES: Record<Exclude<ForkOffer["worktree"], "repos" | null>, string> = {
-  snapshot: "Files as they were at this message",
-  none: "Today's files: this message has no snapshot",
-  gone: "Files as they were · their commit is gone, so it starts from today's base",
-  sourceGone: "Today's files: the session it came from is gone",
-};
-
-// Proposed words: each repo of a folder chat by where its copy's files come from [D3105].
-const REPO_FILES = [
-  ["snapshot", "As they were at this message"],
-  ["none", "Today's files, no snapshot of this message"],
-  ["gone", "As they were, from today's base: their commit is gone"],
-  ["later", "Not copied, claimed after this message"],
-] as const;
 const detailOf = (offer: ForkOffer) =>
   offer.worktree === "repos"
     ? REPO_FILES.map(([files, words]) => [words, (offer.repos ?? []).filter((repo) => repo.files === files).map((repo) => repo.name)] as const)

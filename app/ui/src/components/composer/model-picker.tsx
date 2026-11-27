@@ -5,46 +5,9 @@ import { cx } from "../cx";
 import { Popover, PopoverContent, PopoverTrigger } from "../popover";
 import { ModelColumns } from "./model-columns";
 import { named, useClosesOnTyping } from "./model-keys";
-import type { Quota } from "./quota-lines";
 
-/** A model an agent offers, and the effort levels it takes ("low", "xhigh"…). PROPOSED. */
-export type Model = {
-  id: string;
-  name: string;
-  efforts: string[];
-  defaultEffort?: string;
-  /** Being retired, as its CLI's list says: when (ms) and the model it suggests instead, each null where not said. */
-  retiring?: { at: number | null; to: string | null } | null;
-  /** Whether it takes images, where its CLI says; unknown counts as yes [D2022 #14]. */
-  images?: boolean | null;
-  /** Whether it runs at the Auto level; unknown counts as yes. */
-  auto?: boolean | null;
-  /** Whether it makes and edits images with a tool of its own, where its CLI says [D298]. */
-  draws?: boolean | null;
-  /** What its fast tier offers, where it has one: the Fast switch's tip. */
-  fast?: string | null;
-  /** An older model its CLI still offers beside a newer one: it waits behind Show more. */
-  legacy?: boolean;
-};
-
-/**
- * An agent's models, under its name and mark (one SVG from its adapter, as onboarding draws it). `unavailable`: its CLI
- * isn't installed ("install") or isn't signed in ("sign-in"), so it has no models to show yet. PROPOSED.
- */
-export type ModelGroup = {
-  provider: string;
-  label: string;
-  /** The short name it goes by ("Claude" for "Claude Code"). */
-  short?: string | null;
-  mark: string | null;
-  models: Model[];
-  unavailable?: "install" | "sign-in" | null;
-  /** Each signed-in account's limits, where Rust serves them [D337]. */
-  usage?: Quota[] | null;
-};
-
-/** What the session runs on; `fast` on its model's fast tier. */
-export type ModelChoice = { provider: string; model: string; effort: string | null; fast?: boolean };
+import type { Model, ModelChoice, ModelGroup } from "../../../../shared/session/model";
+export type { Model, ModelChoice, ModelGroup } from "../../../../shared/session/model";
 
 /** "xhigh" → "Extra high", "medium" → "Medium". */
 export function effortLabel(effort: string): string {

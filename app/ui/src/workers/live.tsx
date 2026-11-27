@@ -28,27 +28,8 @@ import { WorkerDetails, WorkerHeader, WorkerThread } from "./view";
  * (its state word, times, receipt); this only maps it and wires Stop to Rust's `workers <id> stop`.
  */
 
-/** A worker's row facts, as Rust's `workers::row` writes them. */
-export type WorkerRow = {
-  parent: string;
-  root: string;
-  depth: number;
-  brief: string;
-  started: number;
-  kind: WorkerStateKind;
-  word: string;
-  ended?: number | null;
-  model: string;
-  receipt: string;
-  review?: string | null;
-  asked?: string | null;
-  why?: string | null;
-  added?: number | null;
-  removed?: number | null;
-  repos?: string[];
-  /** Its newest call at work, while it works [D143]. */
-  now?: { step: StepKind; name: string; input: string; description?: string | null } | null;
-};
+export type { WorkerRow } from "../../../shared/rows";
+import type { WorkerRow } from "../../../shared/rows";
 
 /**
  * The old strip's words for a call: a command reads by what the agent said it does, as its thread row [D214]; one

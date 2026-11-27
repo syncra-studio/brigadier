@@ -3,6 +3,7 @@ import { createContext, type ReactNode, useState } from "react";
 import { ConfirmForm } from "../confirm-dialog";
 import { ErrorLine } from "../error-line";
 import { Radio, RadioGroup } from "../radio";
+import { REWIND_CANT as CANT } from "../../../../shared/words";
 
 /** A user message's rewind: `blocked` says why not right now; `look` asks Rust ahead, so the dialog opens whole. */
 export type RewindOffer = { blocked?: string; open: () => void; look?: () => void };
@@ -56,13 +57,6 @@ function Choice({ value, label, children }: { value: string; label: string; chil
  * The confirmation, drawn whole from Rust's answer [D446, D480]: its title, line, Cancel and Rewind; where
  * files can go back, the choice to keep or restore them first [D384, D481].
  */
-/** Rust's reason no file can go back, in one line (D1247's words, the rest proposed); a chat with no project has none to say. */
-const CANT: Record<string, string> = {
-  unreadable: "Files stay: this turn's snapshot couldn't be read.",
-  not_git: "Files can't go back: this folder isn't a git folder.",
-  no_folder: "Files can't go back: this session's folder is missing.",
-  missing: "Files can't go back: no snapshot was taken of this turn.",
-};
 
 export function RewindForm({ preview, error, sharerName, onKeep, onRestore, onCancel }: FormProps) {
   const [choice, setChoice] = useState("keep");

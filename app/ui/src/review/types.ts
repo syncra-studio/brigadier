@@ -83,14 +83,6 @@ export type Review = {
   run?: LastRun | null;
 };
 
-/** A comment on a range of lines, waiting as a chip to go with the next message (D1040). */
-export type DiffComment = {
-  id: string;
-  path: string;
-  side: "additions" | "deletions";
-  start: number;
-  end: number;
-  /** The range's first line, as the chip quotes it. */
-  excerpt: string;
-  text: string;
-};
+export type { DiffComment } from "../../../shared/chips";
+import type { DiffComment } from "../../../shared/chips";
+

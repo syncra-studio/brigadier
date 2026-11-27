@@ -1,64 +1,13 @@
 import { useSyncExternalStore } from "react";
 
-import type { Job, KeptPrs } from "./panel/types";
-import type { Mark, Reset } from "./sidebar/words";
+import type { Daemon, Project, Row } from "../../shared/rows";
 import { client } from "../../shared/client";
 import type { Item, Session, Turn, Work } from "./thread/item";
 import { pruneUncertain } from "./session/uncertain";
 import { asStopped, markStop } from "./thread/stopping";
 import type { Source } from "./thread/thread";
 
-export type Daemon = { pid: number; version: string; build: number };
-/** A project as Rust keeps it [D165, D171]: `trusted` is null until the owner answers; `include` (paths to copy into worktrees) and `setup` are Project settings' [D178, D202]; `removing` while Remove project runs [D172]. */
-export type Project = { id: string; name: string; folder: string; trusted: boolean | null; setup: string; include: string[]; added: number; removing?: boolean; branch_prefix?: string | null; github_account?: string | null; /** Its repositories on GitHub (`of`) as last read: each account gh keeps for their server, whether it can see them all (null: not known), and that server when a folder has others; null before any read [D631]. */ github?: { github: boolean; of?: string[]; ssh?: boolean; host?: string | null; logins: { login: string; sees: boolean | null }[] } | null; browser_profile?: string | null; kind?: "folder"; pinned?: number | null; icon?: string | null };
-/** A session's row; `mark` and the facts behind it (reason, resets, sent, finished) are Rust's [D173]. */
-export type Row = {
-  id: string;
-  title: string;
-  state: string;
-  reason: unknown;
-  mark: Mark;
-  resets: number | null;
-  reset?: Reset | null; // its carry-on at the limit's reset, or why it won't go by itself [C34, C54]
-  sent: number;
-  finished: number;
-  /** The daemon's own switch of its limit is due or under way: it stays working meanwhile [C6, D51] (proposed). */
-  switching?: boolean;
-  project: string | null;
-  /** When it was pinned (ms), or null [D185]. */
-  pinned?: number | null;
-  /** When it was archived (ms), or null; and an archive, restore or delete under way, or a delete that left something [D180]. */
-  archived?: number | null;
-  lifecycle?: { op: "archive" | "restore" | "delete"; left?: string[] } | null;
-  /** When its folder last changed (ms): how far Rust's row has caught up with an action. */
-  touched?: number;
-  backend: string;
-  updated: number;
-  items: number;
-  error: string | null;
-  /** It uses the computer now, holding its lock: the menu bar item says so [D907, D957]. */ computer?: boolean;
-  /** An agent is working in it now: what keeps the computer awake "while agents work". */
-  works?: boolean;
-  /** What its ended turns left running (a dev server, a watcher), each with the TCP ports it listens on and the open app in it, by which the card's Background lists it [D105, D145]. */
-  background?: Job[];
-  /** Something has run in its background: the card keeps its Background history button [D200]. */ background_ran?: boolean;
-  /** Its agent's to-do list as its CLI's todo or plan tool last wrote it, after the finished steps it left out [D144]. */ plan?: { text: string; status: string }[] | null;
-  /** Other sessions' messages its agent hasn't got yet, oldest first; one in its queue isn't here. */ arriving?: { id: string; from: string; text: string; at: number }[];
-  /** Overnight, on or in its night; `overnight_op`: the last act on it Rust took, by the app's op id [D30]. */ overnight?: import("./sessions/overnight").Overnight | null; overnight_op?: string | null;
-  /** It holds its project's own folder, unarchived: Local checkout can't start there again [D306]. */
-  local?: boolean;
-  /** A note's side chat: shown in its note's tab, never as a row, a notice or in the Dock's count [D281]. */
-  noteChat?: boolean;
-  /** The session it was forked from, which its row sits under [D48]. */
-  forkOf?: string | null;
-  /** Where it works: its worktree, else its project's folder; null for a chat with no folder [D348, D2022]. */
-  folder?: string | null;
-  /** Its PRs as Rust's watch keeps them, null before any read [D1009]. */
-  prs?: KeptPrs | null;
-  /** A turn the network cut that Brigadier resumes by itself once it's back: which try of how many [D339]. */ reconnect?: { turn: string; attempt: number; max: number } | null;
-  /** A worker's facts, Rust's, for 4.2's parts; absent for a session that isn't one [D3012]. */
-  worker?: import("./workers/live").WorkerRow | null;
-};
+export type { Daemon, Project, Row } from "../../shared/rows";
 
 export type View = {
   /** undefined until the first answer, then the running daemon or null. */

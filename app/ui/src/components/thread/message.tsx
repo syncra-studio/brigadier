@@ -19,25 +19,9 @@ import { openChip } from "../../session/commands";
 import { urlOf } from "../../session/files";
 import { useSettings } from "../../settings/api";
 import { SaveAsNote } from "../../note/save";
+import { datedAfter, datedMessages, sentAt } from "../../../../shared/words";
+export { datedAfter, datedMessages, sentAt };
 
-const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
-const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
-const monthDay = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
-const fullDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
-
-/** When a message was sent: "3:09 PM", "Yesterday 3:09 PM", "Mon 3:09 PM", "Mon, Mar 3 at 3:09 PM", "Mar 3, 2025 at 3:09 PM". */
-export function sentAt(ms: number, now = Date.now()): string {
-  const at = new Date(ms);
-  const day = new Date(now);
-  // Midnight `back` calendar days ago: a day across a clock change isn't 24 hours.
-  const midnight = (back: number) => new Date(day.getFullYear(), day.getMonth(), day.getDate() - back).getTime();
-  const clock = time.format(at);
-  if (ms >= midnight(0)) return clock;
-  if (ms >= midnight(1)) return `Yesterday ${clock}`;
-  if (ms >= midnight(6)) return `${weekday.format(at)} ${clock}`;
-  if (at.getFullYear() === new Date(now).getFullYear()) return `${monthDay.format(at)} at ${clock}`;
-  return `${fullDate.format(at)} at ${clock}`;
-}
 
 /** "Today 3:36 PM", else as the bubble's time says it: centred above a message, in the rows' grey [D106]. */
 function TimeSeparator({ at }: { at: number }) {
@@ -45,25 +29,6 @@ function TimeSeparator({ at }: { at: number }) {
   return <p className="self-stretch pb-3 text-center text-sm leading-5.25 text-row-foreground">{today ? `Today ${sentAt(at)}` : sentAt(at)}</p>;
 }
 
-/** A gap before a user's message that a time separator marks (the old app's). */
-const SEPARATOR_GAP_MS = 60 * 60 * 1000;
-
-/** The user's messages with their date above: the first, and one sent more than an hour after the message before it. */
-export function datedMessages(items: readonly Item[]): ReadonlySet<string> {
-  const dated = new Set<string>();
-  let previous: Extract<Item, { kind: "message" }> | undefined;
-  for (const item of items) {
-    if (item.kind !== "message") continue;
-    if (item.role === "user" && item.origin !== "system" && datedAfter(previous, item.sentAt)) dated.add(item.id);
-    previous = item;
-  }
-  return dated;
-}
-
-/** Whether a user's message sent at `at` after `previous` (the last message, if any) has its date above it: a chat's first has none [D83]. */
-export function datedAfter(previous: { sentAt?: number } | undefined, at: number | undefined): boolean {
-  return previous !== undefined && at !== undefined && previous.sentAt !== undefined && at - previous.sentAt > SEPARATOR_GAP_MS;
-}
 
 /**
  * The user's message, on the right, its Markdown with every line break kept, in a bubble [D85]. Hovered or

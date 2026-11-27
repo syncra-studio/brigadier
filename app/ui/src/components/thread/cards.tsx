@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 import { InfoTip, WithTip } from "./tip";
 import { ToolBox } from "./tool";
+import { COMPACTION } from "../../../../shared/words";
 
 const WITHDRAWN = "withdrawn";
 
@@ -180,12 +181,6 @@ export function QuestionRow({
   );
 }
 
-const COMPACTION: Record<Exclude<Progress, "pending">, string> = {
-  running: "Optimizing context…",
-  done: "Context optimized",
-  failed: "Couldn’t optimize context · Nothing changed",
-  cancelled: "Couldn’t optimize context · Nothing changed",
-};
 
 /** The agent shortening its context, as a divider across the column. */
 export function CompactionDivider({ progress: reported = "done" }: { progress?: Progress }) {

@@ -25,6 +25,7 @@ import { RewindContext } from "./rewind";
 import { SubagentRow } from "../../workers/subagents";
 import { ToolRow } from "./tool";
 import { GroupRow, ThoughtRow } from "./work";
+import { FAILED_CAUSE as CAUSE, TURN_FAILED as FAILED } from "../../../../shared/words";
 
 function UserRow({ id, cid, text, time, dated, files, draft, older }: { older?: boolean; id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean; files: readonly SentFile[]; draft?: Draft | null }) {
   const offer = useContext(RewindContext)?.offer(cid ?? "", text);
@@ -92,20 +93,7 @@ function Said({ backend }: { backend: string | undefined }) {
   return <h2 className="sr-only">{useAgentLabel(backend)} said:</h2>;
 }
 
-const FAILED = {
-  "turn-failed": "This turn didn’t finish",
-  "start-failed": "The agent couldn’t start",
-  "model-unavailable": "This model isn’t available",
-  "ended-for-safety": "A safety check ended this conversation, so it can’t go on",
-  "context-full": "Context full",
-};
 
-/** What a passing failure cut, in one plain line [D339]. */
-const CAUSE = {
-  capacity: "The model’s servers are busy, so this turn didn’t finish",
-  connection: "The connection to the agent’s servers dropped, so this turn didn’t finish",
-  timeout: "The agent’s servers took too long to answer, so this turn didn’t finish",
-};
 
 /**
  * One item's row, by its kind. `step` marks one of an opened group's steps, a command saying its line alone [D95].

@@ -15,14 +15,8 @@ import { HOME } from "../shell/tab-store";
  * neither loses them nor sends them twice [D1174].
  */
 
-/** `on`: the diff it was made on (the Review tab, or a commit's), which alone draws it. */
-/**
- * `agent`: a PR card's Fix or Resolve with agent [D1093, D1290]: the chip's face, what the agent reads, and `key`, what
- * made it, so it's added once (`pr`: the PR it came from, or none).
- */
-export type Chip =
-  | { kind: "comment"; id: string; on: string; comment: DiffComment }
-  | { kind: "agent"; id: string; key: string; pr: number | null; chip: AgentChip; text: string };
+export type { Chip } from "../../../shared/chips";
+import type { Chip } from "../../../shared/chips";
 
 /** The comment box being written: the diff it's on, its lines and its words so far. */
 export type CommentDraft = { on: string; path: string; side: "additions" | "deletions"; start: number; end: number; text: string };

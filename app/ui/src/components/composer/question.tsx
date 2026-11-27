@@ -10,31 +10,10 @@ import { openChip } from "../../session/commands";
 import type { Runner } from "../../session/composer";
 import { dropTiles, forgetTiles, tilesOf, useComposerFiles } from "../../session/files";
 import { type Draft, isEmpty, plainText } from "./draft";
+import type { Given, PendingQuestion, QuestionItem } from "../../../../shared/cards";
 import { type ComposerFieldHandle, ComposerField } from "./field";
 
-/** One question of a round, as Rust sends it (msgs/w18-fields-4.md, boss D177). Its text passes as is. */
-export type QuestionItem = {
-  text: string;
-  /** None: the field alone. */
-  options: { label: string; description?: string | null; letter?: string; name?: string; shot?: string | null }[];
-  recommended: number | null;
-  /** Several marked and sent together, their labels joined with ", ". */
-  multiSelect: boolean;
-};
-
-export type PendingQuestion = {
-  id: string;
-  /** A few words over the question (a round's title). */
-  title?: string | null;
-  items: QuestionItem[];
-  /** A worker's routing hold: only its own answers, no words of the user's and no Skip [D2028, D342]. */
-  held?: boolean;
-  /** A mockup's round: each answer's `letter` is its variant, `shot` its picture then. */
-  mockup?: { worker: string; round: number; title: string };
-};
-
-/** One answer: an option's label or the user's words, those with images or files as their draft; null for a skipped one. */
-export type Given = string | Draft | null;
+export type { Given, PendingQuestion, QuestionItem } from "../../../../shared/cards";
 
 /** What goes under the card; a function's can send the round as it stands, what's open skipped: whether it was taken. `waits` says why it can't yet. */
 export type Footer = ReactNode | ((round: { finish: () => Promise<boolean>; waits?: string; busy: boolean }) => ReactNode);

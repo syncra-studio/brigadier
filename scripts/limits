@@ -141,5 +141,10 @@ found="$(files | grep -iE '\.md$' | grep -vxE 'README\.md|SECURITY\.md|CODE_OF_C
   echo "$found"
 }
 
+# The phone's protocol version is the top of the daemon's range: one number, in two languages [D58].
+proto_ts="$(sed -nE 's/^export const PROTO = ([0-9]+);$/\1/p' app/shared/proto.ts)"
+proto_rs="$(sed -nE 's/^const PROTO: \(u64, u64\) = \([0-9]+, ([0-9]+)\);$/\1/p' crates/daemon/src/remote/link.rs)"
+[ -n "$proto_ts" ] && [ "$proto_ts" = "$proto_rs" ] || fail "app/shared/proto.ts's PROTO ($proto_ts) isn't the top of PROTO in crates/daemon/src/remote/link.rs ($proto_rs)"
+
 [ "$failed" -eq 0 ] && echo "limits: all passed"
 exit "$failed"

@@ -3,8 +3,8 @@ import { useEffect, useReducer } from "react";
 import type { Row } from "../daemon";
 import { hhmm } from "../thread/words";
 
-/** A row's one mark, worked out in Rust [D173]: spinner, blue ring, amber ring, blue dot, a calm grey dot for what it left running [D68], or nothing. */
-export type Mark = "working" | "needs" | "amber" | "unread" | "background" | null;
+export type { Mark, Reset } from "../../../shared/rows";
+import type { Mark, Reset } from "../../../shared/rows";
 
 /** What a sidebar row draws: the daemon's row, its mark and the facts behind it [D65, D173]. */
 export type SessionRow = {
@@ -67,9 +67,6 @@ const STATE_WORDS: Record<string, string | null> = {
 
 // A state this build has no words for yet still says what its mark means.
 const MARK_WORDS: Record<NonNullable<Mark>, string> = { working: "Working", needs: "Needs you", amber: "Failed", unread: "New reply", background: "Background job" };
-
-/** A chat's carry-on at its usage limit's reset: due then, or held (no reset time given, the limit didn't lift at its reset time, or its receipt wasn't confirmed); `error`, a try refused, tried again each minute [C34, C54]. */
-export type Reset = { due?: number; held?: "unknown" | "stuck" | "unconfirmed" | "unbegun"; error?: string };
 
 /** A limit's carry-on in words, where Brigadier carries it on or says why not (proposed) [C34, C54]. */
 export function resetWords(reset: Reset | null | undefined): string | null {

@@ -6,21 +6,8 @@ import { errorText, run, store } from "../onboarding/api";
 import { newId } from "../session/store";
 import type { SlashCommand } from "../components/composer/menus";
 
-/**
- * A session's overnight, Rust's, on its row: `asking`, on and its agent asking its last questions; `ready`, all
- * it needs asked, waiting for Start night; `night`, working until it is proven done or the user is back.
- */
-export type Overnight = {
-  state: "asking" | "ready" | "night";
-  /** When the night began (ms). */
-  since?: number | null;
-  /** Parts of the done list proven done, of how many; and what it has decided for the user. */
-  done?: number;
-  total?: number;
-  decided?: number;
-  /** Ready: what it does alone till the user is back, in its words. */
-  words?: string | null;
-};
+export type { Overnight } from "../../../shared/rows";
+import type { Overnight } from "../../../shared/rows";
 
 type Act = "on" | "start" | "off";
 

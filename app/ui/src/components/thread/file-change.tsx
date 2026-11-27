@@ -7,13 +7,9 @@ import { cx } from "../cx";
 import type { PendingApproval } from "../composer/approval";
 import { OpeningRow, ROW, StepIcon, TOGGLE, Words } from "./activity-row";
 import { Allowed } from "./tool";
+import { FILE_VERBS } from "../../../../shared/words";
+export { FILE_VERBS };
 
-export const FILE_VERBS: Record<FileChange["change"], [string, string, string]> = {
-  added: ["Creating", "Created", "create"],
-  modified: ["Editing", "Edited", "edit"],
-  deleted: ["Deleting", "Deleted", "delete"],
-  renamed: ["Renaming", "Renamed", "rename"],
-};
 
 /** A diff past this many lines isn't drawn. */
 const MAX_DIFF_LINES = 5000;
