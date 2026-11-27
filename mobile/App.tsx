@@ -75,9 +75,9 @@ export default function App() {
 
   // Once unlocked, sign in to the first Mac (one stream at a time in this step).
   useEffect(() => {
-    if (sample || !unlocked || !macs?.length || opened.current) return;
+    if (sample || !unlocked || !macs || opened.current) return;
     opened.current = true;
-    void reach(macs[0]);
+    if (macs.length) void reach(macs[0]);
   }, [unlocked, macs]);
 
   if (!unlocked) return <Lock onUnlock={() => setUnlocked(true)} />;

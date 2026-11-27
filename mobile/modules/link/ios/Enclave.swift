@@ -32,21 +32,21 @@ enum Enclave {
 
     private static func key() throws -> SecureEnclave.P256.Signing.PrivateKey {
         if let sealed = try Keys.get(name) {
-            // Only a known enrolment that differs voids U: none read now (Face ID briefly unavailable) keeps it.
+            // U made with no record beside it is from before the record and may be void: made again. An empty record
+            // (Face ID unreadable when U was made) takes today's; none read now (briefly unavailable) keeps U.
             let had = try Keys.get(name + ".enrolment"), now = enrolment()
-            if let had, let now, had != now {
-                forget()
-            } else {
-                if had == nil, let now { try Keys.put(name + ".enrolment", now) }
+            if let had, now == nil || had == now || had.isEmpty {
+                if had.isEmpty, let now { try Keys.put(name + ".enrolment", now) }
                 return try .init(dataRepresentation: sealed)
             }
+            forget()
         }
         var error: Unmanaged<CFError>?
         guard let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, [.privateKeyUsage, .biometryCurrentSet], &error)
         else { throw error!.takeRetainedValue() as Error }
         let key = try SecureEnclave.P256.Signing.PrivateKey(accessControl: access)
         try Keys.put(name, key.dataRepresentation)
-        if let now = enrolment() { try Keys.put(name + ".enrolment", now) }
+        try Keys.put(name + ".enrolment", enrolment() ?? Data())
         return key
     }
 }
