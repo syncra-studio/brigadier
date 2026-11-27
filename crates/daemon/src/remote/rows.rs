@@ -143,7 +143,8 @@ pub(super) fn row(
                     let path = a(3)?;
                     let found = git::checkout(cx.data, &Target::Session(owner))
                         .and_then(|c| git::inside(&c, path.trim_start_matches("./")));
-                    if !found.is_ok_and(|at| at.is_file()) {
+                    // The CLI reads `~/…` as the home folder before the checkout (`attach::named`).
+                    if path.starts_with("~/") || !found.is_ok_and(|at| at.is_file()) {
                         let real = std::fs::canonicalize(path).map_err(|_| REFUSED)?;
                         if real != Path::new(path) {
                             return Err(REFUSED);
