@@ -100,39 +100,116 @@ pub fn settle(
     call: crate::send::Call,
     len: Option<u64>,
 ) -> io::Result<Option<u64>> {
-    use crate::handoff::check::{self, Source};
+    use crate::handoff::check;
     let Some(turn) = f.renewing.as_ref().and_then(|r| r["turn"].as_str()) else {
         return told(spec, f, call, len);
     };
-    let (mut sources, mut from) = (Vec::<Source>::new(), None);
-    let (mut inside, mut hit, mut past, mut noted, mut tools) = (false, false, false, false, false);
-    let (mut reply, mut model) = (String::new(), String::new());
-    crate::archive::each(&spec.dir, |item, at| {
+    let w = walk(&spec.dir, turn, |_, _, _, _| {})?;
+    let reply = w.reply.as_str();
+    if w.noted || !w.hit {
+        return Ok(None);
+    }
+    let last = f.last.as_ref().filter(|l| l["id"] == turn);
+    let has = |h: &str| {
+        let h = h.to_lowercase();
+        (reply.lines()).any(|l| l.trim().trim_start_matches('#').trim().to_lowercase() == h)
+    };
+    // A tool first: a stop it caused reads as stopped.
+    let failed = (w.tools.then_some("tool"))
+        .or(match last {
+            None => Some("unfinished"),
+            Some(l) if l["outcome"] != "done" => {
+                // Its outcome (limited, stopped at its minutes), or a failure's own why.
+                let why = ["outcome", "why"].map(|k| l[k].as_str());
+                let why = why[0].filter(|o| *o != "failed").or(why[1]);
+                Some(why.unwrap_or("failed"))
+            }
+            _ => None,
+        })
+        .or(reply.trim().is_empty().then_some("empty"))
+        .or((!headings().all(has)).then_some("headings"));
+    let data = match failed {
+        Some(why) => serde_json::json!({"event": "summary", "turn": turn, "failed": why}),
+        None => {
+            let was =
+                crate::fork::record(&spec.dir).and_then(|r| r["cwd"].as_str().map(String::from));
+            let was = was.filter(|w| *w != spec.cwd);
+            let text = reply.trim_end();
+            // A second walk, each item's words looked through for the quotes and let go.
+            let mut found = check::Found::new(text);
+            walk(&spec.dir, turn, |at, t, user, tool| {
+                found.see(at, t, user, tool)
+            })?;
+            let mut v = check::check(text, &found, &spec.cwd, was.as_deref());
+            let model = match w.model.is_empty() {
+                true => crate::rebirth::backend(spec, f).to_string(),
+                false => w.model.clone(),
+            };
+            v["event"] = "summary".into();
+            v["turn"] = turn.into();
+            v["from"] = w.from.into();
+            v["to"] = w.to.into();
+            v["model"] = model.into();
+            v["text"] = text.into();
+            v
+        }
+    };
+    let reply = call(serde_json::json!({"op": "note", "data": data, "if_len": len}))?;
+    match reply["ok"] == true {
+        true => Ok(reply["len"].as_u64()),
+        false => Err(io::Error::other(format!(
+            "the summary's note: {}",
+            reply["error"]
+        ))),
+    }
+}
+
+/// What the archive holds up to `turn`'s summary turn: its reply and model, whether it ran a tool,
+/// whether it's noted already, and the range of what a summary may cite.
+#[derive(Default)]
+struct Walk {
+    from: Option<String>,
+    to: Option<String>,
+    hit: bool,
+    noted: bool,
+    tools: bool,
+    reply: String,
+    model: String,
+}
+
+/// Walks the archive to `turn`'s summary turn, giving `seen` each item written before it that a
+/// summary may cite: its reference, its words, and whether they're the user's own or a tool's.
+fn walk(dir: &Path, turn: &str, mut seen: impl FnMut(&str, &str, bool, bool)) -> io::Result<Walk> {
+    let mut w = Walk::default();
+    let (mut inside, mut past) = (false, false);
+    crate::archive::each(dir, |item, at| {
         let s = |k: &str| item[k].as_str().unwrap_or("");
         // No summary cites one: not a note, nor a summary turn, nor a hand-off that carries one.
         if item["kind"] == "note" {
-            noted |= item["event"] == "summary" && item["turn"] == turn;
+            w.noted |= item["event"] == "summary" && item["turn"] == turn;
             return;
         }
         if item["kind"] == "input" && item["control"].is_null() {
             inside = s("origin") == "summary";
-            past |= hit;
-            hit |= s("cid") == turn;
+            past |= w.hit;
+            w.hit |= s("cid") == turn;
             if s("cid") == turn {
-                model = item["setup"]["model"].as_str().unwrap_or("").into();
+                w.model = item["setup"]["model"].as_str().unwrap_or("").into();
             }
             let fresh = &item["switch"];
-            if !hit && (fresh["fresh"] == true || fresh["why"] == "picked") {
-                from = None;
+            if !w.hit && (fresh["fresh"] == true || fresh["why"] == "picked") {
+                w.from = None;
             }
         }
-        if hit {
+        if w.hit {
             if inside && !past {
                 match s("kind") {
-                    "tool" => (tools, reply) = (true, String::new()),
+                    "tool" => (w.tools, w.reply) = (true, String::new()),
                     // Its text blocks joined, as `Turn::output` joins them.
-                    "text" if !reply.is_empty() => reply = format!("{reply}\n\n{}", s("text")),
-                    "text" => reply = s("text").into(),
+                    "text" if !w.reply.is_empty() => {
+                        w.reply = format!("{}\n\n{}", w.reply, s("text"))
+                    }
+                    "text" => w.reply = s("text").into(),
                     _ => {}
                 }
             }
@@ -169,67 +246,12 @@ pub fn settle(
             _ => return,
         };
         if !text.trim().is_empty() {
-            from.get_or_insert(at.clone());
-            sources.push(Source {
-                at,
-                text: check::fold(&text),
-                user,
-                tool,
-            });
+            w.from.get_or_insert(at.clone());
+            seen(&at, &text, user, tool);
+            w.to = Some(at);
         }
     })?;
-    if noted || !hit {
-        return Ok(None);
-    }
-    let last = f.last.as_ref().filter(|l| l["id"] == turn);
-    let has = |h: &str| {
-        let h = h.to_lowercase();
-        (reply.lines()).any(|l| l.trim().trim_start_matches('#').trim().to_lowercase() == h)
-    };
-    // A tool first: a stop it caused reads as stopped.
-    let failed = (tools.then_some("tool"))
-        .or(match last {
-            None => Some("unfinished"),
-            Some(l) if l["outcome"] != "done" => {
-                // Its outcome (limited, stopped at its minutes), or a failure's own why.
-                let why = ["outcome", "why"].map(|k| l[k].as_str());
-                let why = why[0].filter(|o| *o != "failed").or(why[1]);
-                Some(why.unwrap_or("failed"))
-            }
-            _ => None,
-        })
-        .or(reply.trim().is_empty().then_some("empty"))
-        .or((!headings().all(has)).then_some("headings"));
-    let data = match failed {
-        Some(why) => serde_json::json!({"event": "summary", "turn": turn, "failed": why}),
-        None => {
-            let was =
-                crate::fork::record(&spec.dir).and_then(|r| r["cwd"].as_str().map(String::from));
-            let was = was.filter(|w| *w != spec.cwd);
-            let text = reply.trim_end();
-            let mut v = check::check(text, &sources, &spec.cwd, was.as_deref());
-            let model = if model.is_empty() {
-                crate::rebirth::backend(spec, f).to_string()
-            } else {
-                model
-            };
-            v["event"] = "summary".into();
-            v["turn"] = turn.into();
-            v["from"] = from.into();
-            v["to"] = sources.last().map(|s| s.at.clone()).into();
-            v["model"] = model.into();
-            v["text"] = text.into();
-            v
-        }
-    };
-    let reply = call(serde_json::json!({"op": "note", "data": data, "if_len": len}))?;
-    match reply["ok"] == true {
-        true => Ok(reply["len"].as_u64()),
-        false => Err(io::Error::other(format!(
-            "the summary's note: {}",
-            reply["error"]
-        ))),
-    }
+    Ok(w)
 }
 
 /// With summaries on, an agent that can't be held to no tools renews without one: the session

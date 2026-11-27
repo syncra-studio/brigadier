@@ -4,18 +4,69 @@
 //! deleted, and it can't prove a line reads its source right, so the records stay the authority.
 
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
-/// What a summary may cite: one item written before its input, under its reference.
-pub struct Source {
-    pub at: String,
-    /// Whitespace- and case-folded: what a quote is looked for in.
-    pub text: String,
+/// Where a quote was found: an item written before the summary input, under its reference.
+#[derive(Clone)]
+struct Cite {
+    at: String,
     /// The user's own words: their message or their answer.
-    pub user: bool,
+    user: bool,
     /// A tool's input or whole output, opened by `read --raw`.
-    pub tool: bool,
+    tool: bool,
+}
+
+/// A summary's quotes, each with the newest item that holds it and the newest of the user's own,
+/// filled item by item as the record is read, so no item's words are kept past their look.
+pub struct Found(HashMap<String, (Option<Cite>, Option<Cite>)>);
+
+impl Found {
+    pub fn new(text: &str) -> Found {
+        let quotes = text.lines().flat_map(quotes).map(|(_, q)| q);
+        Found(
+            quotes
+                .filter(|q| !q.is_empty())
+                .map(|q| (q, (None, None)))
+                .collect(),
+        )
+    }
+
+    /// One item the summary may cite, oldest first: `user` the user's own words, `tool` a tool's.
+    pub fn see(&mut self, at: &str, text: &str, user: bool, tool: bool) {
+        let text = fold(text);
+        for (_, (any, theirs)) in self.0.iter_mut().filter(|(q, _)| text.contains(q.as_str())) {
+            let c = Some(Cite {
+                at: at.into(),
+                user,
+                tool,
+            });
+            if user {
+                theirs.clone_from(&c);
+            }
+            *any = c;
+        }
+    }
+
+    fn newest(&self, q: &str, user: bool) -> Option<&Cite> {
+        let (any, theirs) = self.0.get(q)?;
+        if user { theirs } else { any }.as_ref()
+    }
+}
+
+/// Each «quote» in a line, folded, with the offset in the line just past its `»`.
+fn quotes(body: &str) -> Vec<(usize, String)> {
+    let (mut out, mut rest) = (vec![], body);
+    while let Some(open) = rest.find('«') {
+        let Some(len) = rest[open..].find('»') else {
+            break;
+        };
+        let at = body.len() - rest.len() + open + len + '»'.len_utf8();
+        out.push((at, fold(&rest[open + '«'.len_utf8()..open + len])));
+        rest = &rest[open + len + '»'.len_utf8()..];
+    }
+    out
 }
 
 /// Whitespace- and case-folded, as quotes and sources are compared.
@@ -94,10 +145,10 @@ fn commit(cwd: &str, h: &str) -> bool {
     out.is_ok_and(|o| o.status.success())
 }
 
-/// Checks `text` against `sources` (oldest first), in folder `cwd`; `was` is the folder the
+/// Checks `text` against where its quotes were `found`, in folder `cwd`; `was` is the folder the
 /// record's paths were under, for a fork that moved. Gives `cites`, `marks` and `check` for the
 /// note; each `at` is a byte offset in `text`, where the cite or mark is shown.
-pub fn check(text: &str, sources: &[Source], cwd: &str, was: Option<&str>) -> Value {
+pub fn check(text: &str, found: &Found, cwd: &str, was: Option<&str>) -> Value {
     let (mut cites, mut marks) = (vec![], vec![]);
     let mut n = json!({"lines": 0, "found": 0, "missing": 0, "no_source": 0, "user_claims": 0,
         "not_users": 0, "paths_missing": 0, "commits_missing": 0});
@@ -121,21 +172,13 @@ pub fn check(text: &str, sources: &[Source], cwd: &str, was: Option<&str>) -> Va
         let claim = USERS.iter().any(|w| lower.contains(w));
         // Each «quote», looked for newest first; the user's own words first for a line given as theirs.
         let (mut quoted, mut by_user, mut by_other) = (false, None, None);
-        let mut rest = body;
-        while let Some(open) = rest.find('«') {
-            let Some(len) = rest[open..].find('»') else {
-                break;
-            };
-            let q = fold(&rest[open + '«'.len_utf8()..open + len]);
-            let at = end - rest.len() + open + len + '»'.len_utf8();
-            rest = &rest[open + len + '»'.len_utf8()..];
+        for (at, q) in quotes(body) {
+            let at = base + at;
             if q.is_empty() {
                 continue;
             }
             quoted = true;
-            let newest = |user: bool| {
-                (sources.iter().rev()).find(|s| (!user || s.user) && s.text.contains(&q))
-            };
+            let newest = |user: bool| found.newest(&q, user);
             match (claim.then(|| newest(true)).flatten()).or_else(|| newest(false)) {
                 Some(s) => {
                     bump("found");
