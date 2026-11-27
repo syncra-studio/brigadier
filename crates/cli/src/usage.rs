@@ -72,6 +72,15 @@ pub(crate) fn usable(data: &Path, agent: &str, account: &str) -> Option<bool> {
     load(data)[key(agent, account)]["usable"].as_bool()
 }
 
+/// The same word only when read within `STALE_MS`; older, or with no time kept, None [C97].
+pub(crate) fn usable_lately(data: &Path, agent: &str, account: &str) -> Option<bool> {
+    let e = &load(data)[key(agent, account)];
+    let at = e["usable_at"].as_u64()?;
+    (now_ms().saturating_sub(at) <= STALE_MS)
+        .then(|| e["usable"].as_bool())
+        .flatten()
+}
+
 /// Keeps a sample read at `at`: each window replaces the one of its name unless that one is newer, and
 /// a check's whole list all but newer ones; `who` (signed in, email, usable) where a check said it. One writer at a time, across processes.
 fn record(
@@ -93,6 +102,8 @@ fn record(
         entry["signed_in"] = signed_in.into();
         entry["email"] = email.into();
         entry["usable"] = usable.into();
+        // When it was read: an old word is unknown to placement, which checks again [C97].
+        entry["usable_at"] = at.into();
     }
     if let Some(limits) = limits {
         let mut kept = windows(entry);

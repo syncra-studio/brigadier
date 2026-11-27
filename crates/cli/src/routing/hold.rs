@@ -312,6 +312,8 @@ fn go(data: &Path, wid: &str, entry: Option<&Value>, card: Option<&Value>) -> io
     let a = adapters::get(&backend).ok_or_else(|| io::Error::other("unknown agent"))?;
     let parent = core::load(data, &l.parent)?;
     let pf = core::fold(&parent.dir, true)?.fold;
+    // A held worker may have waited hours: an old account word is checked before the lock [C97].
+    super::place::recheck(data, &parent.cwd);
     let mut ran = l.ran.clone();
     let (model, effort, account) = match entry {
         Some(e) => {

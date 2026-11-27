@@ -50,6 +50,20 @@ pub(super) fn fell_back(
     }
 }
 
+/// Before any start lock, as C66's check: each account of an agent switching automatically whose
+/// "usable" is over an hour old, or never read, is checked now, so placement finds one signed out
+/// since and no other start waits on it [C97].
+pub(crate) fn recheck(data: &Path, cwd: &str) {
+    let v = accounts::load(data);
+    for a in accounts::agents().filter(|a| listed(&v, "auto", a.name()) && a.accounts().is_some()) {
+        for (id, _) in accounts_of(&v, a.name()) {
+            if usage::usable_lately(data, a.name(), &id).is_none() {
+                accounts::check(a, data, &id, cwd);
+            }
+        }
+    }
+}
+
 /// Reservations go when their worker ends, a newer sample of their account arrives, or after
 /// C1's hour, whichever is first.
 fn prune(data: &Path, held: &mut Value) {

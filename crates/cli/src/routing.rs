@@ -103,14 +103,15 @@ fn lock(data: &Path) -> io::Result<fs::File> {
 
 /// Proposed: an instance only the CLI or daemon drives was never checked, so no job has a model.
 /// Checks home, as the app does, each agent `cwd` reads no saved check for (an empty or failed
-/// one stands); called before any start lock, so other starts never wait on it [C66, C27].
+/// one stands), then accounts whose word is old [C97]; called before any start lock, so other
+/// starts never wait on it [C66, C27].
 pub(crate) fn check_unchecked(data: &Path, cwd: &str) {
     let all = crate::setup::available();
     let missing: Vec<&str> = (all.iter().map(|a| a.name()))
         .filter(|a| core::checked::kept(data, a, Path::new(cwd)).is_none())
         .collect();
     if missing.is_empty() {
-        return;
+        return place::recheck(data, cwd);
     }
     // All missing: the app's own args, so a check it's running is reused (check.lock).
     let runs: Vec<Vec<String>> = match missing.len() == all.len() {
@@ -122,6 +123,7 @@ pub(crate) fn check_unchecked(data: &Path, cwd: &str) {
     for args in runs {
         let _ = crate::setup::run(data, &args);
     }
+    place::recheck(data, cwd);
 }
 
 /// The agents and models the user lets work run on: on, installed, set up, none hidden [D2079,
