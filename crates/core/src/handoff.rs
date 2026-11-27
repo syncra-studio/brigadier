@@ -263,9 +263,12 @@ pub fn build(
     }
 
     // The old conversation's own summary first, checked; the records after it win [rev 3 §2.5].
-    if let Some((at, note, ago)) = &p.summary {
-        out += &check::section(id, at, note, *ago);
-    }
+    // The small hand-off keeps its heading and reference only [§2.6].
+    let summary = p.summary.as_ref().map(|(at, note, ago)| {
+        let start = out.len();
+        out += &check::section(id, at, note, *ago, check::SHOWN);
+        (start..out.len(), check::section(id, at, note, *ago, 0))
+    });
 
     // Where each section the small hand-off leaves out sits, and the line that stands for it.
     let mut spans = vec![];
@@ -453,6 +456,10 @@ pub fn build(
         at -= if r.start < at { r.len() } else { 0 };
         out.replace_range(r, "");
         lines.insert_str(0, &line);
+    }
+    if let Some((r, short)) = summary {
+        at = at - r.len() + short.len();
+        out.replace_range(r, &short);
     }
     if !steps.is_empty() {
         lines +=

@@ -287,11 +287,11 @@ pub const SUMMARY: &str = "The summary below was written by the conversation bef
 pub const RECORD: &str = "Everything below is copied from the record.";
 
 /// The most of a summary a hand-off shows, in estimated tokens [rev 3 §2.5].
-const SHOWN: usize = 6_000;
+pub const SHOWN: usize = 6_000;
 
 /// The hand-off's summary section: the note at reference `at`, written `ago` renewals before
-/// this one (0: for this one), checked and capped, its whole text one command away.
-pub fn section(id: &str, at: &str, note: &Value, ago: usize) -> String {
+/// this one (0: for this one), checked and capped at `shown`, its whole text one command away.
+pub fn section(id: &str, at: &str, note: &Value, ago: usize, shown: usize) -> String {
     let s = |k: &str| note[k].as_str().unwrap_or("");
     let head = match ago {
         0 => format!(
@@ -315,13 +315,17 @@ pub fn section(id: &str, at: &str, note: &Value, ago: usize) -> String {
         } else {
             line.into()
         };
-        left |= super::estimate::tokens(&body) + super::estimate::tokens(&line) > SHOWN;
+        left |= super::estimate::tokens(&body) + super::estimate::tokens(&line) > shown;
         if !left {
             body += &line;
         }
     }
     if left {
-        body += &format!("\n… (the rest: `brigadier read {id}#{at} --raw`)");
+        let (gap, what) = match body.is_empty() {
+            true => ("", "left out to fit the room"),
+            false => ("\n", "the rest"),
+        };
+        body += &format!("{gap}… ({what}: `brigadier read {id}#{at} --raw`)");
     }
     format!("\n## Summary, {head}\n{}\n", body.trim_end())
 }
