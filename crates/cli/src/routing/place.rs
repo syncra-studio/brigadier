@@ -53,11 +53,35 @@ pub(super) fn fell_back(
 /// Before any start lock, as C66's check: each account of an agent switching automatically whose
 /// "usable" is over an hour old, or never read, is checked now, so placement finds one signed out
 /// since and no other start waits on it [C97].
+/// One at a time, the word read again under the lock: starts at once reuse the check just made,
+/// whose later sample would otherwise prune the first one's reservation.
 pub(crate) fn recheck(data: &Path, cwd: &str) {
     let v = accounts::load(data);
-    for a in accounts::agents().filter(|a| listed(&v, "auto", a.name()) && a.accounts().is_some()) {
+    let stale =
+        |a: &dyn adapters::Adapter, id: &str| usage::usable_lately(data, a.name(), id).is_none();
+    let agents: Vec<_> = (accounts::agents())
+        .filter(|a| listed(&v, "auto", a.name()) && a.accounts().is_some())
+        .filter(|a| {
+            accounts_of(&v, a.name())
+                .iter()
+                .any(|(id, _)| stale(*a, id))
+        })
+        .collect();
+    if agents.is_empty() {
+        return;
+    }
+    let Ok(_one) = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(data.join("recheck.lock"))
+        .and_then(|f| f.lock().map(|_| f))
+    else {
+        return;
+    };
+    for a in agents {
         for (id, _) in accounts_of(&v, a.name()) {
-            if usage::usable_lately(data, a.name(), &id).is_none() {
+            if stale(a, &id) {
                 accounts::check(a, data, &id, cwd);
             }
         }
