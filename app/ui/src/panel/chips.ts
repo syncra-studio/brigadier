@@ -169,11 +169,11 @@ export function setCommentDraft(session: string, draft: CommentDraft | null): vo
   else save();
 }
 
-/** The comment being written on `session`'s diff, saved now: a refused new chat's Discard takes it from Rust [C80]. */
-export function flushComment(session: string): Promise<unknown> {
+/** The comment being written on `session`'s diff, saved now, after the chip writes still on their way: a refused new chat's Discard takes them from Rust [C80]. Resolves with the last write's reply. */
+export function flushComment(session: string): Promise<Record<string, any>> {
   clearTimeout(saving.get(session));
   const draft = drafts.get(session);
-  return draft?.text ? tell(session, ["draft", JSON.stringify(draft)]) : Promise.resolve();
+  return draft?.text ? tell(session, ["draft", JSON.stringify(draft)]) : chipsWritten(session);
 }
 
 /**

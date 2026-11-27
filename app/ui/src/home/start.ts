@@ -167,7 +167,8 @@ export type Starting = {
   parts?: string;
   title: string;
   args: string[];
-  sent: number;
+  /** When it was sent; none for one Rust's book brought back after a reload, as the book keeps no time. */
+  sent?: number;
   outcome?: "delivered" | "logged";
   /** Refused because no account it could start on is signed in: its line offers Sign in [C36]. */
   signIn?: boolean;
@@ -191,6 +192,8 @@ export type Starting = {
 const starting = store<ReadonlyMap<string, Starting>>(new Map());
 // Each start's title, kept past the start: Rust's row is untitled until its index reads the first message, after the thread has it.
 const titles = new Map<string, string>();
+// A row whose time is unknown sorts as of this page's load, where a reload put it before.
+const loaded = Date.now();
 export const useStarting = starting.use;
 
 const get = (id: string) => starting.get().get(id);
@@ -270,6 +273,8 @@ async function restore(key: string): Promise<void> {
     const project = flagOf(each.op, "--project") ?? (key === REVIEW_DRAFT || key === HOME_DRAFT ? null : key.slice(HOME_DRAFT.length + 1));
     const entry: Starting = { id: each.op[1], cid: each.cid, project, text: flagOf(each.op, "--text") ?? plainText(each.draft.parts), parts: flagOf(each.op, "--parts") ?? JSON.stringify(each.draft), title: "", args: each.op, sent: each.at, asking: false, draft: key, error: each.stuck ?? UNCONFIRMED, maybe: each.reached !== false, left: each.left };
     add(entry);
+    // Rust's short title is the app's alone, gone with a reload: asked again [D186].
+    ask({ op: "run", args: ["title", entry.text] }, (reply) => reply.ok && put(entry.id, { title: reply.title }));
     if (!each.booked) void booked(entry).then((reply) => reply && reply.error !== "disconnected" && land(entry.id, reply));
   }
 }
@@ -378,10 +383,11 @@ export function discard(id: string): void {
     if (reply.ok) return put(id, null);
     put(id, { asking: false, error: reply.left ? reason(reply) : `Couldn't discard it: ${failure(reply)}`, left: reply.left === true });
   };
-  // Its diff comment still being written goes with its draft: saved first [C80].
-  void flushComment(id)
-    .then(() => booked(entry))
-    .then((reply) => (reply ? dropped(reply) : void ask({ op: "run", args: ["draft", entry.draft ?? HOME_DRAFT, "drop", entry.cid] }, dropped)));
+  // Its diff comment still being written goes with its draft: saved first, or the chat stays [C80].
+  void flushComment(id).then((saved) => {
+    if (saved.ok === false) return put(id, { asking: false, error: `Couldn't discard it: ${failure(saved)}` });
+    return booked(entry).then((reply) => (reply ? dropped(reply) : void ask({ op: "run", args: ["draft", entry.draft ?? HOME_DRAFT, "drop", entry.cid] }, dropped)));
+  });
 }
 
 /**
@@ -426,11 +432,11 @@ export function useStartingRows(open: string | null): Row[] | undefined {
       reason: null,
       mark: error ? ("amber" as const) : ("working" as const),
       resets: null,
-      sent,
+      sent: sent ?? loaded,
       finished: 0,
       project,
       backend: "",
-      updated: sent,
+      updated: sent ?? loaded,
       items: 0,
       error: error ?? null,
       forkOf: fork?.source ?? null,

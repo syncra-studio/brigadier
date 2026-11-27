@@ -24,7 +24,8 @@ export type Going = {
   draft: Draft;
   /** The field's revision it went from, which Rust's book needs to know a save of its words as its own; none for one not the field's. */
   rev?: number | null;
-  at: number;
+  /** When it was sent here; none for one only Rust's book told of, whose time it doesn't keep. */
+  at?: number;
   chips?: readonly Chip[];
   /** Rust's book has it, or settled it: kept in memory only. */
   booked?: boolean;
@@ -99,7 +100,7 @@ export function fromBook(session: string, going: readonly (Pick<Going, "cid" | "
   const theirs = new Map(going.map((each) => [each.cid, each]));
   const now = of(session).map((each) => (theirs.has(each.cid) ? { ...each, booked: true, reached: theirs.get(each.cid)!.reached } : each));
   // A start stays with why Rust refused it, its session kept [C65].
-  const fresh = going.filter((each) => !now.some((one) => one.cid === each.cid)).map(({ error, ...each }): Going => ({ ...each, at: Date.now(), booked: true, stuck: error || UNCONFIRMED }));
+  const fresh = going.filter((each) => !now.some((one) => one.cid === each.cid)).map(({ error, ...each }): Going => ({ ...each, booked: true, stuck: error || UNCONFIRMED }));
   put(session, [...now, ...fresh]);
 }
 

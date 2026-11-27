@@ -112,8 +112,9 @@ pub(super) fn carry(place: &Place, data: &Path, cid: &str, session: &str) -> io:
     })?;
     let Some(words) = words else { return Ok(()) };
     let (from, home) = (message::draft(&dir), message::home(data));
+    // Copied again on every pass: a paste edited since an earlier pass keeps its id [C80].
     for id in message::ids(&serde_json::to_value(&words)?) {
-        if let (Some(file), None) = (message::file_in(&from, &id), message::file_in(&home, &id)) {
+        if let Some(file) = message::file_in(&from, &id) {
             crate::attach::copy_whole(&file, &home.join(&id))?;
         }
     }

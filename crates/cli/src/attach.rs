@@ -301,7 +301,8 @@ pub fn back(data: &Path, spec: &core::Spec, parts: &Value, carried: bool) -> io:
 }
 
 /// File `file` into draft folder entry `to`, whole or not at all: copied under another name, then
-/// renamed, so a copy cut short is never taken for one done [C80].
+/// renamed, so a copy cut short is never taken for one done [C80]. One already there is replaced
+/// once the new copy is whole; cut short between, the source is still there to copy again.
 pub(crate) fn copy_whole(file: &Path, to: &Path) -> io::Result<()> {
     let name = to.file_name().unwrap_or_default().to_string_lossy();
     let part = to.with_file_name(format!(".{name}.part"));
@@ -309,6 +310,9 @@ pub(crate) fn copy_whole(file: &Path, to: &Path) -> io::Result<()> {
     fs::create_dir_all(&part)?;
     fs::copy(file, part.join(file.file_name().unwrap_or_default()))?;
     book::crash_at("start:copying");
+    if to.exists() {
+        fs::remove_dir_all(to)?;
+    }
     fs::rename(&part, to)
 }
 
