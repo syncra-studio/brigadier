@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Item } from "../../../vendor/brigadier-shared/thread";
 import { sentAt } from "../../../vendor/brigadier-shared/words";
 import { color } from "../../theme";
+import { ThreadImage } from "../Image";
 import { Markdown } from "../Markdown";
 import { Glyph, Opening, s, useKept, Words } from "./parts";
 
@@ -27,9 +28,13 @@ export function UserBubble({ item }: { item: Message }) {
     <View style={st.user}>
       {files.length > 0 && (
         <View style={st.files} accessibilityLabel="Attachments">
-          {files.map((file) => (
-            <Text key={file.id} style={st.file} numberOfLines={1}>{file.pasted ? PASTE_LABEL : file.name}</Text>
-          ))}
+          {files.map((file) =>
+            file.mime.startsWith("image/") ? (
+              <ThreadImage key={file.id} attachment={file.id} mime={file.mime} label={file.name} style={st.image} />
+            ) : (
+              <Text key={file.id} style={st.file} numberOfLines={1}>{file.pasted ? PASTE_LABEL : file.name}</Text>
+            ),
+          )}
         </View>
       )}
       {fix && <Text style={s.small}>PR fix</Text>}
@@ -137,6 +142,7 @@ const st = StyleSheet.create({
   user: { alignItems: "flex-end", gap: 4 },
   bubble: { maxWidth: "85%", borderRadius: 18, backgroundColor: color.bubble, paddingHorizontal: 16, paddingVertical: 10 },
   files: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 8, maxWidth: "85%" },
+  image: { width: 120, height: 120, borderRadius: 10 },
   file: { fontSize: 13, lineHeight: 18, color: color.foreground, backgroundColor: color.muted, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, maxWidth: 220 },
   time: { color: color.faint },
 });

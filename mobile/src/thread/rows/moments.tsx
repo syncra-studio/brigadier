@@ -6,6 +6,7 @@ import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Item } from "../../../vendor/brigadier-shared/thread";
 import { duration, hhmm } from "../../../vendor/brigadier-shared/words";
 import { color, text } from "../../theme";
+import { ThreadImage } from "../Image";
 import { Markdown } from "../Markdown";
 import { Divider, ErrorLine, Glyph, Line, Opening, s, Words } from "./parts";
 
@@ -43,12 +44,15 @@ export function ImageRow({ item }: { item: Extract<Item, { kind: "image" }> }) {
   if (item.progress === "failed") return <ErrorLine error={item.error === "usageLimitExceeded" ? "Couldn't create the image: its usage limit was reached." : "Couldn't create the image."} />;
   const making = item.progress !== "done";
   const named = item.name || item.prompt;
-  // shortcut: no image bytes until the attachment read lands (P3c)
   return (
     <View style={{ gap: 8 }}>
       {making && <Text style={[s.row, { color: color.foreground }]}>Creating image</Text>}
       {named ? <Text style={s.small}>{named}</Text> : null}
-      <View accessibilityRole="image" accessibilityLabel={making ? "Creating image" : (item.prompt ?? item.name ?? "Image")} style={st.picture} />
+      {!making && item.attachment ? (
+        <ThreadImage attachment={item.attachment} owner={item.from} label={item.prompt ?? item.name ?? "Image"} style={st.picture} />
+      ) : (
+        <View accessibilityRole="image" accessibilityLabel={making ? "Creating image" : (item.prompt ?? item.name ?? "Image")} style={st.picture} />
+      )}
     </View>
   );
 }
