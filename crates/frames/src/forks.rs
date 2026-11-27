@@ -24,7 +24,7 @@ const LINES: usize = 4000;
 
 struct State {
     dir: PathBuf,
-    #[cfg_attr(target_os = "linux", allow(dead_code))]
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     kq: i32,
     /// Each live one, and whether it's kept in the file.
     known: BTreeMap<(i32, u64), bool>,
@@ -113,6 +113,28 @@ impl Forks {
             }
         }
     }
+    /// Windows tells of no fork, but needs none: what a followed process starts is in its group
+    /// job, which a look proves, unless it broke away. A look 250 ms after one more is followed or
+    /// one goes, then each second while something's young.
+    #[cfg(windows)]
+    fn run(&self, _kq: i32) {
+        let (mut due, mut was) = (Some(Instant::now()), 0);
+        loop {
+            thread::sleep(LOOK);
+            let mut state = self.0.lock().unwrap();
+            let gone = state.known.keys().any(|k| !state.watch(k.0));
+            if gone || state.known.len() != was {
+                due = Some(due.map_or(Instant::now(), |d| d.min(Instant::now())));
+            }
+            if due.is_some_and(|d| d <= Instant::now()) {
+                due = state
+                    .look()
+                    .then(|| Instant::now() + Duration::from_secs(1));
+            }
+            was = state.known.len();
+        }
+    }
+
     /// Linux has no fork event: while anything is followed, each look reads the children of every
     /// known one, the orphans this host adopted as their subreaper and, in a scope of its own, every
     /// member of its control group, which a double fork can't leave (proposed). An exit is a known
@@ -167,7 +189,7 @@ fn queue() -> io::Result<i32> {
     Ok(kq)
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(not(target_os = "macos"))]
 fn queue() -> io::Result<i32> {
     Ok(-1)
 }
@@ -209,7 +231,7 @@ fn reap(
 
 impl State {
     /// False: it's gone already.
-    #[cfg(target_os = "linux")]
+    #[cfg(not(target_os = "macos"))]
     fn watch(&self, pid: i32) -> bool {
         procs::info(pid).is_some_and(|p| !p.zombie)
     }

@@ -7,6 +7,8 @@ pub mod log;
 pub mod procs;
 pub mod runner;
 pub mod spawn;
+#[cfg(windows)]
+pub mod win;
 pub mod wire;
 
 use std::fs::{File, OpenOptions, TryLockError};

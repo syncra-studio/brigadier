@@ -30,6 +30,21 @@ pub fn hosts_above(pid: i32) -> Option<Vec<(i32, u64, String)>> {
     None
 }
 
+/// A pipe or socket end's kernel id is known here, so a hand-off can be proven.
+pub const STDIO_KNOWN: bool = true;
+
+/// KILL for every checked member of the group; how many there were.
+pub fn kill_group(pgid: i32, not_before_us: u64) -> usize {
+    signal_group(pgid, not_before_us, libc::SIGKILL)
+}
+
+/// TERM, and CONT so a stopped one can act on it, for every checked member; how many there were.
+pub fn term_group(pgid: i32, not_before_us: u64) -> usize {
+    let n = signal_group(pgid, not_before_us, libc::SIGTERM);
+    signal_group(pgid, not_before_us, libc::SIGCONT);
+    n
+}
+
 /// Signals every checked member of the group, one by one. Returns how many were signalled.
 pub fn signal_group(pgid: i32, not_before_us: u64, sig: i32) -> usize {
     let members = group(&all(), pgid, not_before_us);

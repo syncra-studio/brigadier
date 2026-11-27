@@ -1,14 +1,20 @@
 //! Starting the agent child behind its gate, logging its group, and pumping its output into the log.
 
 use super::term::size;
-use super::{Child, GATE, GATE_FD, Runner, crash_at, fail};
-use crate::spawn::{spawn_pipes, spawn_pty};
+use super::{Child, Runner, crash_at, fail};
+#[cfg(unix)]
+use super::{GATE, GATE_FD};
+use crate::spawn::{kill_tree, spawn_pipes, spawn_pty};
 use crate::{log, procs, wire};
 use serde_json::{Value, json};
 use std::borrow::Cow;
 use std::fs::File;
-use std::io::{self, Read, Write};
+#[cfg(unix)]
+use std::io;
+use std::io::{Read, Write};
+#[cfg(unix)]
 use std::os::fd::AsRawFd;
+#[cfg(unix)]
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::process::Command;
 use std::sync::atomic::Ordering;
@@ -65,26 +71,34 @@ impl Runner {
         };
         // The child waits at a gate until its group is logged and the watchdog knows it, so no work
         // ever runs untracked: if this host dies first, the gate reads EOF and nothing runs [D60].
+        #[cfg(unix)]
         let (gate, mut go) = match io::pipe() {
             Ok(p) => p,
             Err(e) => return fail(format!("spawn failed: {e}")),
         };
-        let gate_fd = gate.as_raw_fd();
-        let mut command = Command::new("/bin/sh");
-        command
-            .args(["-c", GATE, *program])
-            .args(args)
-            .env_clear()
-            .current_dir(cwd);
-        unsafe {
-            command.pre_exec(move || {
-                // dup2 is a no-op for a pipe already at 3, so close-on-exec is cleared either way.
-                if libc::dup2(gate_fd, GATE_FD) < 0 || libc::fcntl(GATE_FD, libc::F_SETFD, 0) < 0 {
-                    return Err(io::Error::last_os_error());
-                }
-                Ok(())
-            });
-        }
+        #[cfg(unix)]
+        let mut command = {
+            let gate_fd = gate.as_raw_fd();
+            let mut command = Command::new("/bin/sh");
+            command.args(["-c", GATE, *program]);
+            unsafe {
+                command.pre_exec(move || {
+                    // dup2 is a no-op for a pipe already at 3, so close-on-exec is cleared either way.
+                    if libc::dup2(gate_fd, GATE_FD) < 0
+                        || libc::fcntl(GATE_FD, libc::F_SETFD, 0) < 0
+                    {
+                        return Err(io::Error::last_os_error());
+                    }
+                    Ok(())
+                });
+            }
+            command
+        };
+        // Windows' gate is the child starting suspended in its job; it runs its own argv, never
+        // through a shell, so an argument reaches it as given.
+        #[cfg(windows)]
+        let mut command = Command::new(*program);
+        command.args(args).env_clear().current_dir(cwd);
         for (k, v) in req["env"].as_object().into_iter().flatten() {
             command.env(k, v.as_str().unwrap_or(""));
         }
@@ -108,7 +122,7 @@ impl Runner {
             }
         };
         if let Some(reply) = self.intent(req) {
-            unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
+            kill_tree(child.id());
             let _ = child.wait();
             return reply;
         }
@@ -127,7 +141,7 @@ impl Runner {
         let spawn = match self.append(log::SPAWNED, record.to_string().as_bytes(), true) {
             Ok(seq) => seq,
             Err(e) => {
-                unsafe { libc::killpg(pid, libc::SIGKILL) };
+                kill_tree(pid as u32);
                 let _ = child.wait();
                 return json!({"ok": false, "cid": cid, "result": "logged", "error": e.to_string()});
             }
@@ -136,15 +150,18 @@ impl Runner {
         (self.watch)(&self.groups.lock().unwrap());
         // A stop that ran while this spawn was under way couldn't see this group: honour it now.
         if self.stops.load(Ordering::SeqCst) != stops {
-            procs::signal_group(pid, start_us, libc::SIGKILL);
+            procs::kill_group(pid, start_us);
             let status = child.wait().ok();
-            let exited = json!({"pid": pid, "code": status.and_then(|s| s.code()), "signal": status.and_then(|s| s.signal())});
+            let exited = json!({"pid": pid, "code": status.and_then(|s| s.code()), "signal": status.and_then(signal)});
             let _ = self.append(log::EXITED, exited.to_string().as_bytes(), false);
             return json!({"ok": false, "cid": cid, "result": "logged", "error": "stopped while starting"});
         }
         self.forks.follow(pid);
         // Open the gate. A child that already died is seen by the wait below.
+        #[cfg(unix)]
         let _ = go.write_all(b"\n");
+        #[cfg(windows)]
+        let _ = child.go();
         let (done, pumped) = mpsc::channel();
         let pumps = outputs.len();
         self.pumping.fetch_add(pumps, Ordering::SeqCst);
@@ -186,7 +203,7 @@ impl Runner {
                 }
             }
             let code = status.and_then(|s| s.code());
-            let signal = status.and_then(|s| s.signal());
+            let signal = status.and_then(signal);
             let exited = json!({"pid": pid, "code": code, "signal": signal}).to_string();
             while me.append(log::EXITED, exited.as_bytes(), false).is_err() {
                 thread::sleep(Duration::from_millis(500));
@@ -223,4 +240,15 @@ impl Runner {
             }
         }
     }
+}
+
+#[cfg(unix)]
+fn signal(s: std::process::ExitStatus) -> Option<i32> {
+    s.signal()
+}
+
+/// Windows has no signals: an exit is only ever a code.
+#[cfg(windows)]
+fn signal(_: std::process::ExitStatus) -> Option<i32> {
+    None
 }

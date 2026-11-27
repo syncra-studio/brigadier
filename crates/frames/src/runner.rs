@@ -10,10 +10,10 @@ mod spawn;
 mod stop;
 mod term;
 use crate::forks::Forks;
+use crate::spawn::Input;
 use crate::{procs, wire};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -21,14 +21,16 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 /// The gate's pipe in the child, and the shell that waits on it and then becomes the agent ($0).
+#[cfg(unix)]
 const GATE_FD: i32 = 3;
+#[cfg(unix)]
 const GATE: &str = r#"IFS= read -r go <&3 || exit 1; exec 3<&-; exec "$0" "$@""#;
 
 pub type Groups = Vec<(i32, u64)>;
 
 struct Child {
     pid: i32,
-    input: Option<File>,
+    input: Option<Input>,
     /// Its SPAWNED frame's seq: keys, resizes and inputs name the child they were meant for.
     spawn: u64,
     pty: bool,
@@ -62,8 +64,15 @@ fn fail(error: impl std::fmt::Display) -> Value {
     json!({"ok": false, "error": error.to_string()})
 }
 
+#[cfg(unix)]
 fn is_full(e: &io::Error) -> bool {
     e.raw_os_error() == Some(libc::ENOSPC) || e.raw_os_error() == Some(libc::EDQUOT)
+}
+
+/// ERROR_HANDLE_DISK_FULL and ERROR_DISK_FULL.
+#[cfg(windows)]
+fn is_full(e: &io::Error) -> bool {
+    matches!(e.raw_os_error(), Some(39 | 112))
 }
 
 impl Runner {

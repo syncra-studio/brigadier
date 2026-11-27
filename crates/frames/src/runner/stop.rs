@@ -4,6 +4,8 @@ use super::{Groups, Runner};
 use crate::{log, procs};
 use serde_json::{Value, json};
 use std::io;
+#[cfg(windows)]
+use std::io::Write;
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -31,6 +33,20 @@ impl Runner {
         Ok(log.len)
     }
 
+    /// Windows' TERM: Ctrl-C on the child's terminal, which the console turns into its
+    /// CTRL_C_EVENT, or its input closed for a child on pipes. No CTRL_BREAK: the host shares no
+    /// console with the child.
+    #[cfg(windows)]
+    fn polite(&self) {
+        let mut slot = self.child.lock().unwrap();
+        if let Some(c) = slot.as_mut().filter(|c| !c.exited) {
+            match c.pty {
+                true => drop(c.input.as_mut().map(|i| i.write_all(b"\x03"))),
+                false => drop(c.input.take()),
+            }
+        }
+    }
+
     /// Stops every process group this session started: TERM (and CONT, so a stopped one can act on
     /// it), then KILL after `grace_ms`. Never waits on the input lock, so a stuck write can't block it.
     /// `from`: the session whose stop it is, when not the user's (a lead's) [C76].
@@ -50,9 +66,10 @@ impl Runner {
                 .map(|&(g, s)| procs::group(&all, g, s).len())
                 .sum::<usize>()
         };
+        #[cfg(windows)]
+        self.polite();
         for &(g, s) in &groups {
-            procs::signal_group(g, s, libc::SIGTERM);
-            procs::signal_group(g, s, libc::SIGCONT);
+            procs::term_group(g, s);
         }
         let mut left = live(&groups);
         let deadline = Instant::now() + Duration::from_millis(grace_ms);
@@ -62,7 +79,7 @@ impl Runner {
         }
         if left > 0 {
             for &(g, s) in &groups {
-                procs::signal_group(g, s, libc::SIGKILL);
+                procs::kill_group(g, s);
             }
             let deadline = Instant::now() + Duration::from_secs(2);
             while left > 0 && Instant::now() < deadline {

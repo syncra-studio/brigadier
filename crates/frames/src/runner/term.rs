@@ -1,9 +1,9 @@
 //! The terminal side of the runner: waiting out a handoff, and keys and resizes for the live PTY.
 
 use super::{DRAIN, Runner, fail};
+use crate::spawn::Input;
 use crate::spawn::resize;
 use serde_json::{Value, json};
-use std::fs::File;
 use std::io::Write;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -25,7 +25,7 @@ impl Runner {
     }
 
     /// The live terminal's master, if `req` names it by its spawn id: a stale one gets None.
-    fn terminal(&self, req: &Value) -> Option<File> {
+    fn terminal(&self, req: &Value) -> Option<Input> {
         let slot = self.child.lock().unwrap();
         let c = slot.as_ref().filter(|c| c.pty && !c.exited)?;
         (req["spawn"].as_u64() == Some(c.spawn))

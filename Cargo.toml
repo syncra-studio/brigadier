@@ -4,6 +4,7 @@ resolver = "3"
 
 [workspace.dependencies]
 libc = "=0.2.191"
+windows-sys = "=0.61.2"
 serde_json = { version = "=1.0.154", features = ["preserve_order"] }
 
 [profile.release]
