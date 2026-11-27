@@ -36,6 +36,8 @@ export default function App() {
   const home = (list = macs): At => ({ at: list?.length ? "macs" : "connect" });
   // Each pairing attempt's number; Cancel moves it on, so the cancelled attempt's result is dropped.
   const attempt = useRef(0);
+  // The sign-in on opening runs once; later ones are the user's Try again.
+  const opened = useRef(false);
 
   async function reach(mac: Mac) {
     setStatus({ [mac.pk]: "connecting" });
@@ -49,13 +51,17 @@ export default function App() {
     const r = await pair(how, (check) => mine === attempt.current && setAt({ at: "finishing", check }));
     if (mine !== attempt.current) return;
     if (r === "cancelled") return setAt(home());
-    if (typeof r === "string") {
-      if (r === "updatePhone" || r === "updateMac") setMacs(await Link.macs());
-      return setAt({ at: "notice", problem: r, retry: r === "unreachable" ? () => run(how) : undefined });
+    try {
+      if (typeof r === "string") {
+        if (r === "updatePhone" || r === "updateMac") setMacs(await Link.macs());
+        return setAt({ at: "notice", problem: r, retry: r === "unreachable" ? () => run(how) : undefined });
+      }
+      setMacs(await Link.macs());
+      setStatus({ [r.pk]: "connected" });
+      setAt({ at: "connected", name: r.name });
+    } catch {
+      setAt({ at: "notice", problem: "lost" });
     }
-    setMacs(await Link.macs());
-    setStatus({ [r.pk]: "connected" });
-    setAt({ at: "connected", name: r.name });
   }
 
   useEffect(() => {
@@ -69,7 +75,9 @@ export default function App() {
 
   // Once unlocked, sign in to the first Mac (one stream at a time in this step).
   useEffect(() => {
-    if (!sample && unlocked && macs?.length && !status[macs[0].pk]) void reach(macs[0]);
+    if (sample || !unlocked || !macs?.length || opened.current) return;
+    opened.current = true;
+    void reach(macs[0]);
   }, [unlocked, macs]);
 
   if (!unlocked) return <Lock onUnlock={() => setUnlocked(true)} />;

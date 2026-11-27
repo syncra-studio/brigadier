@@ -1,6 +1,6 @@
 // Pairing and signing in, as msgs/remote-wire.md has them; the keys never leave the native module.
 import Link, { type Mac } from "../../modules/link";
-import { ask, close, connect, next, send } from "../link";
+import { ask, close, closeCount, connect, next, send } from "../link";
 import { PROTO } from "../../vendor/brigadier-shared/proto";
 
 export type Problem =
@@ -62,6 +62,9 @@ type Paired = Mac | Problem | "cancelled";
 export const pair = (how: { offer: Offer } | { code: string }, onCheck: (digits: string) => void) => guarded(() => pairing(how, onCheck));
 
 async function pairing(how: { offer: Offer } | { code: string }, onCheck: (digits: string) => void): Promise<Paired> {
+  // Cancel calls `close`; each step after a wait checks it, so a cancelled pairing never goes on to save.
+  const was = closeCount();
+  const cancelled = () => closeCount() !== was;
   let check: string | undefined;
   let addresses: string[] = [];
   if ("offer" in how) {
@@ -73,6 +76,7 @@ async function pairing(how: { offer: Offer } | { code: string }, onCheck: (digit
     check = r.check;
   } else {
     const { found, denied } = await Link.browse(3000);
+    if (cancelled()) return "cancelled";
     const waiting = found.filter((f) => f.open === "1");
     if (!waiting.length) return denied ? "localNetwork" : "noOffer";
     // A Mac whose message 2 doesn't open holds another code: try the next.
@@ -85,7 +89,7 @@ async function pairing(how: { offer: Offer } | { code: string }, onCheck: (digit
     if (!check) return "wrongCode";
   }
   const sig = await signature();
-  if (!sig) return "cancelled";
+  if (!sig || cancelled()) return "cancelled";
   send({ sig });
   onCheck(check!);
   // The Mac asks its owner for up to 2 minutes.
@@ -94,6 +98,7 @@ async function pairing(how: { offer: Offer } | { code: string }, onCheck: (digit
   if (answer.paired !== true) return "denied";
   const signed = await next();
   if (signed?.signed !== true) return "reused";
+  if (cancelled()) return "cancelled";
   const pk = await Link.save(signed.name, signed.device, addresses);
   const h = await hello();
   if (h !== "ok") return h;

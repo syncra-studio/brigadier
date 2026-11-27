@@ -60,7 +60,7 @@ public class LinkModule: Module {
                 return ["error": "unreachable"]
             }
             channel.onData = { data in self.sendEvent("data", ["b": data.base64EncodedString(), "n": n]) }
-            // Strong: `drop` clears both callbacks, which ends the cycle.
+            // Strong: the stream's read task ends when it closes, and nothing else keeps the stream.
             channel.onClosed = {
                 self.lock.withLock { if self.stream == n { self.channel = nil } }
                 self.sendEvent("closed", ["n": n])
@@ -71,7 +71,6 @@ public class LinkModule: Module {
                 return true
             }
             guard mine else {
-                channel.onClosed = nil
                 channel.close()
                 return ["error": "closed"]
             }
@@ -112,11 +111,10 @@ public class LinkModule: Module {
         }
     }
 
-    /// Ends the open stream and voids any `connect` still running; returns the next stream's number.
+    /// Ends the open stream and voids any `connect` still running; returns the next stream's number. The old
+    /// stream's callbacks stay (they are set once, before it reads): its events carry its own number, which JS drops.
     private func drop() -> Int {
         lock.withLock {
-            channel?.onClosed = nil
-            channel?.onData = nil
             channel?.close()
             channel = nil
             stream += 1

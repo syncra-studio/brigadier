@@ -13,6 +13,11 @@ function toBase64(b: Uint8Array): string {
 let live = false;
 // The open stream's number; the native module's events for any other are stale.
 let stream = -1;
+// Moves on at each connect and close, so an older connect's late result changes nothing.
+let attempt = 0;
+// How many times `close` was called: a flow that saw it change was cancelled.
+let closes = 0;
+export const closeCount = () => closes;
 let frames: Frame[] = [];
 let waiting: ((f: Frame | null) => void) | null = null;
 const closed = new Set<() => void>();
@@ -44,14 +49,18 @@ Link.addListener("closed", ({ n }) => {
 });
 
 export async function connect(...args: Parameters<typeof Link.connect>) {
+  const mine = ++attempt;
   lost();
   const r = await Link.connect(...args);
+  if (mine !== attempt) return { error: "closed" as const };
   live = r.stream !== undefined;
   stream = r.stream ?? -1;
   return r;
 }
 
 export function close() {
+  attempt++;
+  closes++;
   Link.close();
   lost();
 }
@@ -63,10 +72,15 @@ export const send = (frame: object) => wire.send(frame);
 export function ask(request: object): Promise<Frame> {
   return new Promise((done) => {
     const timer = setTimeout(close, 30_000);
-    wire.ask(request, (reply) => {
+    try {
+      wire.ask(request, (reply) => {
+        clearTimeout(timer);
+        done(reply);
+      });
+    } catch (e) {
       clearTimeout(timer);
-      done(reply);
-    });
+      throw e;
+    }
   });
 }
 
