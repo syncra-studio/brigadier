@@ -197,23 +197,119 @@ pub fn computer(command: &str) -> bool {
         }
         _ => None,
     });
-    let line = shell.as_deref().unwrap_or(command);
-    let words = |c: &str| plain_words(c).unwrap_or_default();
+    let line = shell.as_deref().unwrap_or(command).trim();
+    // A leading `sleep N;` or `sleep N &&` only waits [C130].
+    let line = (line.strip_prefix("sleep "))
+        .and_then(|rest| {
+            let rest = rest.trim_start();
+            let n = rest.find(|c: char| !c.is_ascii_digit() && c != '.')?;
+            let (secs, rest) = rest.split_at(n);
+            let number = secs.split('.').all(|p| !p.is_empty() && p.len() <= 6);
+            let rest = rest.trim_start();
+            let rest = rest.strip_prefix(';').or_else(|| rest.strip_prefix("&&"))?;
+            number.then_some(rest.trim_start())
+        })
+        .unwrap_or(line);
+    // Stages at the pipes outside quotes, each plain words but for a trailing `2>&1` [C130].
+    let Some(stages) = piped(line)
+        .iter()
+        .map(|s| {
+            let s = s.trim();
+            plain_words(s.strip_suffix(" 2>&1").unwrap_or(s)).filter(|w| !w.is_empty())
+        })
+        .collect::<Option<Vec<_>>>()
+    else {
+        return false;
+    };
     let is = |w: &[String], first: &[&str]| {
         w.len() >= first.len() && w.iter().zip(first).all(|(a, b)| a == b)
     };
-    // The one pipe outside quotes: what's before it is plain words only if that's it.
-    let piped = (line.match_indices('|')).find_map(|(at, _)| {
-        let (text, call) = (words(&line[..at]), words(&line[at + 1..]));
-        (!text.is_empty() && !call.is_empty()).then_some((text, call))
-    });
-    match piped {
-        Some((text, call)) => {
-            (is(&text, &["echo"]) || is(&text, &["printf"]))
-                && is(&call, &["brigadier", "computer"])
-        }
-        None => is(&words(line), &["brigadier", "computer"]),
+    // Its text perhaps from `echo` or `printf`, then Brigadier's own call, then only filters.
+    let fed = stages.len() > 1 && (is(&stages[0], &["echo"]) || is(&stages[0], &["printf"]));
+    let rest = &stages[usize::from(fed)..];
+    rest.first()
+        .is_some_and(|w| is(w, &["brigadier", "computer"]) || help(w))
+        && rest[1..].iter().all(|w| filter(w))
+}
+
+/// `brigadier help [<command>]`, `brigadier --help` and `brigadier <command> --help`: they only
+/// print the agent's help [C130].
+fn help(w: &[String]) -> bool {
+    let named = |c: &str| COMMANDS.contains(&c) || c == "computer";
+    match w.iter().map(String::as_str).collect::<Vec<_>>()[..] {
+        ["brigadier", "help"] | ["brigadier", "--help"] => true,
+        ["brigadier", "help", c] | ["brigadier", c, "--help"] => named(c),
+        _ => false,
     }
+}
+
+/// A filter of what came before that reads no file and runs nothing: `head`/`tail` by count,
+/// `grep` with one pattern and plain flags [C130].
+fn filter(w: &[String]) -> bool {
+    let digits = |s: &str| !s.is_empty() && s.len() <= 9 && s.chars().all(|c| c.is_ascii_digit());
+    let mut args = w[1..].iter().map(String::as_str);
+    match w[0].as_str() {
+        "head" | "tail" => {
+            while let Some(a) = args.next() {
+                let ok = match a {
+                    "-n" | "-c" => args.next().is_some_and(digits),
+                    _ => a
+                        .strip_prefix("-n")
+                        .or_else(|| a.strip_prefix("-c"))
+                        .or_else(|| a.strip_prefix('-'))
+                        .is_some_and(digits),
+                };
+                if !ok {
+                    return false;
+                }
+            }
+            true
+        }
+        "grep" => {
+            let mut patterns = 0;
+            while let Some(a) = args.next() {
+                let ok = match a.strip_prefix('-') {
+                    Some("A" | "B" | "C" | "m") => args.next().is_some_and(digits),
+                    Some(f) if f.len() > 1 && f.starts_with(['A', 'B', 'C', 'm']) => {
+                        digits(&f[1..])
+                    }
+                    Some(f) => !f.is_empty() && f.chars().all(|c| "ivnwxcoEFh".contains(c)),
+                    None => {
+                        patterns += 1;
+                        true
+                    }
+                };
+                if !ok {
+                    return false;
+                }
+            }
+            patterns == 1
+        }
+        _ => false,
+    }
+}
+
+/// A line's parts at its pipes outside quotes; a pipe it misreads leaves a part that isn't plain
+/// words, so the line is refused rather than let through.
+fn piped(line: &str) -> Vec<&str> {
+    let (mut parts, mut from, mut quote, mut escaped) = (vec![], 0, None, false);
+    for (at, ch) in line.char_indices() {
+        if std::mem::take(&mut escaped) {
+            continue;
+        }
+        match (quote, ch) {
+            (Some('"'), '\\') => escaped = true,
+            (Some(q), ch) if ch == q => quote = None,
+            (None, '\'' | '"') => quote = Some(ch),
+            (None, '|') => {
+                parts.push(&line[from..at]);
+                from = at + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&line[from..]);
+    parts
 }
 
 /// What a session allow of one plain `brigadier mcp tools <server>` or `mcp call <server> <tool>`
