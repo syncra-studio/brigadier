@@ -110,6 +110,21 @@ pub fn at(item: &Value) -> String {
     item["f"].as_u64().unwrap_or(0).to_string()
 }
 
+/// Where an item under reference `at` stands in its session's history, oldest first, the one
+/// order its readers keep [§8]: `(0, line)` in a fork's inherited copy, then `(1, frame)` in its
+/// own log. A night's decision logged late, as one held for the next pass is, stands after the
+/// frame it was made after; its `seq` names its own log's frames only, so one in an inherited
+/// copy stands where the copy put it.
+pub fn place(item: &Value, at: &str) -> (u8, u64) {
+    let (log, n) = match at.strip_prefix('i') {
+        Some(n) => (0, n.parse().unwrap_or(0)),
+        None => (1, at.parse().unwrap_or(0)),
+    };
+    let made = item["seq"].as_u64();
+    let made = made.filter(|_| log == 1 && item["kind"] == "note" && item["event"] == "overnight");
+    (log, made.map_or(n, |s| s.saturating_sub(1).min(n)))
+}
+
 /// Every item under its reference, oldest first: a fork's inherited copy, then what still stands of
 /// its own log.
 pub fn each(dir: &Path, mut f: impl FnMut(&Value, String)) -> io::Result<()> {

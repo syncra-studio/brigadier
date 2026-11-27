@@ -29,6 +29,9 @@ const FILES: usize = 3_000;
 /// The most of a `!` command's report among the user's words.
 const SHELL: usize = 600;
 
+/// An answer's reference, text and giver, and where it stands among the records.
+type Answer = (String, String, String, (u8, u64));
+
 /// What a session's past holds for its hand-off: its entries, its user's answers, where each of
 /// its conversations began, and whether the user stopped a turn since their last message, or
 /// its lead did (`led`) [C76].
@@ -36,7 +39,7 @@ const SHELL: usize = 600;
 struct Past {
     entries: Vec<Entry>,
     /// Where, the text, and who gave it: the user, or Overnight, a reviewer, a parent (O50).
-    answers: Vec<(String, String, String)>,
+    answers: Vec<Answer>,
     starts: Vec<(String, String)>,
     turns: Vec<records::Turn>,
     stopped: bool,
@@ -113,11 +116,11 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
             }
             Some("delivered") if given.get(&cid("cid")).is_some_and(|g| !g.3) => {
                 let (at, text, by, _) = given.remove(&cid("cid")).unwrap_or_default();
-                p.answers.push((at, text, by));
+                p.answers.push((at.clone(), text, by, records::key(&at)));
             }
             Some("reply") if item["error"].is_null() && given.contains_key(&cid("id")) => {
                 let (at, text, by, _) = given.remove(&cid("id")).unwrap_or_default();
-                p.answers.push((at, text, by));
+                p.answers.push((at.clone(), text, by, records::key(&at)));
             }
             Some("turn_start") => records::begin(&mut p.turns, &mut waiting, &mut running),
             // A CLI that says it once for several messages (Claude's init): a step starts the next.

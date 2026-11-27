@@ -92,10 +92,7 @@ pub(super) fn took(turns: &mut [Turn], waiting: &mut Vec<String>, running: bool,
 
 /// A reference's place in log order: a fork's inherited lines, then the session's own frames.
 pub(super) fn key(at: &str) -> (u8, u64) {
-    match at.strip_prefix('i') {
-        Some(n) => (0, n.parse().unwrap_or(0)),
-        None => (1, at.parse().unwrap_or(0)),
-    }
+    crate::archive::place(&serde_json::Value::Null, at)
 }
 
 /// The longest start of `s` within `max` estimated tokens; none when it fits whole.
@@ -150,10 +147,16 @@ fn answered_by(by: &str) -> &'static str {
     }
 }
 
-/// An Overnight decision's note, in place among the answers, as Overnight's [repo-merge §8].
-pub(super) fn decided(item: &serde_json::Value, at: &str) -> Option<(String, String, String)> {
+/// An Overnight decision's note, in place among the answers, as Overnight's [repo-merge §8]:
+/// where it was made, though read under the reference it was logged at.
+pub(super) fn decided(item: &serde_json::Value, at: &str) -> Option<super::Answer> {
     let text = crate::archive::decision(item)?;
-    Some((at.into(), text, "decided".into()))
+    Some((
+        at.into(),
+        text,
+        "decided".into(),
+        crate::archive::place(item, at),
+    ))
 }
 
 /// A numbered list item's line: `1.` or `1)` first.
@@ -201,7 +204,7 @@ fn asked(id: &str, entries: &[Entry], i: usize, e: &Entry) -> String {
 
 enum Row<'a> {
     Said(usize),
-    Answer(&'a (String, String, String)),
+    Answer(&'a super::Answer),
     Carry(&'a Turn),
 }
 
@@ -213,7 +216,7 @@ pub(super) fn conversation(id: &str, p: &Past, budget: Option<(usize, usize)>) -
         .filter(|(_, e)| said(e))
         .map(|(i, e)| (key(&e.at), Row::Said(i)))
         .collect();
-    rows.extend(p.answers.iter().map(|a| (key(&a.0), Row::Answer(a))));
+    rows.extend(p.answers.iter().map(|a| (a.3, Row::Answer(a))));
     // A turn Brigadier started itself (a carry-on, the night) has a line of its own.
     let carried = (p.turns.iter()).filter(|t| t.took.is_empty());
     rows.extend(carried.filter_map(|t| Some((key(t.texts.first()?), Row::Carry(t)))));
@@ -253,7 +256,7 @@ pub(super) fn conversation(id: &str, p: &Past, budget: Option<(usize, usize)>) -
                 let user = e.from == "user";
                 (e.at.as_str(), who, text, asked(id, &p.entries, i, e), user)
             }
-            Row::Answer((at, text, by)) => (
+            Row::Answer((at, text, by, _)) => (
                 at.as_str(),
                 answered_by(by).into(),
                 text.trim_end().to_string(),
