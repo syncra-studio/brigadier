@@ -3,6 +3,7 @@ import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-nativ
 import type { Session } from "../../vendor/brigadier-shared/thread";
 import { datedMessages } from "../../vendor/brigadier-shared/words";
 import { older, thread } from "../mac/mac";
+import { Composer } from "../compose/Composer";
 import { color, text } from "../theme";
 import { Cards } from "./Cards";
 import { type Line, lineMaker, workKey } from "../../vendor/brigadier-shared/lines";
@@ -19,6 +20,7 @@ export function Thread() {
       {/* Its rows as last seen stay under the reason they're no longer live. */}
       {problem && <Text style={[styles.muted, styles.banner]}>{problem}</Text>}
       <Rows session={open.session} />
+      {open.status !== "missing" && <Composer key={open.id} id={open.id} />}
     </View>
   );
 }

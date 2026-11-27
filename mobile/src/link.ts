@@ -20,6 +20,9 @@ let closes = 0;
 export const closeCount = () => closes;
 /** The open stream's number, -1 when none: a flow that saw it change is on another stream, or none. */
 export const streamNow = () => stream;
+// The key of the Mac the last connect went to: what keeps one Mac's drafts and sends from another's.
+let mac = "";
+export const macNow = () => mac;
 let frames: Frame[] = [];
 let waiting: ((f: Frame | null) => void) | null = null;
 const closed = new Set<() => void>();
@@ -61,6 +64,7 @@ Link.addListener("closed", ({ n }) => {
 export async function connect(...args: Parameters<typeof Link.connect>) {
   const mine = ++attempt;
   lost();
+  mac = args[1];
   const r = await Link.connect(...args);
   if (mine !== attempt) return { error: "closed" as const };
   live = r.stream !== undefined;
