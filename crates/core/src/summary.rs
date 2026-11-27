@@ -75,12 +75,13 @@ pub fn stamp(run: &crate::Spec, backend: &str, setup: &mut serde_json::Value) {
 
 /// Whether the old conversation can still write one after `last`: not at a usage limit, a sign-in
 /// or a refused resume, nor past a window that refused it, the loop guard's stop or the user's
-/// Stop or Pause; those renew with the last summary carried [rev 3 §2.2].
+/// Stop or Pause or a lead's stop [C76]; those renew with the last summary carried [rev 3 §2.2].
 pub fn runs(f: &crate::fold::Fold, last: &serde_json::Value) -> bool {
     let blocked = f.limit.is_some() || f.sign_in.is_some() || f.refused.is_some();
     let window = last["outcome"] == "failed" && last["why"] == "context";
-    // A turn the user stopped or paused stays as they left it, a pick waiting or not [D95].
-    let left = matches!(last["reason"].as_str(), Some("user" | "pause"));
+    // A turn the user stopped or paused, or a lead stopped, stays as they left it, a pick waiting
+    // or not [D95].
+    let left = matches!(last["reason"].as_str(), Some("user" | "pause" | "lead"));
     !blocked && !window && !left && last["reason"] != "stall"
 }
 
