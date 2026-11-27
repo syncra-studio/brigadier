@@ -9,7 +9,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { installBrowserHost } from "./browser/browserHost";
-import { holdForIntro } from "./intro";
+import { holdForIntro, introSeen } from "./intro";
 import { type LocationAddon, useLocationAddon } from "./browser/browserPermissionsOs";
 import { serveNotices } from "./notices";
 import { type ScrollAddon, useScrollAddon, watchScrolls } from "./scrolls";
@@ -56,8 +56,12 @@ const shortcuts: { id: string; keys: string[] }[] = JSON.parse(readFileSync(path
 const keysOf = (id: string) => shortcuts.find((shortcut) => shortcut.id === id)!.keys[0];
 
 app.setName(APP_NAME);
+// Windows ties notices and the taskbar's badge to the app by this id [D2].
+if (process.platform === "win32") app.setAppUserModelId(APP_ID);
 mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 app.setPath("userData", path.join(dataDir, "chromium"));
+// macOS keeps one copy of the app itself; elsewhere a second launch shows the first one's window instead (tray.ts), one per data folder.
+if (process.platform !== "darwin" && !app.requestSingleInstanceLock()) app.exit(0);
 protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: true, secure: true } }]);
 
 // The daemon decides: it exits at once if this build or a newer one already runs, and replaces an
@@ -224,18 +228,9 @@ function serveUi(): void {
   });
 }
 
-// The intro plays until it has been seen once (profile.json, kept by the CLI): read only to hold the window.
-function introSeen(): boolean {
-  try {
-    return JSON.parse(readFileSync(path.join(dataDir, "profile.json"), "utf8")).intro_seen === true;
-  } catch {
-    return false;
-  }
-}
-
 function openWindow(): void {
   // On macOS a first launch holds the window clear for the intro, which needs it transparent from birth.
-  const hold = process.platform === "darwin" && !introSeen();
+  const hold = process.platform === "darwin" && !introSeen(dataDir);
   const window = new BrowserWindow({
     width: 1280,
     height: 820,

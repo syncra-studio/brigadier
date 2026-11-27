@@ -4,7 +4,19 @@
 // orb is seen), above a black window that fades in to dim the desktop. When the burst has filled the
 // window its chrome comes back; then the dim fades out. Closing or minimizing the window, a page load and the
 // deadlines all end it, and every end restores the window.
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { BrowserWindow, ipcMain, screen } from "electron";
+
+/** The intro plays until it has been seen once (profile.json, kept by the CLI): read only to hold the window. */
+export function introSeen(dataDir: string): boolean {
+  try {
+    return JSON.parse(readFileSync(path.join(dataDir, "profile.json"), "utf8")).intro_seen === true;
+  } catch {
+    return false;
+  }
+}
 
 const HOLD_DEADLINE_MS = 15_000;
 const STAGED_DEADLINE_MS = 20_000;
