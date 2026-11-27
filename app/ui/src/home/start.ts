@@ -12,7 +12,7 @@ import { ask, openThread, type Row, threadSource, useDaemon, useThread } from ".
 import { store } from "../onboarding/api";
 import { type Shown, useProjects } from "../projects/projects";
 import { newId } from "../session/store";
-import { flushComment } from "../panel/chips";
+import { flushChips } from "../panel/chips";
 import { carryHome, CHAT, HOME, isRef, openTab, rereadTabs, selectTab, setHomeTabs, type Tab, tabsSettled, takeTabs } from "../shell/tab-store";
 import { prName, prPageHash, reviewChats } from "../pull-requests/route";
 import type { WorkIn } from "./pills";
@@ -383,8 +383,8 @@ export function discard(id: string): void {
     if (reply.ok) return put(id, null);
     put(id, { asking: false, error: reply.left ? reason(reply) : `Couldn't discard it: ${failure(reply)}`, left: reply.left === true });
   };
-  // Its diff comment still being written goes with its draft: saved first, or the chat stays [C80].
-  void flushComment(id).then((saved) => {
+  // Its chips and the diff comment still being written go with its draft: saved first, or the chat stays [C80].
+  void flushChips(id).then((saved) => {
     if (saved.ok === false) return put(id, { asking: false, error: `Couldn't discard it: ${failure(saved)}` });
     return booked(entry).then((reply) => (reply ? dropped(reply) : void ask({ op: "run", args: ["draft", entry.draft ?? HOME_DRAFT, "drop", entry.cid] }, dropped)));
   });
