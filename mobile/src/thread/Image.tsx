@@ -46,6 +46,9 @@ export function imageUri(owner: string, attachment: string, mime = "image/png"):
   return going;
 }
 
+/** Read again next time: a viewed image's id is its path's, and the file there may have changed since. */
+export const forgetImage = (owner: string, attachment: string) => void read.delete(`${macNow()}\n${owner}\n${attachment}`);
+
 /** An image this phone sent the Mac (a picked photo), drawn from its own bytes rather than read back. */
 export const keepImage = (owner: string, attachment: string, uri: string) => void read.set(`${macNow()}\n${owner}\n${attachment}`, Promise.resolve(uri));
 
@@ -75,7 +78,7 @@ const offerSave = (uri: string) =>
   ActionSheetIOS.showActionSheetWithOptions({ options: ["Save to Photos", "Cancel"], cancelButtonIndex: 1 }, (at) => at === 0 && void saveToPhotos(uri));
 
 /** An image of the open thread's session (or `owner`'s), drawn once its bytes are in. */
-export function ThreadImage({ attachment, owner, mime, label, style }: { attachment: string; owner?: string | null; mime?: string; label: string; style: StyleProp<ImageStyle> }) {
+export function ThreadImage({ attachment, owner, mime, label, style, whole }: { attachment: string; owner?: string | null; mime?: string; label: string; style: StyleProp<ImageStyle>; /** Fitted whole in its box, not cropped to fill it. */ whole?: boolean }) {
   const open = useSyncExternalStore(thread.subscribe, () => thread.get()?.id);
   // Signed in again: a read that failed meanwhile is tried again.
   const ready = useSyncExternalStore(lists.subscribe, () => lists.get().ready);
@@ -95,7 +98,7 @@ export function ThreadImage({ attachment, owner, mime, label, style }: { attachm
   return (
     // The box is the Pressable's, so a width in percent still has its parent's to go by.
     <Pressable accessibilityHint="Hold to save it to Photos" onLongPress={() => offerSave(uri)} style={[style as object, { overflow: "hidden" }]}>
-      <Native accessibilityLabel={label} source={{ uri }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+      <Native accessibilityLabel={label} source={{ uri }} style={{ width: "100%", height: "100%" }} resizeMode={whole ? "contain" : "cover"} />
     </Pressable>
   );
 }

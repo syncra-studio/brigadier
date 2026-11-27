@@ -1,5 +1,5 @@
 // shortcut: a small markdown subset, no tables or nested lists; upgrade if the owner wants them.
-import type { ReactNode } from "react";
+import { createContext, type ReactNode, useContext } from "react";
 import { Linking, ScrollView, StyleSheet, Text, type TextStyle, View } from "react-native";
 import { color, mono, text as type } from "../theme";
 
@@ -59,8 +59,21 @@ function blocks(text: string): Block[] {
   return out;
 }
 
-// Code spans, bold, links, italics and bare web addresses, in that order of precedence.
-const INLINE = /`([^`\n]+)`|\*\*(.+?)\*\*|__(.+?)__|\[([^\[\]\n]+)\]\(<?([^()\s<>]+)>?(?:\s+"[^"]*")?\)|\*([^*\s](?:[^*\n]*[^*\s])?)\*|\b_([^_\n]+?)_\b|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"*_])/g;
+/** Shows an image a reply names by its path on the Mac; none where nothing can (the user's own bubble, a thought). */
+export const ViewImage = createContext<((path: string) => void) | null>(null);
+const IMAGE = /\.(png|jpe?g|gif|webp|heic|heif|bmp|tiff?|svg)$/i;
+/** A link's target as a path: `file:///a%20b.png` is `/a b.png`. */
+function pathOf(url: string): string {
+  const path = url.replace(/^file:(\/\/(localhost)?)?(?=\/)/i, "");
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
+// Code spans, bold, links (an image's too), italics and bare web addresses, in that order of precedence.
+const INLINE = /`([^`\n]+)`|\*\*(.+?)\*\*|__(.+?)__|!?\[([^\[\]\n]*)\]\(<?([^()\s<>]+)>?(?:\s+"[^"]*")?\)|\*([^*\s](?:[^*\n]*[^*\s])?)\*|\b_([^_\n]+?)_\b|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"*_])/g;
 
 function inline(text: string, key: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -69,9 +82,9 @@ function inline(text: string, key: string): ReactNode[] {
   for (const m of text.matchAll(INLINE)) {
     if (m.index > last) out.push(text.slice(last, m.index));
     const k = `${key}.${n++}`;
-    if (m[1] !== undefined) out.push(<Text key={k} style={st.inlineCode}>{m[1]}</Text>);
+    if (m[1] !== undefined) out.push(<Code key={k} text={m[1]} />);
     else if (m[2] !== undefined || m[3] !== undefined) out.push(<Text key={k} style={st.bold}>{inline(m[2] ?? m[3]!, k)}</Text>);
-    else if (m[4] !== undefined) out.push(<Link key={k} url={m[5]!}>{inline(m[4], k)}</Link>);
+    else if (m[4] !== undefined) out.push(<Link key={k} url={m[5]!}>{m[4] ? inline(m[4], k) : m[5]!.split("/").pop()}</Link>);
     else if (m[6] !== undefined || m[7] !== undefined) out.push(<Text key={k} style={st.italic}>{inline(m[6] ?? m[7]!, k)}</Text>);
     else out.push(<Link key={k} url={m[8]!}>{m[8]}</Link>);
     last = m.index + m[0].length;
@@ -80,9 +93,29 @@ function inline(text: string, key: string): ReactNode[] {
   return out;
 }
 
-/** A link that opens in its app; a path in the checkout can't open on the phone, so it reads as text. */
+/** A code span; one that is an image's path shows it. */
+function Code({ text }: { text: string }) {
+  const view = useContext(ViewImage);
+  if (!view || !IMAGE.test(text) || /\s/.test(text.trim())) return <Text style={st.inlineCode}>{text}</Text>;
+  return (
+    <Text style={[st.inlineCode, st.link]} accessibilityRole="link" accessibilityHint="Shows the image" onPress={() => view(text.trim())}>
+      {text}
+    </Text>
+  );
+}
+
+/** A link that opens in its app; an image's path shows it; any other path can't open on the phone, so it reads as text. */
 function Link({ url, children }: { url: string; children: ReactNode }) {
+  const view = useContext(ViewImage);
   const web = /^(https?:|mailto:)/i.test(url);
+  const path = web ? "" : pathOf(url);
+  if (view && IMAGE.test(path)) {
+    return (
+      <Text style={st.link} accessibilityRole="link" accessibilityHint="Shows the image" onPress={() => view(path)}>
+        {children}
+      </Text>
+    );
+  }
   if (!web) return <Text style={st.inlineCode}>{children}</Text>;
   return (
     <Text style={st.link} accessibilityRole="link" accessibilityHint={url} onPress={() => void Linking.openURL(url)}>

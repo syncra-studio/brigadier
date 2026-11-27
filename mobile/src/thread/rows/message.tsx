@@ -2,6 +2,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Item } from "../../../vendor/brigadier-shared/thread";
 import { sentAt } from "../../../vendor/brigadier-shared/words";
+import { ReplyImages } from "../../powers/View";
 import { color } from "../../theme";
 import { ThreadImage } from "../Image";
 import { Markdown } from "../Markdown";
@@ -67,11 +68,13 @@ export function PeerBubble({ item }: { item: Message }) {
   );
 }
 
-/** The agent's message; under a turn's final answer, its time. */
+/** The agent's message, an image path in it shown when tapped; under a turn's final answer, its time. */
 export function AssistantMessage({ item, final }: { item: Message; final: boolean }) {
   return (
     <View style={{ gap: 6 }}>
-      <Markdown text={tidy(item.text)} />
+      <ReplyImages>
+        <Markdown text={tidy(item.text)} />
+      </ReplyImages>
       {final && <AnswerMarks time={item.sentAt} />}
     </View>
   );
