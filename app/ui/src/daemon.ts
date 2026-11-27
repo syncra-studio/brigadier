@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import type { Job, KeptPrs } from "./panel/types";
 import type { Mark, Reset } from "./sidebar/words";
+import { client } from "../../shared/client";
 import type { Item, Session, Turn, Work } from "./thread/item";
 import { pruneUncertain } from "./session/uncertain";
 import { asStopped, markStop } from "./thread/stopping";
@@ -71,19 +72,14 @@ export type View = {
 
 export let view: View = { daemon: undefined };
 let port: MessagePort | undefined;
-let bytes = new Uint8Array();
-// Chunks come after `bytes`; `held` counts both.
-let chunks: Uint8Array[] = [];
-let held = 0;
-let nextId = 0;
+const wire = client((frame) => port?.postMessage(frame), onFrame);
+const send = wire.send;
 let listId = 0;
 // The list at N, then each update N+1, N+2… in order [D40]. A gap asks for a fresh list.
 let rows = new Map<string, Row>();
 let projects = new Map<string, Project>();
 let n: number | undefined;
 const listeners = new Set<() => void>();
-// One-off replies by request id (a command, the terminal's stream), and where terminal frames go.
-const replies = new Map<number, (frame: Record<string, any>) => void>();
 /** Every open terminal's handler, each taking only its own stream's frames, by its watch id [D315]. */
 export const termHandlers = new Set<(frame: Record<string, any>) => void>();
 let onGit: ((frame: Record<string, any>) => void) | undefined;
@@ -127,9 +123,7 @@ export function ask(request: object, onReply?: (frame: Record<string, any>) => v
     onReply?.({ ok: false, error: "disconnected" });
     return 0;
   }
-  const id = send(request);
-  if (onReply) replies.set(id, onReply);
-  return id;
+  return wire.ask(request, onReply);
 }
 
 /** Where the git watch's pushed frames go: one watch per connection [D71]. */
@@ -141,16 +135,6 @@ export function setGitHandler(handler: typeof onGit): void {
 export function setBrowserHandler(handler: typeof onBrowser): void {
   onBrowser = handler;
   if (view.daemon) send({ op: "browser" });
-}
-
-function send(request: object): number {
-  const id = ++nextId;
-  const json = new TextEncoder().encode(JSON.stringify({ id, ...request }));
-  const frame = new Uint8Array(4 + json.length);
-  new DataView(frame.buffer).setUint32(0, json.length);
-  frame.set(json, 4);
-  port?.postMessage(frame);
-  return id;
 }
 
 function setThread(next: ThreadState | undefined, nextSession = session): void {
@@ -296,11 +280,6 @@ function subscribe(): void {
 }
 
 function onFrame(frame: Record<string, any>): void {
-  const reply = replies.get(frame.re);
-  if (reply) {
-    replies.delete(frame.re);
-    return reply(frame);
-  }
   if (frame.term !== undefined) return termHandlers.forEach((handler) => handler(frame));
   if (frame.git !== undefined && frame.re === undefined) return onGit?.(frame);
   if (frame.browser !== undefined && frame.re === undefined) return onBrowser?.(frame.browser);
@@ -349,34 +328,6 @@ function onFrame(frame: Record<string, any>): void {
   }
 }
 
-/** `bytes` with the chunks after it, in one buffer. */
-function join(): void {
-  const all = new Uint8Array(held);
-  all.set(bytes);
-  let at = bytes.length;
-  for (const chunk of chunks) {
-    all.set(chunk, at);
-    at += chunk.length;
-  }
-  bytes = all;
-  chunks = [];
-}
-
-// A page of older history comes in many chunks: they're joined once its frame is whole, not as each comes.
-function receive(chunk: Uint8Array): void {
-  chunks.push(chunk);
-  held += chunk.length;
-  while (held >= 4) {
-    if (bytes.length < 4) join();
-    const end = 4 + new DataView(bytes.buffer, bytes.byteOffset).getUint32(0);
-    if (held < end) return;
-    if (bytes.length < end) join();
-    onFrame(JSON.parse(new TextDecoder().decode(bytes.subarray(4, end))));
-    bytes = bytes.subarray(end);
-    held -= end;
-  }
-}
-
 /** How long after the page loads a daemon that hasn't answered yet counts as still starting. */
 const STARTING_MS = 5000;
 
@@ -384,15 +335,14 @@ const STARTING_MS = 5000;
 window.addEventListener("message", (event) => {
   if (event.source !== window || event.data !== "daemon-port") return;
   [port] = event.ports;
-  [bytes, chunks, held] = [new Uint8Array(), [], 0];
+  wire.reset();
   port.onmessage = ({ data }: MessageEvent<Uint8Array | null>) => {
-    if (data) return receive(data);
-    [bytes, chunks, held] = [new Uint8Array(), [], 0];
+    if (data) return wire.receive(data);
+    wire.reset();
     n = undefined;
     // The open thread keeps its rows while disconnected; reconnecting asks for a fresh snapshot.
     threadN = undefined;
-    const waiting = [...replies.values()];
-    replies.clear();
+    const waiting = wire.drop();
     if (olderRe) paging({ ok: false, error: "disconnected" });
     // Before the first connection a failed try is the daemon main just launched still starting: connecting, not
     // disconnected. The socket tries every 250ms, so one that never comes up says so once this has passed [D476].
