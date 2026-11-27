@@ -143,6 +143,18 @@ const optionsForFile = (file) =>
 const triple = (arch) => `${{ x64: "x86_64", arm64: "aarch64" }[arch]}-${{ mac: "apple-darwin", linux: "unknown-linux-gnu", win: "pc-windows-msvc" }[OS]}`;
 const appId = process.env.APP_ID ?? "sh.brigadier.app";
 const platform = { mac: Platform.MAC, linux: Platform.LINUX, win: Platform.WINDOWS }[OS];
+// The app's one dependency shipped as files, the updater [D2003]: electron-updater's own production tree and nothing
+// else under node_modules, since the interface is bundled [D178]. Shipped flat, so each package at one version.
+const updater = new Map();
+const walk = (name, from) => {
+  const file = createRequire(from).resolve(`${name}/package.json`);
+  const { version, dependencies = {} } = JSON.parse(readFileSync(file, "utf8"));
+  if (updater.has(name) && updater.get(name) !== version) throw new Error(`package: two versions of ${name} in electron-updater's tree`);
+  if (updater.has(name)) return;
+  updater.set(name, version);
+  for (const dep of Object.keys(dependencies)) walk(dep, file);
+};
+walk("electron-updater", path.resolve("package.json"));
 await build({
   targets: platform.createTarget(null, ...ARCHS.split(" ").map((a) => Arch[a])),
   // Only the release workflow's publish job uploads; config.publish still writes the update files.
@@ -156,7 +168,8 @@ await build({
     // and off macOS the window's, the tray's and the taskbar badge's (tray.ts, notices.ts).
     files: ["package.json", "app/main/dist/**", "app/main/browser/browser_agent.js", "app/ui/dist/**",
       "app/ui/src/theme.css", "app/ui/src/shortcuts.json", "app/main/icons/tray.png", "app/main/icons/tray-active.png",
-      ...(OS === "mac" ? [] : ["app/main/icons/icon.png", "app/main/icons/icon.ico", "app/main/icons/badge.png"]), "!node_modules"],
+      ...(OS === "mac" ? [] : ["app/main/icons/icon.png", "app/main/icons/icon.ico", "app/main/icons/badge.png"]), "!node_modules",
+      ...[...updater.keys()].map((name) => `node_modules/${name}/**`)],
     npmRebuild: false,
     // CFBundleVersion stays the version, as before, not CI's run number.
     buildVersion: JSON.parse(readFileSync("package.json", "utf8")).version,

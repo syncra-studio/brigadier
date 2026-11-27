@@ -16,7 +16,9 @@ const root = path.resolve(__dirname, "..");
 const electron = require(path.join(root, "node_modules/electron/package.json")).version;
 
 const PERMISSIVE = new Set(["MIT", "MIT-0", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib", "0BSD",
-  "Unlicense", "CC0-1.0", "BSL-1.0", "Unicode-3.0", "Unicode-DFS-2016", "CDLA-Permissive-2.0", "BlueOak-1.0.0"].map((id) => id.toUpperCase()));
+  "Unlicense", "CC0-1.0", "BSL-1.0", "Unicode-3.0", "Unicode-DFS-2016", "CDLA-Permissive-2.0", "BlueOak-1.0.0",
+  // Python-2.0: argparse, in the updater's tree; keep the notice, no copyleft.
+  "Python-2.0"].map((id) => id.toUpperCase()));
 // Copyleft licences with what shipping them asks of us (proposed). Anything not here and not permissive fails.
 const OBLIGATIONS = {
   "MPL-2.0": "MPL-2.0, file-level copyleft: used unmodified, notice kept, and the covered source is public at the exact released version named here (MPL-2.0 §3.2)",
@@ -109,7 +111,7 @@ const ours = ["brigadierd", "brigadier", "brigadier-host", "brigadier-fake", "br
 section(`Rust crates in Brigadier's binaries (${triple})`, crates(root, ours, [triple]));
 
 const npm = JSON.parse(run("pnpm", ["licenses", "list", "--prod", "--json"], root));
-section("npm packages in the app's interface", Object.values(npm).flat().flatMap((p) => p.versions.map((version, i) =>
+section("npm packages in the app: its interface, bundled, and its updater", Object.values(npm).flat().flatMap((p) => p.versions.map((version, i) =>
   ({ name: p.name, version, licence: p.license, files: licenceFiles(p.paths[i] ?? p.paths[0]) })))
   .sort((a, b) => a.name.localeCompare(b.name)));
 
