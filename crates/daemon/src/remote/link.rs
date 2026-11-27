@@ -4,8 +4,10 @@
 //! first transport message, the first under keys with the psk, proves it, and then a Face ID
 //! signature over the handshake hash (`Sig_U("brigadier/hello/v1" ‖ h)`) pairs a phone (the
 //! Mac's Allow follows) or signs one in. After that every message is a JSON frame (4-byte length,
-//! split across transport messages), `hello {proto}` first. Nothing else is served yet.
+//! split across transport messages), `hello {proto}` first; then each request goes through the
+//! allowlist to the op table (`bridge`).
 
+use super::bridge::{self, Bridge};
 use super::devices::{self, Session};
 use super::pair;
 use super::{State, gateway};
@@ -15,6 +17,7 @@ use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
 use serde_json::{Value, json};
 use snow::TransportState;
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 pub(super) const PATTERN: &str = "Noise_IKpsk2_25519_ChaChaPoly_SHA256";
@@ -56,6 +59,15 @@ pub(super) struct Stream {
     pub(super) device: String,
     offer: u64,
     buf: Vec<u8>,
+    /// The way to the op table once `hello` fits, and the `@` menu requests it is answering.
+    pub(super) bridge: Option<Bridge>,
+    pub(super) mentions: HashSet<String>,
+}
+
+impl Stream {
+    pub(super) fn bridge_n(&self) -> Option<u64> {
+        self.bridge.as_ref().map(|b| b.n)
+    }
 }
 
 /// A frame from the gateway.
@@ -94,6 +106,8 @@ fn open(s: &mut State, id: u32, peer: &str) {
         device: String::new(),
         offer: 0,
         buf: vec![],
+        bridge: None,
+        mentions: HashSet::new(),
     };
     s.streams.insert(id, stream);
 }
@@ -238,12 +252,15 @@ fn request(s: &mut State, id: u32, req: &Value) -> Result<(), Fail> {
                     let fits = (PROTO.0..=PROTO.1).contains(&proto);
                     if let Some(st) = s.streams.get_mut(&id) {
                         st.step = Step::Device { hello: fits };
+                        if fits && st.bridge.is_none() {
+                            st.bridge = Some(bridge::open(id, &device)?);
+                        }
                     }
                     json!({"ok": fits, "error": (!fits).then_some("proto"), "proto_min": PROTO.0,
                         "proto_max": PROTO.1, "build": brigadier_frames::wire::build(), "name": s.live.as_ref().map(|l| &l.1)})
                 }
                 _ if !hello => json!({"ok": false, "error": "proto"}),
-                _ => json!({"ok": false, "error": "Not from the phone"}),
+                _ => return Ok(bridge::request(s, id, &device, req)?),
             };
             let mut answer = answer;
             answer["re"] = re;

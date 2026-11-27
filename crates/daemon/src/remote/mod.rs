@@ -6,7 +6,9 @@
 //! owner has seen it [beat-competitors D62]: without it the gateway never starts and `remote`
 //! isn't routed.
 
+mod allow;
 mod bonjour;
+mod bridge;
 mod devices;
 mod gateway;
 mod link;
@@ -17,7 +19,7 @@ use std::collections::HashMap;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 /// Proposed: how soon a gateway that failed or died is started again.
@@ -46,6 +48,25 @@ struct State {
 }
 
 static STATE: LazyLock<Mutex<State>> = LazyLock::new(Mutex::default);
+
+pub(super) use bridge::Device;
+
+type Row = dyn Fn(&str) -> Option<Value> + Send + Sync;
+
+/// What the phone side needs of the daemon: its op table, served as a device, and its own rows.
+pub(super) struct Host {
+    pub(super) serve: Box<dyn Fn(UnixStream, u64, Device) + Send + Sync>,
+    /// A session's row, if the daemon lists it.
+    pub(super) row: Box<Row>,
+    pub(super) project: Box<dyn Fn(&str) -> bool + Send + Sync>,
+}
+
+static HOST: OnceLock<Host> = OnceLock::new();
+
+/// Set once by `main`, before any phone can sign in.
+pub(super) fn host(host: Host) {
+    let _ = HOST.set(host);
+}
 
 pub(super) fn enabled() -> bool {
     std::env::var_os("BRIGADIER_REMOTE").is_some_and(|v| v == "1")

@@ -29,6 +29,9 @@ pub(super) enum Caller {
     App,
     Agent(String),
     Refused(String),
+    /// A signed-in phone. Only `remote::bridge` can make its `Device`, and every request it
+    /// sends that way has passed `remote::allow`'s table first.
+    Remote(#[expect(dead_code, reason = "read from M3b on")] super::remote::Device),
 }
 
 /// The session id a session folder path names, if it is one of this data folder's.
@@ -107,6 +110,11 @@ pub(super) fn serve(
         (Caller::App, "who") => json!({"ok": true, "app": true}),
         (Caller::App, _) => return false,
         (Caller::Refused(why), _) => json!({"ok": false, "error": why}),
+        // Already checked by the allowlist; these never mean anything from a phone.
+        (Caller::Remote(_), "who" | "agent" | "upstream") => {
+            json!({"ok": false, "error": "Not from the phone"})
+        }
+        (Caller::Remote(_), _) => return false,
         (Caller::Agent(id), "who") => json!({"ok": true, "agent": id}),
         (Caller::Agent(id), "agent") => {
             let args: Vec<String> = (req["args"].as_array().into_iter().flatten())

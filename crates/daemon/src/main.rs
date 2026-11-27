@@ -175,8 +175,19 @@ fn main() -> io::Result<()> {
             for (conn, stream) in (0u64..).zip(listener.incoming().flatten()) {
                 let (state, data, store) = (state.clone(), data.clone(), store.clone());
                 // A client that drops mid-handshake or mid-frame only ends its own connection.
-                thread::spawn(move || ops::serve(stream, conn, &state, &data, &store));
+                thread::spawn(move || ops::serve(stream, conn, &state, &data, &store, None));
             }
+        });
+    }
+    {
+        let (state, data, store) = (state.clone(), data.clone(), store.clone());
+        let (rows, projects) = (state.clone(), state.clone());
+        remote::host(remote::Host {
+            serve: Box::new(move |stream, conn, device| {
+                let _ = ops::serve(stream, conn, &state, &data, &store, Some(device));
+            }),
+            row: Box::new(move |id| rows.lock().unwrap().rows.get(id).cloned()),
+            project: Box::new(move |p| projects.lock().unwrap().projects.contains_key(p)),
         });
     }
     // Saves each session's thread as its turns end, and at start every one not saved yet, the
