@@ -12,7 +12,7 @@ use std::{env, fs, io, thread};
 fn host_exe() -> io::Result<PathBuf> {
     match env::var_os("BRIGADIER_HOST") {
         Some(p) => Ok(PathBuf::from(p)),
-        None => Ok(env::current_exe()?.with_file_name("brigadier-host")),
+        None => Ok(brigadier_frames::beside("brigadier-host")),
     }
 }
 

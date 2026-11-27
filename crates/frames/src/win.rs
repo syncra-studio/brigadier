@@ -450,3 +450,19 @@ pub fn jobs(kind: &str) -> Vec<(u32, u64)> {
         }
     }
 }
+
+/// Keeps this process's own stdin, stdout and stderr out of what its children inherit: a long-lived
+/// child (a host, the daemon) holding a caller's pipe keeps that caller waiting for its end. A child
+/// given one of them still gets it, as std hands it a copy of its own.
+pub fn private_stdio() {
+    use windows_sys::Win32::Foundation::{HANDLE_FLAG_INHERIT, SetHandleInformation};
+    use windows_sys::Win32::System::Console::{
+        GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+    };
+    for id in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+        let handle = unsafe { GetStdHandle(id) };
+        if !handle.is_null() && handle != INVALID_HANDLE_VALUE {
+            unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) };
+        }
+    }
+}

@@ -108,6 +108,8 @@ fn main() -> io::Result<()> {
     }
     // The git it runs itself takes Windows' long paths too.
     #[cfg(windows)]
+    brigadier_frames::win::private_stdio();
+    #[cfg(windows)]
     for (key, value) in brigadier_core::adapters::setup::long_paths() {
         unsafe { std::env::set_var(key, value) };
     }

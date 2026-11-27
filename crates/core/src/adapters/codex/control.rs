@@ -76,7 +76,7 @@ pub fn open(spec: &Spec, resume: Option<&str>) -> Value {
     }
     // Brigadier's own `show_draft`, never asked about: it only shows the user a message [D529, D530].
     if tools {
-        let me = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
+        let me = brigadier_frames::beside("brigadier");
         open["config"]["mcp_servers.brigadier.command"] = me.display().to_string().into();
         open["config"]["mcp_servers.brigadier.args"] = json!(["mcp-server"]);
         open["config"]["mcp_servers.brigadier.tools.show_draft.approval_mode"] = "approve".into();

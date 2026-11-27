@@ -232,9 +232,7 @@ impl Adapter for OpenCode {
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {
         let exe = self.exe().unwrap_or_default().display().to_string();
         let env = self.env(spec);
-        let helper = std::env::current_exe()
-            .unwrap_or_default()
-            .with_file_name("brigadier");
+        let helper = brigadier_frames::beside("brigadier");
         let argv = vec![
             helper.display().to_string(),
             "helper".into(),

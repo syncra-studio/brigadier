@@ -252,7 +252,7 @@ impl Adapter for Codex {
 
     fn launch(&self, spec: &Spec, resume: Option<&str>, text: Option<&str>) -> Launch {
         let exe = self.exe().unwrap_or_default();
-        let helper = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
+        let helper = brigadier_frames::beside("brigadier");
         // A thread that never took a turn has no record, and Codex refuses to resume it.
         let home = cli_home(spec, ".codex", "");
         let resume = resume.filter(|id| !rollouts(&home, &[format!("-{id}.jsonl")]).is_empty());

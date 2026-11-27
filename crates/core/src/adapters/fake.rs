@@ -31,9 +31,7 @@ impl Adapter for Fake {
     }
 
     fn exe(&self) -> Option<PathBuf> {
-        let exe = std::env::current_exe()
-            .ok()?
-            .with_file_name("brigadier-fake");
+        let exe = brigadier_frames::beside("brigadier-fake");
         exe.exists().then_some(exe)
     }
 

@@ -15,6 +15,8 @@ use std::{env, process};
 fn main() {
     // The git it runs itself takes Windows' long paths too; no thread runs yet.
     #[cfg(windows)]
+    brigadier_frames::win::private_stdio();
+    #[cfg(windows)]
     for (key, value) in brigadier_core::adapters::setup::long_paths() {
         unsafe { env::set_var(key, value) };
     }

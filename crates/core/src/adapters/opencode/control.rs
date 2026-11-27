@@ -41,7 +41,7 @@ pub fn config(spec: &Spec, style: &std::path::Path, env: &mut Vec<(String, Strin
     }
     // Brigadier's own `show_draft`, never asked about: it only shows the user a message [D529, D530].
     if !spec.naked {
-        let me = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
+        let me = brigadier_frames::beside("brigadier");
         let command = json!([me.display().to_string(), "mcp-server"]);
         config["mcp"]["servers"]["brigadier"] = json!({"type": "local", "command": command});
     }

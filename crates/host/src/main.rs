@@ -36,6 +36,8 @@ use std::time::Duration;
 use std::{env, fs, process, thread};
 
 fn main() -> io::Result<()> {
+    #[cfg(windows)]
+    brigadier_frames::win::private_stdio();
     let args: Vec<String> = env::args().skip(1).collect();
     #[cfg(unix)]
     if args.first().map(String::as_str) == Some("--watchdog") {

@@ -49,6 +49,12 @@ pub fn private(options: &mut OpenOptions) -> &mut OpenOptions {
     options
 }
 
+/// A binary of ours beside this one: `name`, with `.exe` on Windows.
+pub fn beside(name: &str) -> std::path::PathBuf {
+    let me = std::env::current_exe().unwrap_or_default();
+    me.with_file_name(format!("{name}{}", std::env::consts::EXE_SUFFIX))
+}
+
 /// The system's own curl: /usr/bin's, or Windows' in System32 (Windows 10 1803 on).
 pub fn curl() -> std::path::PathBuf {
     #[cfg(windows)]

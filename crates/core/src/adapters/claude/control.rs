@@ -158,7 +158,7 @@ pub fn standing(spec: &Spec) -> Vec<String> {
     let fresh = crate::adapters::setup::newer(&crate::cli_version(spec, &super::Claude), "2.1.321");
     // Its `Stop` hook sends a reply that asks in prose back once, inside the turn [D529], and
     // `show_draft` shows a message for someone as a card [D529, D530].
-    let me = (std::env::current_exe().unwrap_or_default()).with_file_name("brigadier");
+    let me = brigadier_frames::beside("brigadier");
     let stop = format!(
         "'{}' hook stop claude",
         me.display().to_string().replace('\'', r"'\''")
