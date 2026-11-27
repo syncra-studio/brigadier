@@ -21,7 +21,8 @@ pub mod library;
 #[cfg(target_os = "macos")]
 pub mod lid;
 #[cfg(not(target_os = "macos"))]
-#[path = "lid/hidden.rs"]
+#[cfg_attr(target_os = "linux", path = "lid/linux.rs")]
+#[cfg_attr(not(target_os = "linux"), path = "lid/hidden.rs")]
 pub mod lid;
 pub mod message;
 pub mod norm;

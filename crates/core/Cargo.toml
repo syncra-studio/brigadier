@@ -25,3 +25,5 @@ windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Securit
 
 [target.'cfg(target_os = "linux")'.dependencies]
 secret-service = { version = "=6.0.0", features = ["crypto-rust"] }
+zbus = { version = "=6.5.0", default-features = false, features = ["default-rt"] }
+zruntime = "=0.2.4"
