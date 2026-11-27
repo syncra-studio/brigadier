@@ -20,7 +20,7 @@ pub(super) enum How {
 /// first: a drain drops an item only once the log has it, so a read between the two still finds
 /// it. Never the edit slot: an edited item added again keeps its id, so the old one there proves
 /// nothing of the new; a lost edit stays unsettled, with Try again [C67].
-pub(super) fn present(dir: &Path, cid: &str) -> bool {
+pub(crate) fn present(dir: &Path, cid: &str) -> bool {
     let q = crate::queue::row(dir);
     let mut items = q["items"].as_array().into_iter().flatten();
     items.any(|i| i["id"] == cid)

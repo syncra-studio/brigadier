@@ -106,7 +106,11 @@ fn lent(
         return refuse("A device's message takes only its own files.");
     }
     let mut moved = vec![];
-    for id in message::ids(&parts) {
+    // Every file `take` would take, a note's kept copies too.
+    for id in message::ids(&parts)
+        .into_iter()
+        .chain(message::notes::kept(&parts))
+    {
         if message::file_in(&sent, &id).is_some() {
             continue;
         }
@@ -133,7 +137,11 @@ fn lent(
     }
     let out = run(args);
     let never = !to.join("session.json").exists();
-    if never || out.as_ref().is_err_and(book::is_unsent) {
+    // A queue add that left nothing never went, booked or not (one for a worker isn't).
+    let ok = out.as_ref().is_ok_and(|r| r["ok"] == true);
+    let qid = (args[0] == "queue").then(|| opt(o, "--qid")).flatten();
+    let left = qid.is_some_and(|q| !ok && !book::present(&to, q));
+    if never || left || out.as_ref().is_err_and(book::is_unsent) {
         give_back(&own, &sent, &moved);
     }
     if never {

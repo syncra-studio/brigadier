@@ -120,9 +120,9 @@ pub fn run(data: &Path, args: &[String], device: Option<&str>) -> io::Result<Val
         "remove" => {
             let id = arg(args, 3)?;
             check_id(id)?;
-            if device.is_some()
-                && draft_of(data, owner).is_ok_and(|mac| file_in(&mac, id).is_some())
-            {
+            // The Mac's file by that id is never a device's to remove; its own by that id is.
+            let mac = || draft_of(data, owner).is_ok_and(|mac| file_in(&mac, id).is_some());
+            if device.is_some() && file_in(&folder, id).is_none() && mac() {
                 return Ok(json!({"ok": false, "error": "This file isn't in this draft."}));
             }
             match fs::remove_dir_all(folder.join(id)) {

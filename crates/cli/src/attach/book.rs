@@ -24,7 +24,8 @@ pub(crate) use place::{crash_at, stalls};
 pub(crate) use place::{holding, slot_files};
 use typed::Typed;
 pub(crate) use unsent::{is_unsent, unsent};
-use verdict::{How, answer, present, verdict};
+pub(crate) use verdict::present;
+use verdict::{How, answer, verdict};
 
 use crate::{arg, flag};
 use brigadier_core as core;
@@ -437,7 +438,7 @@ fn attempt(
         Err(e) => e.to_string().into(),
     };
     // A start refused whose session took work stays, with why, for Try again or Discard [C65, D35].
-    let stays = home && how == How::Refused && !place::undoable(&at);
+    let stays = home && how == How::Refused && !place::undoable(&at, place.device());
     let given = change(place, |book| {
         let list = book.list(queue);
         let Some(i) = list.iter().position(|each| each.cid == cid) else {

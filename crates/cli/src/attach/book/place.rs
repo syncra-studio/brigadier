@@ -228,9 +228,19 @@ pub(super) fn intent(op: &[String], asked: bool) -> Undo {
 
 /// Whether session `dir` holds nothing yet: never made, or no worktree and nothing in its log. A
 /// start's own refusal then leaves nothing of it worth keeping; one that took git work stays [D35].
-pub(super) fn undoable(dir: &Path) -> bool {
+/// Nor a draft another than `device`'s started it (the Mac's, or a device's) saved there: its
+/// give-back carries only its own [D51].
+pub(super) fn undoable(dir: &Path, device: Option<&str>) -> bool {
+    let slots = fs::read_dir(dir.join("drafts"))
+        .into_iter()
+        .flatten()
+        .flatten();
+    let theirs =
+        |e: fs::DirEntry| device.is_none_or(|d| !e.file_name().to_string_lossy().starts_with(d));
+    let others = (device.is_some() && dir.join("draft").exists()) || slots.into_iter().any(theirs);
     !dir.join("session.json").exists()
-        || (!dir.join(core::worktrees::RECORD).exists()
+        || (!others
+            && !dir.join(core::worktrees::RECORD).exists()
             && core::fold(dir, true).is_ok_and(|f| f.fold.cids.is_empty()))
 }
 
@@ -307,7 +317,7 @@ pub(super) fn undo(place: &Place, cid: &str, replay: bool) -> io::Result<Result<
         stage(&|g| g.undo.iter_mut().for_each(|u| u.stage = "back".into()))?;
         crash_at("start:back");
     }
-    if replay && !u.asked && !undoable(&dir) {
+    if replay && !u.asked && !undoable(&dir, place.device()) {
         return fail("it was used meanwhile".into());
     }
     if let Err(e) = super::typed::carry(place, data, cid, &u.session) {
