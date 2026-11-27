@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld("brigadier", {
   notificationState: () => ipcRenderer.invoke("notification-state"),
   openNotificationSettings: () => ipcRenderer.send("open-notification-settings"),
   openPrivacySettings: (pane: "accessibility" | "screenRecording") => ipcRenderer.send("open-privacy-settings", pane),
+  ownWindow: () => ipcRenderer.invoke("own-window"),
   introBegin: () => ipcRenderer.invoke("intro-begin"),
   introShaped: () => ipcRenderer.invoke("intro-shaped"),
   introFinish: (fadeMs: number) => ipcRenderer.invoke("intro-finish", fadeMs),

@@ -39,4 +39,10 @@ export function serveNotices(panel: () => { notifications?: () => string | null 
     const name = pane === "accessibility" ? "Privacy_Accessibility" : pane === "screenRecording" ? "Privacy_ScreenCapture" : null;
     if (name) void shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${name}`);
   });
+  // Its Test screen access captures the window it was clicked in: macOS's id is in the media source's "window:<id>:0" [C91].
+  ipcMain.handle("own-window", (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const id = Number(window?.getMediaSourceId().split(":")[1]);
+    return window && id > 0 ? { pid: process.pid, window: id } : null;
+  });
 }

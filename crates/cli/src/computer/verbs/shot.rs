@@ -6,6 +6,8 @@ use brigadier_core as core;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 /// A drag between two controls' centres, in the window's picture pixels: one picture (it needs
 /// Screen Recording) gives the window's place and scale, and is deleted at once (proposed).
@@ -25,11 +27,8 @@ pub(super) fn drag(
         })
     };
     let (a, b) = (frame(from)?, frame(to)?);
-    let file = std::env::temp_dir().join(format!("brigadier-drag-{}.png", std::process::id()));
-    let shot = json!({"pid": s.pid, "window_id": s.window, "session": me, "include_accessibility_tree": false, "include_screenshot": true, "screenshot_out_file": file});
-    let found = call(data, "get_window_state", shot, here);
-    let _ = fs::remove_file(&file);
-    let found = found?;
+    let shot = json!({"pid": s.pid, "window_id": s.window, "session": me, "include_accessibility_tree": false});
+    let found = throwaway(shot, |shot| call(data, "get_window_state", shot, here))?;
     let bounds = &found["window_bounds"];
     let (Some(x), Some(y), Some(scale)) = (
         bounds["x"].as_f64(),
@@ -48,6 +47,25 @@ pub(super) fn drag(
     Ok(
         json!({"pid": s.pid, "window_id": s.window, "from_x": fx, "from_y": fy, "to_x": tx, "to_y": ty, "session": me}),
     )
+}
+
+/// One capture of a window that's never kept, for what taking it gives (a drag's scale) or does
+/// (macOS's capture alert): in a folder of its own, removed as the call returns and again a minute
+/// later, as the driver may still write it after a call that timed out (proposed).
+pub(in crate::computer) fn throwaway<R>(mut shot: Value, take: impl FnOnce(Value) -> R) -> R {
+    static N: AtomicU64 = AtomicU64::new(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("brigadier-shot-{}-{n}", std::process::id()));
+    let _ = fs::create_dir_all(&dir);
+    shot["include_screenshot"] = true.into();
+    shot["screenshot_out_file"] = json!(dir.join("shot.png"));
+    let found = take(shot);
+    let _ = fs::remove_dir_all(&dir);
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(60));
+        let _ = fs::remove_dir_all(dir);
+    });
+    found
 }
 
 /// The window as a picture in the session's folder, gone with it [D35]; only its path comes back.

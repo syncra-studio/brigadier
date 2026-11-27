@@ -13,7 +13,7 @@ mod diff;
 mod holder;
 mod open;
 mod run;
-mod shot;
+pub(super) mod shot;
 pub(super) mod still;
 mod typing;
 mod web;

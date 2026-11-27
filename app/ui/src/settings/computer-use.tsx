@@ -111,25 +111,51 @@ export function ComputerUsePage() {
   );
 }
 
+/** Test screen access's words (proposed) [C91]. */
+const TEST = { label: "Test screen access", busy: "Testing…", done: "Done. macOS may ask you to allow it: choose Allow.", noWindow: "Couldn't find Brigadier's window." } as const;
+
 function PermissionRow({ permission, status, checking: switching, starting, enabled }: { permission: Permission; status: Status | null; checking: boolean; starting: boolean; enabled: boolean }) {
   const grant = useSave();
   const open = useSave();
+  const test = useSave();
   const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [tested, setTested] = useState(false);
   const row = COMPUTER_USE_ROWS[permission];
   const state = status ? status[permission] : "unknown";
   const checking = switching || (starting && state === "unknown");
+  // Only once Screen Recording reads granted; its words go with the button.
+  const testable = permission === "screenRecording" && state === "granted" && !checking && enabled;
   const ask = () => {
     setBusy(true);
     return run(["computer", "grant", permission]).finally(() => setBusy(false));
   };
+  // One throwaway capture of this window on the user's click, so macOS's capture alert comes while they're here [C91, D2032].
+  const capture = async () => {
+    setTested(false);
+    setTesting(true);
+    try {
+      const own = await window.brigadier?.ownWindow();
+      if (!own) throw new Error(TEST.noWindow);
+      await run(["computer", "test", String(own.pid), String(own.window)]);
+      setTested(true);
+    } finally {
+      setTesting(false);
+    }
+  };
   return (
-    <SettingsRow label={row.label} description={row.description} error={grant.error ?? open.error}>
+    <SettingsRow label={row.label} description={testable && tested ? TEST.done : row.description} error={grant.error ?? open.error ?? (testable ? test.error : null)}>
       <Badge data-slot="permission-state" variant={state === "granted" ? "success" : state === "notGranted" ? "warning" : "secondary"}>
         {checking ? "Checking…" : STATE_LABEL[state]}
       </Badge>
       {state !== "granted" && !checking && (
         <Button variant="soft" size="sm" disabled={!enabled || busy} onClick={() => grant.run(ask)}>
           Grant…
+        </Button>
+      )}
+      {testable && (
+        <Button variant="soft" size="sm" disabled={testing} onClick={() => test.run(capture)}>
+          {testing ? TEST.busy : TEST.label}
         </Button>
       )}
       <Button variant="soft" size="sm" aria-label={`Open System Settings for ${row.label}`} onClick={() => open.run(() => window.brigadier?.openPrivacySettings(permission))}>

@@ -5,6 +5,7 @@
 //! this daemon, which sends it each call: no other process can reach the driver. Everything else
 //! lives here: the one-at-a-time lock [D907], the block list [D903] and the pause [D910].
 
+mod status;
 mod verbs;
 
 pub(crate) use verbs::asks::answered;
@@ -380,14 +381,6 @@ pub(crate) fn grants(data: &Path) -> Result<(bool, bool), Fail> {
     Ok(both)
 }
 
-fn word(granted: Option<bool>) -> &'static str {
-    match granted {
-        Some(true) => "granted",
-        Some(false) => "notGranted",
-        None => "unknown",
-    }
-}
-
 /// An agent's `brigadier computer …`. A chat's lead hands it to a worker [D931]: refused here,
 /// as the words alone didn't hold [D941]; its help stays open.
 pub fn agent(
@@ -414,11 +407,12 @@ pub fn turned_off() {
     verbs::asks::forget();
 }
 
-/// The app's side: `computer status|on|off|grant accessibility|screenRecording` [D911, D912].
+/// The app's side: `computer status|on|off|grant accessibility|screenRecording|test` [D911, D912].
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let arg = |i: usize| args.get(i).map_or("", String::as_str);
     match arg(1) {
-        "status" => Ok(status(data)),
+        "status" => Ok(status::status(data)),
+        "test" => status::test(data, args),
         "on" | "off" => {
             let on = arg(1) == "on";
             let set: Vec<String> = ["settings", SETTING, if on { "true" } else { "false" }]
@@ -447,54 +441,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             Ok(json!({"ok": true}))
         }
         _ => Err(io::Error::other(
-            "usage: brigadier computer status|on|off|grant accessibility|screenRecording",
+            "usage: brigadier computer status|on|off|grant accessibility|screenRecording|test <pid> <window>",
         )),
-    }
-}
-
-fn status(data: &Path) -> Value {
-    let last = *lock(&HUB.grants);
-    let no_cursor = lock(&HUB.link).no_cursor.clone();
-    let reply = |helper: &str, grants: Option<(bool, bool)>, error: Option<String>| {
-        let mut r = json!({"ok": true, "on": on(data), "helper": helper, "accessibility": word(grants.map(|g| g.0)), "screenRecording": word(grants.map(|g| g.1)), "noCursor": no_cursor});
-        if let Some(e) = error {
-            r["error"] = e.into();
-        }
-        r
-    };
-    if !on(data) {
-        return reply("off", None, None);
-    }
-    if helper_app(data).is_none() {
-        return reply("absent", None, None);
-    }
-    if !lock(&HUB.link).ready {
-        let launched = *lock(&HUB.launched);
-        if launched.is_none_or(|at| at.elapsed() > START_WAIT) {
-            let failed = launched.is_some();
-            if let Err(e) = launch(data, None) {
-                return reply("failed", last, Some(e.to_string()));
-            }
-            if failed {
-                return reply(
-                    "failed",
-                    last,
-                    Some(
-                        "Brigadier Computer Use didn't start; Brigadier is starting it again."
-                            .into(),
-                    ),
-                );
-            }
-        }
-        return reply("starting", last, None);
-    }
-    match grants(data) {
-        Ok(g) => reply("ready", Some(g), None),
-        Err(Fail::NotSent(e)) => reply("failed", last, Some(e)),
-        Err(Fail::Unknown) => reply(
-            "failed",
-            last,
-            Some("Brigadier Computer Use didn't answer.".into()),
-        ),
     }
 }

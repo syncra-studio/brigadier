@@ -48,6 +48,8 @@ declare global {
       openNotificationSettings(): void;
       /** System Settings › Privacy & Security at Accessibility or Screen Recording. */
       openPrivacySettings(pane: "accessibility" | "screenRecording"): void;
+      /** The window the page is in, as macOS names it: main's pid and its CGWindowID, for Test screen access. */
+      ownWindow(): Promise<{ pid: number; window: number } | null>;
       introBegin(): Promise<boolean>;
       introShaped(): Promise<void>;
       introFinish(fadeMs: number): Promise<void>;
