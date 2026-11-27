@@ -18,6 +18,20 @@ import { forMac, newId } from "../compose/state";
 import { lists } from "../mac/mac";
 import { color, text } from "../theme";
 
+/**
+ * A kept start as the phone sends it: one the Mac's book brought back is its stored command (`--home` or `--slot` in
+ * it, its draft not), so those go and its draft comes back; its session and command ids stay.
+ */
+function phoneOp({ op, draft, rev }: Going): string[] {
+  const out = op.slice(0, 2);
+  for (let i = 2; i < op.length; i++) {
+    if (op[i] === "--text") out.push(op[i]!, op[++i] ?? "");
+    else if (["--home", "--slot", "--draft", "--draft-rev"].includes(op[i]!)) i++;
+    else out.push(op[i]!);
+  }
+  return [...out, "--draft", JSON.stringify({ parts: draft.parts, attachmentIds: draft.attachmentIds }), ...(typeof rev === "number" ? ["--draft-rev", String(rev)] : [])];
+}
+
 /** A new session's id, made here as the desktop makes it, so the start can be asked again under it. */
 export const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -33,7 +47,8 @@ export function Start({ project, name, onStarted }: { project: string; name: str
     words$.current = next;
     setWords(next);
   };
-  const [error, setError] = useState<string | null>(null);
+  // A start refused while New chat was closed says why once it opens.
+  const [error, setError] = useState<string | null>(() => drafts.givenError(key));
   // The start being signed, as it goes; `fresh`: from the field just now, so a cancel puts its words back there.
   const [asking, setAsking] = useState<{ entry: Going; fresh: boolean } | null>(null);
   // Starts on their way or unsettled, kept per Mac under this draft's key as the desktop keeps them (uncertain.ts),
@@ -58,6 +73,7 @@ export function Start({ project, name, onStarted }: { project: string; name: str
       const typed = words$.current;
       const next = typed.trim() ? `${plainText(back.parts)}\n\n${typed}` : plainText(back.parts);
       put(next);
+      if (back.error) setError(back.error);
       return { parts: next ? [next] : [], attachmentIds: [] };
     }),
   );
@@ -147,6 +163,9 @@ export function Start({ project, name, onStarted }: { project: string; name: str
     void run(["draft", key, "drop", entry.cid]).then((reply) => {
       setBusy((now) => new Set([...now].filter((each) => each !== entry.cid)));
       if (reply.given_back || reply.went) return land({ entry, fresh: false }, reply);
+      // None to give back: its words come from here only if its session isn't on the Mac (it never landed); one that
+      // is went, settled already.
+      if (reply.ok && lists.get().rows.some((row) => row.id === entry.op[1])) return uncertain.forget(key, entry.cid);
       if (reply.ok) return drafts.takeBack(run, key, { cid: entry.cid, ...entry.draft });
       uncertain.markGoing(key, entry.cid, { stuck: `Couldn't discard it: ${failure(reply)}` });
     });
@@ -181,7 +200,7 @@ export function Start({ project, name, onStarted }: { project: string; name: str
             <Text style={st.pillText} numberOfLines={2}>{textOf(entry.op) || plainText(entry.draft.parts)}</Text>
             {/* None held here is on its way: one kept with no answer (a relaunch mid-way) couldn't be confirmed. */}
             <Text style={st.error}>{entry.stuck ?? UNCONFIRMED}</Text>
-            {!entry.left && <Button title="Try again" secondary disabled={busy.has(entry.cid) || !connected || !!asking} onPress={() => setAsking({ entry, fresh: false })} />}
+            {!entry.left && <Button title="Try again" secondary disabled={busy.has(entry.cid) || !connected || !!asking} onPress={() => setAsking({ entry: { ...entry, op: phoneOp(entry) }, fresh: false })} />}
             <Button title="Discard" secondary disabled={busy.has(entry.cid) || !connected || !!asking} onPress={() => discard(entry)} />
           </View>
         ))}

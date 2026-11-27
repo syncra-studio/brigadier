@@ -57,8 +57,11 @@ export function Rewind({ id, cid, text, draft, onClose }: { id: string; cid: str
     void run(["rewind", id, cid, "--preview"]).then((reply) => live && (reply.ok ? setPreview(previewOf(reply)) : setError(why(reply))));
     return () => void (live = false);
   }, [turns, tries]);
-  const go = () => {
-    if (going.current || !preview) return;
+  // The choice of a try whose answer was lost: Try again sends it under the same id, preview or none, as Rust answers
+  // a rewind already done as done.
+  const [lost, setLost] = useState<boolean | null>(null);
+  const go = (restore: boolean) => {
+    if (going.current || (!preview && lost === null)) return;
     going.current = true;
     setBusy(true);
     setError(null);
@@ -66,7 +69,9 @@ export function Rewind({ id, cid, text, draft, onClose }: { id: string; cid: str
       setBusy(false);
       if (!reply.ok) {
         going.current = false;
-        setTries((n) => n + 1);
+        const unknown = reply.error === "closed" || reply.error === "disconnected";
+        setLost(unknown ? restore : null);
+        if (!unknown) setTries((n) => n + 1);
         return setError(why(reply));
       }
       // The message back in the composer, above what's typed there, its files with it; a `!` command's report as the
@@ -118,7 +123,7 @@ export function Rewind({ id, cid, text, draft, onClose }: { id: string; cid: str
       {preview && !can && !preview.sharer && (cant ? <Text style={st.muted}>{cant}</Text> : preview.why === undefined && hand.length + leftOut.length + stale.length > 0 ? <><Text style={st.muted}>Files stay: nothing the agent changed can go back.</Text>{stays}</> : null)}
       {sharer && <Text style={st.muted}>Files stay: {sharer} {preview?.sharer?.now ? "is working in this folder now" : "was working in this folder during this turn"}.</Text>}
       {error && <Text style={st.error}>{error}</Text>}
-      {busy ? <ActivityIndicator color={color.foreground} /> : <Button title="Rewind" disabled={!preview} onPress={go} />}
+      {busy ? <ActivityIndicator color={color.foreground} /> : lost !== null ? <Button title="Try again" onPress={() => go(lost)} /> : <Button title="Rewind" disabled={!preview} onPress={() => go(restore)} />}
     </Sheet>
   );
 }
