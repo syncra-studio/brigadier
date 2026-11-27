@@ -22,9 +22,7 @@ jobs:
     outputs:
       signed: ${{ steps.check.outputs.signed }}
     env:
-      CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
-      CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-      BRIGADIER_SIGN_IDENTITY: ${{ secrets.MAC_CERTIFICATE != '' && vars.MAC_SIGN_IDENTITY || '' }}
+      SIGNING: ${{ secrets.MAC_CERTIFICATE != '' }}
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
     steps:
@@ -40,6 +38,18 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Set only with the secret: electron-builder reads an empty CSC_LINK as a path.
+      - name: Signing certificate
+        if: env.SIGNING == 'true'
+        run: |
+          printf '%s' "$CERT" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          echo "CSC_LINK=$RUNNER_TEMP/developer-id.p12" >> "$GITHUB_ENV"
+          echo "CSC_KEY_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+          echo "BRIGADIER_SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+        env:
+          CERT: ${{ secrets.MAC_CERTIFICATE }}
+          PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          IDENTITY: ${{ vars.MAC_SIGN_IDENTITY }}
       - name: Notarization key
         if: env.APPLE_API_KEY_ID != ''
         run: |
@@ -67,7 +77,7 @@ jobs:
         name: Signed and notarized
         run: |
           signed=false
-          if [ -n "$BRIGADIER_SIGN_IDENTITY" ] && xcrun stapler validate out/Brigadier-darwin-arm64/Brigadier.app && xcrun stapler validate out/Brigadier-darwin-x64/Brigadier.app; then signed=true; fi
+          if [ -n "${BRIGADIER_SIGN_IDENTITY:-}" ] && xcrun stapler validate out/Brigadier-darwin-arm64/Brigadier.app && xcrun stapler validate out/Brigadier-darwin-x64/Brigadier.app; then signed=true; fi
           echo "signed=$signed" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
