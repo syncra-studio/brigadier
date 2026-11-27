@@ -166,8 +166,12 @@ function startDaemon(bin = BIN) {
   spawnSync('systemd-run', ['--user', '--quiet', '--collect', '--service-type=exec', `--unit=${unit}`, ...set, '--', `${bin}/brigadierd`])
   const pid = +systemctl('show', unit, '-p', 'MainPID', '--value') || 0
   // Its environment as the daemon got it, not as asked for.
-  const got = pid ? Object.fromEntries(fs.readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').map((l) => l.split(/=(.*)/s))) : {}
-  unitEnv.push(!pid || (got.HOME === env.HOME && got.BRIGADIER_DATA === DATA))
+  // One that left at once (an equal build already serves) may be gone, or a zombie with none, before
+  // it's read, and isn't checked.
+  let raw = ''
+  try { raw = pid ? fs.readFileSync(`/proc/${pid}/environ`, 'utf8') : '' } catch {}
+  const got = Object.fromEntries(raw.split('\0').map((l) => l.split(/=(.*)/s)))
+  if (raw) unitEnv.push(got.HOME === env.HOME && got.BRIGADIER_DATA === DATA)
   daemons.push({ unit, pid, get exitCode() { return pid && alive(pid) ? null : 0 } })
 }
 function stopDaemon() {
@@ -487,7 +491,7 @@ async function killloop(minutes) {
     status_right_within_2s: summary.correct_within_2s === events.length, same_list: summary.daemon_same_list === events.length,
     history_same: Object.values(history).every((h) => h.mismatched === 0 && h.rehash_equal), idle_hosts_kept_their_pid: summary.idle_same_pid_min === idles.length,
     no_leftovers: summary.leftovers.length === 0,
-    ...(UNITS && { daemon_unit_env: unitEnv.every(Boolean) }),
+    ...(UNITS && { daemon_unit_env: unitEnv.length > 0 && unitEnv.every(Boolean) }),
   })
 }
 
