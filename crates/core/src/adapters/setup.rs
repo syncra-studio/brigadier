@@ -384,10 +384,24 @@ pub fn newer(latest: &str, current: &str) -> bool {
     matches!((parts(latest), parts(current)), (Some(l), Some(c)) if l > c)
 }
 
-/// Windows' own variables a child needs; none elsewhere.
-#[cfg(unix)]
+/// Other Unix systems need no extra system variables.
+#[cfg(all(unix, not(target_os = "linux")))]
 pub fn system_env() -> Vec<(String, String)> {
     Vec::new()
+}
+
+/// The desktop session an agent, browser opener or terminal command belongs to.
+#[cfg(target_os = "linux")]
+pub fn system_env() -> Vec<(String, String)> {
+    [
+        "DISPLAY",
+        "WAYLAND_DISPLAY",
+        "XDG_RUNTIME_DIR",
+        "DBUS_SESSION_BUS_ADDRESS",
+    ]
+    .into_iter()
+    .filter_map(|k| Some((k.into(), std::env::var(k).ok()?)))
+    .collect()
 }
 
 /// PATH's separator.

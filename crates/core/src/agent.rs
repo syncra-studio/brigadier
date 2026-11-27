@@ -434,7 +434,7 @@ pub(crate) fn env(spec: &Spec) -> Option<(String, Vec<(String, String)>)> {
     ];
     #[cfg(windows)]
     vars.extend(windows);
-    vars.extend(browser_shim().map(|shim| ("BROWSER".into(), shim)));
+    vars.extend(browser_shim(spec).map(|shim| ("BROWSER".into(), shim)));
     Some((me.parent()?.display().to_string(), vars))
 }
 
@@ -452,12 +452,34 @@ if command -v open >/dev/null 2>&1; then exec open "$1"; fi
 exec xdg-open "$1"
 "#;
 
-/// The shim's path, the same for every launch and written only when it differs; in the temp
-/// folder, since a path with a space breaks some openers. A shell without it still works, so a
-/// failure isn't reported.
+/// The shim's path, written only when it differs: private runtime storage on Linux, per-user
+/// temp on macOS. A shell without it still works, so a failure isn't reported.
 #[cfg(unix)]
-fn browser_shim() -> Option<String> {
+fn browser_shim(_spec: &Spec) -> Option<String> {
+    #[cfg(not(target_os = "linux"))]
     let folder = std::env::temp_dir().join("brigadier-open");
+    #[cfg(target_os = "linux")]
+    let folder = {
+        use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+        let private = |p: &Path| {
+            std::fs::symlink_metadata(p).is_ok_and(|m| {
+                m.is_dir() && m.uid() == unsafe { libc::getuid() } && m.mode() & 0o7777 == 0o700
+            })
+        };
+        let root = std::env::var_os("XDG_RUNTIME_DIR")
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.is_absolute() && private(p))
+            .unwrap_or_else(|| crate::data_of(_spec));
+        if !private(&root) {
+            return None;
+        }
+        let folder = root.join("brigadier-open");
+        let _ = std::fs::DirBuilder::new().mode(0o700).create(&folder);
+        if !private(&folder) {
+            return None;
+        }
+        folder
+    };
     let shim = folder.join("agent-browser");
     if std::fs::read_to_string(&shim).ok().as_deref() != Some(BROWSER_SHIM) {
         std::fs::create_dir_all(&folder).ok()?;
@@ -471,6 +493,6 @@ fn browser_shim() -> Option<String> {
 /// shortcut: the shim is a shell script, so Windows' agents open pages their own way; upgrade with
 /// a .cmd of it if one is asked for.
 #[cfg(windows)]
-fn browser_shim() -> Option<String> {
+fn browser_shim(_spec: &Spec) -> Option<String> {
     None
 }
