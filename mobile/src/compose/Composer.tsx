@@ -1,11 +1,13 @@
-// The composer under a session's thread, as the desktop's session/composer.tsx wires it [D183, D188, D363]: Send, or
-// while a turn runs Queue (hold Send to Steer, where the agent can); Stop and Resume; the queue card; messages on their
-// way with Try again and Discard, nothing sent again by itself; this phone's own draft kept on the Mac; `/` and `@`;
-// `!` commands, Run in background, the level pill and Overnight, each signed with Face ID [D57].
+// The composer under a session's thread, as the desktop's session/composer.tsx and composer/composer.tsx lay it out
+// and wire it [D183, D188, D363, D2108]: the rail (the night, Before you go, the queue) tucked under one card, which holds
+// the tiles, the field and the footer (+, the level pill, Overnight, To ‹worker›, then status, the model and Send). Send,
+// or while a turn runs Queue (hold Send to Steer, where the agent can); Stop and Resume; messages on their way with Try
+// again and Discard, nothing sent again by itself; this phone's own draft kept on the Mac; `/`, `@` and +; `!` commands,
+// Run in background, the level pill and Overnight, each signed with Face ID [D57].
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
-import { ActionSheetIOS, Alert, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Animated, KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import type { Chip as PanelChip } from "../../vendor/brigadier-shared/chips";
@@ -16,14 +18,17 @@ import { failure } from "../../vendor/brigadier-shared/session/run";
 import { chipArgs, draftArgs, sendOp, sends } from "../../vendor/brigadier-shared/session/sent";
 import type { Going } from "../../vendor/brigadier-shared/session/uncertain";
 import type { Frame } from "../../vendor/brigadier-shared/client";
+import { COMPACTION } from "../../vendor/brigadier-shared/words";
 import { Confirm } from "../act/Confirm";
-import { request, streamNow } from "../link";
+import { streamNow } from "../link";
 import { lists, thread } from "../mac/mac";
-import { color, text } from "../theme";
+import { color, mono, size, text } from "../theme";
 import { LevelPill } from "../powers/Level";
-import { OvernightPill, OvernightStrip } from "../powers/Overnight";
+import { NightReady, nightPlaceholder, OvernightPill, OvernightStrip, StartNight, useNight } from "../powers/Overnight";
 import { backgroundPower, type Power, refusal, shellOf, shellPower } from "../powers/powers";
 import { ImageSigns } from "../powers/View";
+import { Boxed, Glyph, Shimmer, Spinner, usePulse } from "./Glyph";
+import { chipTone, type Command, Commands, Mentions, PlusMenu, useCommands } from "./Menus";
 import { ModelPill } from "./Model";
 import { QueueCard } from "./Queue";
 import { ThreadImage } from "../thread/Image";
@@ -37,6 +42,8 @@ type ComposerRow = ModelRow & {
   /** The last turn was the user's Stop: Resume carries it on [D373]. */
   resumable?: boolean;
   holding?: boolean;
+  /** A rebirth under way: its turn being stopped, or its fresh conversation not yet started [D88, D112]. */
+  optimizing?: boolean;
 };
 
 /** One queue action, shown at once until its reply is in and Rust's row has caught up with it (`touched`). */
@@ -78,18 +85,6 @@ const payload = (parts: Draft["parts"], tiles: readonly string[]) => (parts.some
 const body = (parts: Draft["parts"], sent: readonly PanelChip[], tiles: readonly string[]) =>
   payload(sent.length === 0 ? parts : [...parts, `${isEmpty({ parts, attachmentIds: [] }) ? "" : "\n\n"}${withChips("", sent)}`], tiles);
 
-/** A `/` list row: the agent's command, or Brigadier's own tool, as the desktop's commands.tsx and tools.tsx list them. */
-type Command = { id: string; kind: "command" | "tool" | "skill" | "mcp" | "prompt"; label: string; description?: string; instant: boolean };
-const TOOLS: Command[] = [
-  ["computer", "Use the apps on your Mac"],
-  ["browser", "Open pages, click and type in Brigadier's browser"],
-  ["mockup", "Draw 3 looks to pick from before building"],
-  ["image", "Make or edit a picture"],
-  ["research", "Search and read the web, with sources"],
-  ["workers", "Split the job across workers in parallel"],
-].map(([id, line]): Command => ({ id, kind: "tool", label: `/${id}`, description: line, instant: false }));
-type Mention = { id: string; type: string; label: string; name?: string; detail?: string; hint?: string };
-
 export function Composer({ id }: { id: string }) {
   const mac = forMac();
   const header = useHeaderHeight();
@@ -112,8 +107,14 @@ export function Composer({ id }: { id: string }) {
   const words$ = useRef(words);
   const cursor = useRef(words.length);
   const [menu, setMenu] = useState<{ kind: "/" | "@"; query: string; from: number } | null>(null);
+  /** The + menu is open; `opened` counts the menus opened, each asking for the commands again. */
+  const [plus, setPlus] = useState(false);
+  const [opened, setOpened] = useState(0);
+  const worker = Boolean(row?.worker);
   const partsNow = () => partsOf(words$.current, named$.current);
-  const empty = isEmpty({ parts: partsOf(words, named$.current), attachmentIds: files.tiles.filter((each) => files.all.get(each)?.state !== "failed") });
+  // A `!` first makes the field a shell command, shown without its `!` [D316]: never a worker's.
+  const shell = !worker && shellOf(partsOf(words, named$.current)) !== null;
+  const empty = isEmpty({ parts: shell ? [words.slice(1)] : partsOf(words, named$.current), attachmentIds: files.tiles.filter((each) => files.all.get(each)?.state !== "failed") });
   /** Keeps what the field holds, its files' ids too, as this phone's draft on the Mac. */
   const keep = (parts: Draft["parts"]) => drafts.keepDraft(run, id, { parts, attachmentIds: [...tilesNow()] });
   /** Puts `parts` in the field; `save`, kept as the draft too, as a change typed is. */
@@ -123,6 +124,7 @@ export function Composer({ id }: { id: string }) {
     cursor.current = words$.current.length;
     setWords(words$.current);
     setMenu(null);
+    setPlus(false);
     if (save) keep(parts);
   };
 
@@ -133,6 +135,8 @@ export function Composer({ id }: { id: string }) {
   const [power, setPower] = useState<(Power & { then: (reply: Frame) => void }) | null>(null);
   /** A power's refusal, shown on its own line: the queue's errors don't hide it. */
   const [powerError, setPowerError] = useState<string | null>(null);
+  /** An image tile opened whole. */
+  const [viewing, setViewing] = useState<Attachment | null>(null);
   const editing = { get: () => edits.get(id) ?? null, set: (pulled: Pulled) => void (pulled ? edits.set(id, pulled) : edits.delete(id)) };
 
   // A message pulled back to edit that this phone can't prove is its own (another device's, or from before a relaunch)
@@ -201,6 +205,13 @@ export function Composer({ id }: { id: string }) {
     if (!busy) setStopping(false);
   }, [busy]);
   const canSteer = row?.steer === true;
+  // A worker's own tab has no Stop or Resume, no level, Overnight, /new or `!` [D293].
+  const canStop = busy && connected && !worker;
+  const night = useNight(id, row);
+  // Its turn's last questions are in the thread already, waiting or answered.
+  const lastTurn = session?.turns.at(-1)?.id;
+  const asked = lastTurn !== undefined && (session?.items.some((item) => item.kind === "question" && item.turnId === lastTurn) ?? false);
+  const { listed } = useCommands(id, running, opened);
 
   // Rust's queue, with this phone's actions on it shown at once and its adds Rust may not hold.
   const touched = row?.touched ?? 0;
@@ -296,7 +307,7 @@ export function Composer({ id }: { id: string }) {
     const tiles = readyNow();
     // A `!` line runs on the Mac's shell, through the queue: shown whole and signed, the field kept till the Mac has it.
     // A worker's is a message, as on the desktop.
-    const line = row?.worker ? null : shellOf(parts);
+    const line = worker ? null : shellOf(parts);
     if (line !== null) {
       if (!line) return;
       if (line.startsWith("--")) return setPowerError("A command can't start with --");
@@ -335,8 +346,8 @@ export function Composer({ id }: { id: string }) {
     // The Mac reads words that start with `--` as a flag, so it refuses them.
     if (message.startsWith("--")) return setError("A message can't start with --");
     const draft = body(parts, sent, tiles);
-    // Queue or Steer is the Mac's setting; the phone takes its default, Queue [D188].
-    const mode = chosen ?? sendMode(running || commands, "queue", other, canSteer && running);
+    // Queue or Steer is the Mac's setting; the phone takes its default, Queue [D188]. A paused worker's waits till Resume [D3041].
+    const mode = chosen ?? (row?.worker?.kind === "paused" ? "queue" : sendMode(running || commands, "queue", other, canSteer && running));
     if (!chosen && mode === "now" && paused && items.length > 0) {
       const count = items.length === 1 ? "One message waits" : `${items.length} messages wait`;
       return Alert.alert("Send message?", `The queue is paused. ${count} until you resume it. Send this one now, or keep it in the queue with them.`, [
@@ -365,6 +376,7 @@ export function Composer({ id }: { id: string }) {
   const typed = (next: string) => {
     words$.current = next;
     setWords(next);
+    setPlus(false);
     const parts = partsNow();
     named$.current = parts.filter(named);
     keep(parts);
@@ -376,8 +388,12 @@ export function Composer({ id }: { id: string }) {
   };
   // The `/` or `@` the caret is just after, at a word's start, and what's typed after it.
   const lookAt = (at: number) => {
-    cursor.current = at;
+    // A command's field shows it without its `!`, and has no menus.
+    cursor.current = at + (shell ? 1 : 0);
+    if (shell) return setMenu(null);
     const hit = /(^|\s)([@/])([^\s@/]*)$/.exec(words$.current.slice(0, at));
+    // A `/` menu opening asks for the commands again: Settings › Plugins may have changed since.
+    if (hit?.[2] === "/" && menu?.kind !== "/") setOpened((times) => times + 1);
     setMenu(hit ? { kind: hit[2] as "/" | "@", query: hit[3], from: at - hit[3].length - 1 } : null);
   };
   /** The trigger and its query give way to `put` (a chip's label, and a space). */
@@ -394,8 +410,11 @@ export function Composer({ id }: { id: string }) {
   };
   const runCommand = (command: Command) => {
     replace("");
+    setPlus(false);
     void run(["command", id, command.label.slice(1)]).then((reply) => !reply.ok && setError(String(reply.error ?? `Couldn't run ${command.label}`)));
   };
+  /** A `/` pick: an instant command runs, any other goes in the text as its chip. */
+  const pickCommand = (command: Command) => (command.instant ? runCommand(command) : replace(`${command.label} `, { kind: "command", id: command.id, type: command.kind, label: command.label }));
 
   /** Why Send waits now, in the desktop's words; none when it can go. */
   const waitsFor = () => {
@@ -409,92 +428,142 @@ export function Composer({ id }: { id: string }) {
   };
   const waits = waitsFor();
   const add = (picked: Picked[]) => picked.forEach((each) => fileStore.attach(id, each, row?.backend));
-  const pick = () =>
-    ActionSheetIOS.showActionSheetWithOptions({ options: ["Photo Library", "Files", "Cancel"], cancelButtonIndex: 2 }, (at) => {
-      if (at === 0) void ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsMultipleSelection: true, preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible }).then((got) => !got.canceled && add(got.assets.map((each) => ({ uri: each.uri, name: each.fileName || `Image.${each.mimeType?.split("/")[1] ?? "jpg"}`, mime: each.mimeType, size: each.fileSize }))), () => setError("Couldn't open your photos"));
-      if (at === 1) void DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true }).then((got) => !got.canceled && add(got.assets.map((each) => ({ uri: each.uri, name: each.name, mime: each.mimeType, size: each.size }))), () => setError("Couldn't open Files"));
-    });
+  const photos = () => {
+    setPlus(false);
+    void ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsMultipleSelection: true, preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible }).then((got) => !got.canceled && add(got.assets.map((each) => ({ uri: each.uri, name: each.fileName || `Image.${each.mimeType?.split("/")[1] ?? "jpg"}`, mime: each.mimeType, size: each.fileSize }))), () => setError("Couldn't open your photos"));
+  };
+  const documents = () => {
+    setPlus(false);
+    void DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true }).then((got) => !got.canceled && add(got.assets.map((each) => ({ uri: each.uri, name: each.name, mime: each.mimeType, size: each.size }))), () => setError("Couldn't open Files"));
+  };
 
   // Nothing to send: no words, no files, and nothing waiting above the field.
   const blank = empty && panel.length === 0;
-  const state = busy && connected && blank ? "stop" : !running && blank && resumable ? "resume" : "send";
+  const state = canStop && blank && !shell ? "stop" : !running && blank && resumable && !worker && !shell ? "resume" : "send";
   const press = () => (state === "stop" ? stop() : state === "resume" ? resume() : submit(false));
-  // Always set, so the release after a long press isn't also a tap (a steer turns the button into Stop meanwhile).
-  const hold = () => (state === "send" && running && canSteer ? submit(true) : press());
+  // Held, Send steers into the running turn; always set, so the release after a long press isn't also a tap (a steer
+  // turns the button into Stop meanwhile).
+  const steers = state === "send" && !shell && running && canSteer;
+  const hold = () => (steers ? submit(true) : press());
   const verb = running && !blank ? "Queue" : "Send message";
+  // Why Send waits, in the desktop's words: offline it says so, as it does.
+  const held = connected ? undefined : "Reconnecting…";
+  const blocked = held ?? waits;
+  const runs = state === "send" && shell;
+  const tip = state === "stop" ? "Stop" : state === "resume" ? "Resume" : (blocked ?? (runs ? (running || commands ? "Run when the turn ends" : "Run command") : verb));
+  const off = (state === "send" && (blank || blocked !== undefined)) || (state === "stop" && stopping) || (state === "resume" && (resuming || !connected));
   const shownSends = sends(going).filter((each) => !delivered.has(each.cid));
+  const pulled = foreign && !live.some((op) => op.qid === foreign.id) ? { text: foreign.parts ? plainText(foreign.parts.parts) : foreign.text, onPutBack: () => act({ kind: "add", qid: foreign.id, text: foreign.text, slot: foreign.slot }, ["restore"]) } : null;
+  // The rail's items, in the desktop's order; each after the first ruled off from the one above.
+  const rail = [
+    night.now?.state === "night" ? <OvernightStrip key="night" night={night} connected={connected} /> : null,
+    night.now?.state === "ready" ? <NightReady key="ready" night={night} connected={connected} /> : null,
+    // Under the turn's last questions on the desktop; here they're in the thread, so it waits on the rail meanwhile.
+    night.now?.state === "asking" && asked && session?.questions?.length ? <StartNight key="start" label="Or start now: it picks what you skip and tells you in the morning" night={night} connected={connected} /> : null,
+    items.length > 0 || runningCommands.length > 0 || pulled ? (
+      <QueueCard
+        key="queue"
+        items={items}
+        running={runningCommands}
+        paused={paused}
+        resuming={resuming || stopping || !connected}
+        steer={canSteer && running}
+        canEdit={empty}
+        error={(stuck ? `Not sent: ${stuck.error}. ${stuck.to ? "Edit it, delete it or send it to the session instead." : "Edit or delete it to go on."}` : null) ?? (items.length > 0 ? error : null)}
+        onResume={resume}
+        onBackground={(command) => setPower({ ...backgroundPower(id, command.id, command.line), then: (reply) => setPowerError(reply.ok ? null : refusal(reply)) })}
+        onSteer={steerQueued}
+        onRemove={(qid) => (lost(qid) ? sending.discard(run, id, lost(qid)!) : act({ kind: "remove", qid }, ["remove", qid]))}
+        onEdit={edit}
+        onAddAgain={(qid) => void sending.again(run, id, lost(qid)!)}
+        onToSession={(qid) => {
+          const parts = row?.queue?.items.find((each) => each.id === qid)?.parts;
+          act({ kind: "add", qid, text: textOf(qid) }, ["add", textOf(qid), "--qid", qid, ...(parts ? ["--parts", JSON.stringify(parts)] : [])]);
+        }}
+        onMove={move}
+        pulled={pulled}
+      />
+    ) : null,
+  ].filter(Boolean);
+  // The night's look, but not on a command [D316].
+  const look = shell ? st.shell : night.now ? st.night : null;
+  const shownError = powerError ?? night.error ?? (items.length === 0 ? error : null);
+  const placeholder = shell ? "Run a command" : (nightPlaceholder(night.now, busy, asked) ?? "Do anything");
   return (
     <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={header}>
-      <SafeAreaView edges={["bottom"]} style={st.composer}>
+      <SafeAreaView edges={{ bottom: "maximum" }} style={st.column}>
         {shownSends.map((each) => <OnItsWay key={each.cid} entry={each} id={id} />)}
-        <QueueCard
-          items={items}
-          running={runningCommands}
-          paused={paused}
-          resuming={resuming || stopping || !connected}
-          steer={canSteer && running}
-          canEdit={empty}
-          error={(stuck ? `Not sent: ${stuck.error}. Edit or delete it to go on.` : null) ?? (items.length > 0 ? error : null)}
-          onResume={resume}
-          onBackground={(command) => setPower({ ...backgroundPower(id, command.id, command.line), then: (reply) => setPowerError(reply.ok ? null : refusal(reply)) })}
-          onSteer={steerQueued}
-          onRemove={(qid) => (lost(qid) ? sending.discard(run, id, lost(qid)!) : act({ kind: "remove", qid }, ["remove", qid]))}
-          onEdit={edit}
-          onAddAgain={(qid) => void sending.again(run, id, lost(qid)!)}
-          onMove={move}
-          pulled={foreign && !live.some((op) => op.qid === foreign.id) ? { text: foreign.parts ? plainText(foreign.parts.parts) : foreign.text, onPutBack: () => act({ kind: "add", qid: foreign.id, text: foreign.text, slot: foreign.slot }, ["restore"]) } : null}
-        />
-        {row && !row.worker ? <OvernightStrip id={id} row={row} connected={connected} /> : null}
-        {menu?.kind === "/" ? <Commands id={id} query={menu.query} fresh={running} onPick={(command) => (command.instant ? runCommand(command) : replace(`${command.label} `, { kind: "command", id: command.id, type: command.kind, label: command.label }))} /> : null}
-        {menu?.kind === "@" ? <Mentions id={id} query={menu.query} onPick={(item) => replace(`${item.label} `, { kind: "mention", id: item.id, type: item.type as Extract<Named, { kind: "mention" }>["type"], label: item.label })} /> : null}
-        {panel.length > 0 ? (
-          <View style={st.waiting}>
-            {panel.map((chip) => <Text key={chip.id} style={st.tile} numberOfLines={1}>{tileOf(chip)}</Text>)}
-          </View>
+        {/* A menu takes the rail's place, just over the card. */}
+        {menu?.kind === "/" ? (
+          <Commands listed={listed} query={menu.query} onPick={pickCommand} />
+        ) : menu?.kind === "@" ? (
+          <Mentions
+            id={id}
+            query={menu.query}
+            onPick={(item) => replace(`${item.label} `, { kind: "mention", id: item.id, type: item.type as Extract<Named, { kind: "mention" }>["type"], label: item.label })}
+          />
+        ) : plus ? (
+          <PlusMenu onPhotos={photos} onFiles={documents} />
+        ) : rail.length > 0 ? (
+          <View style={st.rail}>{rail.map((item, at) => <View key={at} style={at > 0 && st.ruled}>{item}</View>)}</View>
         ) : null}
-        {files.tiles.length > 0 ? (
-          <ScrollView horizontal style={{ flexGrow: 0 }} contentContainerStyle={st.tiles} keyboardShouldPersistTaps="always">
-            {files.tiles.map((each) => {
-              const file = files.all.get(each);
-              return <Tile key={each} owner={id} file={file ?? { id: each, name: "Loading…", mime: "", state: "uploading" }} loading={!file} onRemove={() => fileStore.remove(id, each)} />;
-            })}
-          </ScrollView>
-        ) : null}
-        <View style={st.field}>
-          <TextInput
-            style={st.input}
-            multiline
-            placeholder={connected ? "Do anything" : "Not connected"}
-            placeholderTextColor={color.mutedForeground}
-            onChangeText={typed}
-            onSelectionChange={(event) => lookAt(event.nativeEvent.selection.end)}
-            accessibilityLabel="Message"
-          >
-            {segments(words, named$.current).map(([part, chip], at) => <Text key={at} style={chip ? st.chip : undefined}>{part}</Text>)}
-          </TextInput>
-          <View style={st.bar}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Add photos or files" disabled={!connected} onPress={pick} hitSlop={8} style={({ pressed }) => [st.plus, (pressed || !connected) && { opacity: 0.5 }]}>
-              <Text style={st.plusGlyph}>+</Text>
-            </Pressable>
-            <View style={st.pills}>
-              <ModelPill id={id} row={row} connected={connected} />
-              <LevelPill id={id} row={row} connected={connected} />
-              {row && !row.worker ? <OvernightPill id={id} row={row} connected={connected} /> : null}
+        <View style={[st.card, look]}>
+          {files.tiles.length > 0 || panel.length > 0 ? (
+            <View style={st.tiles}>
+              {files.tiles.map((each) => {
+                const file = files.all.get(each);
+                return <Tile key={each} owner={id} file={file ?? { id: each, name: "Loading…", mime: "", state: "uploading" }} onOpen={() => setViewing(file ?? null)} onRemove={() => fileStore.remove(id, each)} />;
+              })}
+              {panel.map((chip) => <ChipTile key={chip.id} chip={chip} />)}
             </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={state === "stop" ? "Stop" : state === "resume" ? "Resume" : verb}
-              accessibilityHint={state === "send" && running && canSteer ? "Hold to steer it into the running turn" : undefined}
-              disabled={!connected || (state === "send" && (blank || waits !== undefined)) || (state === "stop" && stopping) || (state === "resume" && resuming)}
-              onPress={press}
-              onLongPress={hold}
-              style={({ pressed }) => [st.send, (pressed || !connected || (state === "send" && (blank || waits !== undefined))) && { opacity: 0.4 }]}
-            >
-              <Text style={st.sendGlyph}>{state === "stop" ? "■" : state === "resume" ? "▶" : "↑"}</Text>
-            </Pressable>
+          ) : null}
+          <Field words={words} chips={named$.current} shell={shell} placeholder={placeholder} night={night.now !== null} onChange={typed} onCursor={lookAt} />
+          <View style={st.footer}>
+            {shell ? (
+              <Text style={st.shellWords} numberOfLines={1}>Shell command</Text>
+            ) : (
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Add files and more"
+                  accessibilityState={{ expanded: plus }}
+                  onPress={() => {
+                    setMenu(null);
+                    setPlus(!plus);
+                  }}
+                  hitSlop={(size.touch - size.controlSm) / 2}
+                  style={({ pressed }) => [st.plus, (pressed || plus) && { backgroundColor: color.fill }]}
+                >
+                  <Glyph name="plus" size={20} color={color.primary} />
+                </Pressable>
+                {!worker ? <LevelPill id={id} row={row} connected={connected} /> : null}
+                {!worker ? <OvernightPill night={night} connected={connected} /> : null}
+              </>
+            )}
+            {/* The end's parts wrap under the tools as one, short of room. */}
+            <View style={st.end}>
+              {row?.optimizing ? <Shimmer style={st.status}>{COMPACTION.running}</Shimmer> : shownError ? <Text style={[st.status, { color: color.destructive }]} numberOfLines={2}>{shownError}</Text> : null}
+              {!shell ? <ModelPill id={id} row={row} connected={connected} /> : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={tip}
+                accessibilityHint={steers ? "Hold to steer it into the running turn" : undefined}
+                accessibilityState={{ disabled: off }}
+                disabled={off}
+                onPress={press}
+                onLongPress={hold}
+                hitSlop={(size.touch - size.controlSm) / 2}
+                style={({ pressed }) => [runs ? st.run : st.send, off ? { opacity: size.disabled } : pressed && { opacity: 0.8 }]}
+              >
+                {state === "stop" ? <View style={st.stop} /> : state === "resume" ? <Glyph name="play" size={size.iconSm} color={color.primaryFg} /> : runs ? <Text style={st.runText}>Run</Text> : <Glyph name="arrowUp" color={color.primaryFg} weight="700" />}
+              </Pressable>
+            </View>
           </View>
         </View>
+        {/* Why Send waits: the desktop's tip for it, which a phone can't hover. */}
+        {(held ?? waits) && (!blank || held) ? <Text style={st.waits}>{held ?? waits}</Text> : null}
         <ImageSigns />
+        {night.sheet}
         {power ? (
           <Confirm
             title={power.title}
@@ -507,43 +576,153 @@ export function Composer({ id }: { id: string }) {
             }}
           />
         ) : null}
-        {waits && !blank ? <Text style={st.muted}>{waits}</Text> : error && items.length === 0 ? <Text style={st.error}>{error}</Text> : null}
-        {powerError ? <Text style={st.error}>{powerError}</Text> : null}
+        {viewing ? <Viewer owner={id} file={viewing} onClose={() => setViewing(null)} /> : null}
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
 }
 
-/** The field's words cut at each chip, so a chip is drawn as one. */
-function segments(words: string, chips: readonly Named[]): [string, boolean][] {
-  return partsOf(words, chips).map((part) => (typeof part === "string" ? [part, false] : [(part as Named).label, true]));
+/**
+ * The field, as the desktop's field.tsx: at least 44 tall, a quarter of the screen at most, then it scrolls and fades
+ * at its top; each chip in its kind's colour. A command shows without its `!`, in mono after the Terminal icon;
+ * Backspace in an empty one leaves the mode, as deleting the `!` would.
+ */
+function Field({ words, chips, shell, placeholder, night, onChange, onCursor }: { words: string; chips: readonly Named[]; shell: boolean; placeholder: string; night: boolean; onChange: (next: string) => void; onCursor: (at: number) => void }) {
+  const { height } = useWindowDimensions();
+  const [scrolled, setScrolled] = useState(false);
+  const under = night && !shell ? color.surfaceUnder : color.composer;
+  return (
+    <View>
+      {shell ? (
+        <View style={st.terminal} pointerEvents="none">
+          <Boxed mark=">_" color={color.link} />
+        </View>
+      ) : null}
+      <TextInput
+        style={[st.input, { maxHeight: height * 0.25 }, shell && st.mono]}
+        multiline
+        placeholder={placeholder}
+        placeholderTextColor={color.placeholder}
+        onChangeText={(next) => onChange(shell ? `!${next}` : next)}
+        onKeyPress={(event) => shell && words === "!" && event.nativeEvent.key === "Backspace" && onChange("")}
+        onSelectionChange={(event) => onCursor(event.nativeEvent.selection.end)}
+        onScroll={(event) => setScrolled(event.nativeEvent.contentOffset.y > 0)}
+        accessibilityLabel={shell ? "Shell command input" : "Message"}
+      >
+        {shell ? words.slice(1) : segments(words, chips).map(([part, chip], at) => <Text key={at} style={chip && { color: chipTone(chip) }}>{part}</Text>)}
+      </TextInput>
+      {scrolled ? <View pointerEvents="none" style={[st.fade, { experimental_backgroundImage: `linear-gradient(to bottom, ${under}, transparent)` }]} /> : null}
+    </View>
+  );
 }
 
-const tileOf = (chip: PanelChip) => {
-  if (chip.kind === "comment") {
-    const { path, start, end } = chip.comment;
-    return `${path.slice(path.lastIndexOf("/") + 1)}:${start === end ? start : `${start}–${end}`}`;
-  }
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-  return chip.chip.kind === "resolve" ? `Resolve ${plural(chip.chip.conflicts, "conflict")}` : `Fix ${chip.chip.run}`;
-};
+/** The field's words cut at each chip, so a chip is drawn as one. */
+function segments(words: string, chips: readonly Named[]): [string, Named | null][] {
+  return partsOf(words, chips).map((part) => (typeof part === "string" ? [part, null] : [(part as Named).label, part as Named]));
+}
 
-/** A file over the field: an image's thumbnail once Rust has it, else its name; Uploading… or why it failed; and remove. */
-function Tile({ owner, file, loading, onRemove }: { owner: string; file: Attachment; /** Not read from Rust's folder yet. */ loading: boolean; onRemove: () => void }) {
+/** "PDF", "PNG image", "Text": what a file's tile says under its name (the desktop's attachments.tsx `kindOf`). */
+function kindOf(name: string, mime: string): string {
+  if (mime === "application/pdf") return "PDF";
+  const extension = name.includes(".") ? name.split(".").pop()?.toUpperCase() : undefined;
+  if (mime.startsWith("image/")) return extension ? `${extension} image` : "Image";
+  if (mime.startsWith("text/")) return extension ? `${extension} text` : "Text";
+  return extension ? `${extension} file` : "File";
+}
+
+const baseName = (name: string) => name.slice(name.lastIndexOf("/") + 1);
+
+/** A tile's ✕: a dark dot inside its corner, with a finger's reach. */
+const Remove = ({ label, onPress }: { label: string; onPress: () => void }) => (
+  <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} hitSlop={14} style={st.remove}>
+    <Glyph name="x" size={9} color={color.background} weight="700" />
+  </Pressable>
+);
+
+/** A card in the tiles row: an icon in its box, a title over a second line, and its ✕ where it has one. */
+function Card({ icon, title, detail, invalid, children }: { icon: React.ReactNode; title: string; detail: string; invalid?: boolean; children?: React.ReactNode }) {
   return (
-    <View style={st.file}>
-      {file.state === "ready" && file.mime.startsWith("image/") ? (
-        <ThreadImage owner={owner} attachment={file.id} mime={file.mime} label={file.name} style={st.thumb} />
-      ) : (
-        <View style={[st.thumb, st.named]}>
-          <Text style={file.state === "failed" ? st.error : st.fileName} numberOfLines={3}>{file.state === "failed" ? file.error : file.name}</Text>
-        </View>
-      )}
-      {file.state === "uploading" && !loading ? <Text style={st.uploading}>Uploading…</Text> : null}
-      <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${file.name}`} onPress={onRemove} hitSlop={8} style={st.remove}>
-        <Text style={st.removeGlyph}>×</Text>
-      </Pressable>
+    <View accessible accessibilityLabel={`${title}, ${detail}`} style={[st.fileCard, invalid && { borderColor: color.invalid }]}>
+      <View style={st.iconBox}>{icon}</View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={st.cardTitle} numberOfLines={1}>{title}</Text>
+        <Text style={st.cardDetail} numberOfLines={1}>{detail}</Text>
+      </View>
+      {children}
     </View>
+  );
+}
+
+/**
+ * A file over the field: an image as a rounded thumbnail, pulsing till Rust has it with a spinner over it; any other
+ * as a card with its kind, Attaching… or why it failed, red-edged then. A tap opens an image whole.
+ */
+function Tile({ owner, file, onOpen, onRemove }: { owner: string; file: Attachment; onOpen: () => void; onRemove: () => void }) {
+  const name = baseName(file.name);
+  const remove = <Remove label={`Remove ${name}`} onPress={onRemove} />;
+  if (file.mime.startsWith("image/") && file.state !== "failed") {
+    return (
+      <View style={st.thumb}>
+        {file.state === "ready" ? (
+          <>
+            <ThreadImage owner={owner} attachment={file.id} mime={file.mime} label={file.name} style={StyleSheet.absoluteFill} />
+            <Pressable accessibilityRole="button" accessibilityLabel={`Preview ${file.name}`} onPress={onOpen} style={StyleSheet.absoluteFill} />
+          </>
+        ) : (
+          <Pulsing />
+        )}
+        <View pointerEvents="none" style={st.ring} />
+        {file.state === "uploading" ? (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, st.centred]}>
+            <Spinner />
+          </View>
+        ) : null}
+        {remove}
+      </View>
+    );
+  }
+  const failed = file.state === "failed";
+  const icon = failed ? <Glyph name="warning" color={color.destructive} label="Upload failed" /> : file.state === "uploading" ? <Spinner /> : <Glyph name={file.mime.startsWith("image/") ? "image" : file.mime.startsWith("text/") || file.mime === "application/pdf" ? "document" : "file"} color={color.mutedForeground} />;
+  return (
+    <Card icon={icon} title={name} detail={failed ? (file.error ?? "Couldn't attach this file") : file.state === "uploading" ? "Attaching…" : kindOf(file.name, file.mime)} invalid={failed}>
+      {remove}
+    </Card>
+  );
+}
+
+/** An image's box till its bytes are in. */
+const Pulsing = () => <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: color.muted, opacity: usePulse() }]} />;
+
+const plural = (n: number, one: string) => (n === 1 ? `1 ${one}` : `${n} ${one}s`);
+
+/**
+ * What waits above the field for the agent, as the desktop's CommentChip and AgentChipTile: a diff comment, a Resolve or
+ * a Fix with agent. A phone only reads them and sends them with its next message, so no ✕ [allow.rs `chips`].
+ */
+function ChipTile({ chip }: { chip: PanelChip }) {
+  if (chip.kind === "comment") {
+    const { path, start, end, text: said, excerpt } = chip.comment;
+    return <Card icon={<Glyph name="comment" color={color.mutedForeground} />} title={said} detail={`${baseName(path)}:${start === end ? start : `${start}–${end}`}  ${excerpt}`} />;
+  }
+  const agent = chip.chip;
+  return agent.kind === "resolve" ? (
+    <Card icon={<Glyph name="sparkles" color={color.mutedForeground} />} title={`Resolve ${plural(agent.conflicts, "conflict")}`} detail={`${plural(agent.files, "file")} · ${agent.operation} ${agent.onto}`} />
+  ) : (
+    <Card icon={<Glyph name="xCircle" color={color.destructive} />} title={`Fix ${agent.run}`} detail={agent.failed} />
+  );
+}
+
+/** An image tile opened whole, as the desktop's viewer; held, it saves to Photos. */
+function Viewer({ owner, file, onClose }: { owner: string; file: Attachment; onClose: () => void }) {
+  return (
+    <Modal visible animationType="fade" onRequestClose={onClose}>
+      <SafeAreaView style={st.viewer}>
+        <Pressable accessibilityRole="button" onPress={onClose} hitSlop={12} style={st.done}>
+          <Text style={st.doneText}>Done</Text>
+        </Pressable>
+        <ThreadImage owner={owner} attachment={file.id} mime={file.mime} label={file.name} style={{ flex: 1 }} whole />
+      </SafeAreaView>
+    </Modal>
   );
 }
 
@@ -574,99 +753,48 @@ const Link = ({ title, onPress }: { title: string; onPress: () => void }) => (
   </Pressable>
 );
 
-/** The `/` menu: Brigadier's tools first, then the agent's commands, asked again as a turn starts or ends. */
-function Commands({ id, query, fresh, onPick }: { id: string; query: string; fresh: boolean; onPick: (command: Command) => void }) {
-  const { run } = forMac();
-  const [listed, setListed] = useState<Command[] | null>(null);
-  useEffect(() => {
-    let live = true;
-    void run(["commands", id]).then((reply) => {
-      if (!live) return;
-      const list: { name: string; description?: string; kind: Command["kind"]; instant: boolean }[] = reply.ok ? (reply.commands ?? []) : [];
-      // A prompt kept as Claude listed it before prompts had a kind of their own.
-      const kindOf = (each: (typeof list)[number]) => (each.kind === "mcp" && each.name.startsWith("mcp__") ? "prompt" : each.kind);
-      setListed(list.map((each) => ({ id: `${kindOf(each)}:${each.name}`, kind: kindOf(each), label: `/${each.name}`, description: each.description || undefined, instant: each.instant })));
-    });
-    return () => void (live = false);
-  }, [id, fresh]);
-  const want = query.toLowerCase();
-  const order = { command: 0, tool: 1, skill: 2, mcp: 3, prompt: 4 };
-  const rank = (each: Command) => (each.label.slice(1).toLowerCase().startsWith(want) ? 0 : each.label.toLowerCase().includes(want) ? 1 : 2);
-  const shown = [...TOOLS, ...(listed ?? [])].filter((each) => rank(each) < 2).sort((a, b) => order[a.kind] - order[b.kind] || rank(a) - rank(b));
-  return (
-    <Menu loading={listed === null} empty="No commands">
-      {shown.map((each) => <MenuRow key={each.id} title={each.label} detail={each.description} onPress={() => onPick(each)} />)}
-    </Menu>
-  );
-}
-
-/** The `@` menu: the Mac's chats, workers, tabs, notes and plugins for the query; only the last asked shows [D127]. */
-function Mentions({ id, query, onPick }: { id: string; query: string; onPick: (item: Mention) => void }) {
-  const [found, setFound] = useState<{ title: string | null; items: Mention[] }[] | null>(null);
-  const asked = useRef(query);
-  useEffect(() => {
-    asked.current = query;
-    try {
-      request({ op: "mention", owner: id, q: query }, (reply) => {
-        if (reply.ok && reply.query === asked.current) setFound(reply.groups);
-      });
-    } catch {
-      // Not connected: the menu stays as it was.
-    }
-  }, [query]);
-  return (
-    <Menu loading={found === null} empty="No results">
-      {(found ?? []).flatMap((group) =>
-        // Message directly is a worker's own message, not this step's.
-        group.items.filter((item) => !["direct", "file", "folder"].includes(item.type)).map((item) => <MenuRow key={`${group.title}:${item.id}`} title={item.name ?? item.label} detail={item.detail ?? item.hint} onPress={() => onPick(item)} />),
-      )}
-    </Menu>
-  );
-}
-
-function Menu({ loading, empty, children }: { loading: boolean; empty: string; children: React.ReactNode[] }) {
-  return (
-    <ScrollView style={st.menu} keyboardShouldPersistTaps="always">
-      {children.length > 0 ? children : <Text style={[st.muted, { padding: 12 }]}>{loading ? "Loading…" : empty}</Text>}
-    </ScrollView>
-  );
-}
-
-const MenuRow = ({ title, detail, onPress }: { title: string; detail?: string; onPress: () => void }) => (
-  <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [st.menuRow, pressed && { backgroundColor: color.fill }]}>
-    <Text style={st.menuTitle} numberOfLines={1}>{title}</Text>
-    {detail ? <Text style={st.muted} numberOfLines={1}>{detail}</Text> : null}
-  </Pressable>
-);
-
 const st = StyleSheet.create({
-  composer: { gap: 8, paddingHorizontal: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: color.border, backgroundColor: color.background },
-  field: { borderRadius: 20, borderWidth: 1, borderColor: color.border, backgroundColor: color.codeSurface, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8, gap: 8 },
-  input: { ...text.base, color: color.foreground, maxHeight: 150, padding: 0 },
-  chip: { color: color.link },
-  bar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  pills: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, flexShrink: 1 },
-  send: { marginLeft: "auto", width: 32, height: 32, borderRadius: 16, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
-  sendGlyph: { fontSize: 16, fontWeight: "700", color: color.primaryFg },
-  waiting: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  tiles: { flexDirection: "row", gap: 8, paddingTop: 6, paddingRight: 6 },
-  file: { width: 72 },
-  thumb: { width: 72, height: 72, borderRadius: 12 },
-  named: { backgroundColor: color.muted, padding: 6, justifyContent: "center" },
-  fileName: { fontSize: 12, lineHeight: 16, color: color.foreground },
-  uploading: { fontSize: 11, color: color.mutedForeground, paddingTop: 2 },
-  remove: { position: "absolute", top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
-  removeGlyph: { fontSize: 15, lineHeight: 18, fontWeight: "700", color: color.primaryFg },
-  plus: { width: 32, height: 32, borderRadius: 16, backgroundColor: color.fill, alignItems: "center", justifyContent: "center" },
-  plusGlyph: { fontSize: 20, lineHeight: 22, color: color.foreground },
-  tile: { ...text.sm, color: color.foreground, backgroundColor: color.muted, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, maxWidth: 220 },
+  // 12 under the card (pb-3), or the home indicator's inset where that's more.
+  column: { gap: 8, paddingHorizontal: 16, paddingBottom: 12, backgroundColor: color.background },
+  // The gap above the card is taken back, and the tuck under its top edge.
+  rail: { marginHorizontal: size.railInset, marginBottom: -size.railTuck - 8, paddingBottom: size.railTuck, borderTopLeftRadius: size.radiusOverlay, borderTopRightRadius: size.radiusOverlay, borderWidth: 1, borderBottomWidth: 0, borderColor: color.border, backgroundColor: color.codeSurface, overflow: "hidden" },
+  ruled: { borderTopWidth: 1, borderTopColor: color.border },
+  card: { gap: 4, padding: 8, borderRadius: size.radiusComposer, backgroundColor: color.composer, boxShadow: color.composerGlow },
+  // overnight.css `night-sky`: the page's darkest fill, a violet glow from the end corner and a blue one from the start.
+  night: { backgroundColor: color.surfaceUnder, boxShadow: `inset 0 0 0 1px ${color.picked}`, experimental_backgroundImage: "radial-gradient(ellipse at top right, rgba(177,151,252,0.34), transparent 360px), radial-gradient(ellipse at bottom left, rgba(2,133,255,0.34), transparent 320px)" },
+  shell: { boxShadow: `${color.composerGlow}, 0 0 0 1px ${color.link}` },
+  input: { ...text.base, color: color.foreground, minHeight: size.composer, paddingHorizontal: 8, paddingTop: 10, paddingBottom: 10 },
+  mono: { fontFamily: mono, paddingLeft: 36 },
+  terminal: { position: "absolute", left: 8, top: 14, zIndex: 1 },
+  fade: { position: "absolute", left: 0, right: 0, top: 0, height: 16 },
+  footer: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 2 },
+  shellWords: { ...text.sm, color: color.link, paddingHorizontal: 8, height: size.controlSm, lineHeight: size.controlSm, flexShrink: 1 },
+  plus: { width: size.controlSm, height: size.controlSm, borderRadius: size.radiusIconButton, alignItems: "center", justifyContent: "center" },
+  pillText: { ...text.sm, color: color.mutedForeground, flexShrink: 1 },
+  toDot: { fontSize: 10, color: color.mutedForeground },
+  end: { flexDirection: "row", alignItems: "center", gap: 2, marginLeft: "auto", flexShrink: 1, minWidth: 0 },
+  status: { ...text.xs, color: color.mutedForeground, flexShrink: 1, paddingHorizontal: 4 },
+  send: { width: size.controlSm, height: size.controlSm, borderRadius: size.controlSm / 2, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
+  run: { height: size.controlSm, borderRadius: size.controlSm / 2, paddingHorizontal: 12, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
+  runText: { ...text.sm, fontWeight: "500", color: color.primaryFg },
+  stop: { width: 10, height: 10, borderRadius: 2, backgroundColor: color.primaryFg },
+  waits: { ...text.xs, color: color.mutedForeground, paddingHorizontal: 8, marginTop: -4 },
+  tiles: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-end", gap: 8, paddingHorizontal: 4, paddingTop: 4, paddingBottom: 6 },
+  thumb: { width: size.thumb, height: size.thumb, borderRadius: size.radiusSurface, overflow: "hidden", backgroundColor: color.muted },
+  ring: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: size.radiusSurface, borderWidth: 1, borderColor: color.border },
+  centred: { alignItems: "center", justifyContent: "center" },
+  fileCard: { width: size.card, maxWidth: "100%", flexDirection: "row", alignItems: "center", gap: 8, padding: 6, paddingRight: 28, borderRadius: size.radiusSurface, borderWidth: 1, borderColor: color.border },
+  iconBox: { width: size.controlLg, height: size.controlLg, borderRadius: size.radiusIconButton, backgroundColor: color.background, alignItems: "center", justifyContent: "center" },
+  cardTitle: { ...text.sm, color: color.foreground },
+  cardDetail: { ...text.xs, color: color.mutedForeground },
+  remove: { position: "absolute", top: 6, right: 6, width: size.iconMd, height: size.iconMd, borderRadius: size.iconMd / 2, backgroundColor: color.foreground, alignItems: "center", justifyContent: "center", zIndex: 1 },
+  viewer: { flex: 1, backgroundColor: "#000" },
+  done: { alignSelf: "flex-end", padding: 16 },
+  doneText: { ...text.base, fontWeight: "600", color: color.primary },
   going: { alignSelf: "flex-end", maxWidth: "85%", gap: 4, borderRadius: 16, backgroundColor: color.bubble, padding: 12 },
   goingText: { ...text.base, color: color.chat },
   actions: { flexDirection: "row", gap: 16 },
   link: { ...text.sm, color: color.link },
   muted: { ...text.sm, color: color.mutedForeground },
   error: { ...text.sm, color: color.destructive },
-  menu: { maxHeight: 240, borderRadius: 16, backgroundColor: color.muted },
-  menuRow: { paddingHorizontal: 12, paddingVertical: 10, gap: 2 },
-  menuTitle: { ...text.base, color: color.foreground },
 });
