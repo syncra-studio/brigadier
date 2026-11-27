@@ -1,7 +1,7 @@
 //! A retry keeps its previous attempt's sender, even after that attempt was rewound (O53).
 
-use brigadier_core::{self as core, Spec};
-use serde_json::Value;
+use brigadier_core::{self as core, Spec, message::Message};
+use serde_json::json;
 use std::io;
 use std::path::Path;
 
@@ -12,7 +12,7 @@ pub(super) fn of(
     spec: &Spec,
     cid: &str,
     retry: Option<&str>,
-    parts: &mut Value,
+    msg: &mut Message,
 ) -> io::Result<String> {
     if let Some(retry) = retry {
         let mut from = None;
@@ -28,7 +28,7 @@ pub(super) fn of(
             io::Error::other("The message being retried was not found in this session.")
         })?;
         if brief {
-            parts["brief"] = true.into();
+            mark(msg);
         }
         return Ok(from);
     }
@@ -39,7 +39,15 @@ pub(super) fn of(
             .map(|_| format!("peer:{}", l.parent))
     });
     if lead.is_some() {
-        parts["brief"] = true.into();
+        mark(msg);
     }
     Ok(lead.unwrap_or_else(|| "user".into()))
+}
+
+/// Its parts keep its words beside the mark: a resend composes the agent's text from them.
+fn mark(msg: &mut Message) {
+    if !msg.parts["parts"].is_array() {
+        msg.parts["parts"] = json!([msg.text]);
+    }
+    msg.parts["brief"] = true.into();
 }

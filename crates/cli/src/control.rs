@@ -455,7 +455,7 @@ pub(crate) fn send(
     .map_err(unsent)?;
     let cid = cid.map_or_else(new_cid, String::from);
     let call = crate::attach::book::stalls(call_fn(data, &spec.id));
-    let origin = origin::of(data, spec, &cid, retry_of, &mut msg.parts).map_err(unsent)?;
+    let origin = origin::of(data, spec, &cid, retry_of, &mut msg).map_err(unsent)?;
     let held = crate::workers::with_next(data, &spec.id, Some(&cid), &mut msg);
     let go = || -> io::Result<Value> {
         let f = core::fold(&spec.dir, true)?;
