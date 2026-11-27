@@ -23,6 +23,7 @@ import { color, text } from "../theme";
 import { LevelPill } from "../powers/Level";
 import { OvernightPill, OvernightStrip } from "../powers/Overnight";
 import { backgroundPower, type Power, refusal, shellOf, shellPower } from "../powers/powers";
+import { ImageSigns } from "../powers/View";
 import { ModelPill } from "./Model";
 import { QueueCard } from "./Queue";
 import { ThreadImage } from "../thread/Image";
@@ -132,8 +133,6 @@ export function Composer({ id }: { id: string }) {
   const [power, setPower] = useState<(Power & { then: (reply: Frame) => void }) | null>(null);
   /** A power's refusal, shown on its own line: the queue's errors don't hide it. */
   const [powerError, setPowerError] = useState<string | null>(null);
-  /** A `!` command whose reply was lost keeps its id when confirmed again: the Mac runs or queues an id once. */
-  const lostShell = useRef<{ line: string; qid: string } | null>(null);
   const editing = { get: () => edits.get(id) ?? null, set: (pulled: Pulled) => void (pulled ? edits.set(id, pulled) : edits.delete(id)) };
 
   // A message pulled back to edit that this phone can't prove is its own (another device's, or from before a relaunch)
@@ -303,12 +302,15 @@ export function Composer({ id }: { id: string }) {
       if (line.startsWith("--")) return setPowerError("A command can't start with --");
       setPowerError(null);
       const pulled = editing.get();
-      const qid = pulled?.qid ?? (lostShell.current?.line === line ? lostShell.current.qid : `c-${newId()}`);
+      // One whose reply was lost keeps its id when confirmed again: the Mac runs or queues an id once.
+      const retry = mac.shells.get(id);
+      const qid = pulled?.qid ?? (retry?.line === line ? retry.qid : `c-${newId()}`);
       const typed = words$.current;
       return setPower({
         ...shellPower(id, line, qid, pulled?.slot),
         then: (reply) => {
-          lostShell.current = reply.error === "closed" ? { line, qid } : null;
+          if (reply.error === "closed") mac.shells.set(id, { line, qid });
+          else mac.shells.delete(id);
           if (!reply.ok) return setPowerError(refusal(reply));
           if (editing.get()?.qid === qid) editing.set(null);
           // Only the command leaves the field: a message given back above it while the sheet was open stays.
@@ -488,6 +490,7 @@ export function Composer({ id }: { id: string }) {
             </Pressable>
           </View>
         </View>
+        <ImageSigns />
         {power ? (
           <Confirm
             title={power.title}
