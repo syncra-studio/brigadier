@@ -14,7 +14,6 @@ use std::process::Command;
 const SENSITIVE: &[&str] = &[
     "auth",
     "login",
-    "session",
     "token",
     "secret",
     "credential",
