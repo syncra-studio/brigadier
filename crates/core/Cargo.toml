@@ -7,7 +7,6 @@ publish = false
 
 [dependencies]
 brigadier-frames = { path = "../frames" }
-core-foundation = "=0.10.1"
 crc32fast = "=1.5.4"
 deunicode = "=1.6.2"
 libc.workspace = true
@@ -15,5 +14,11 @@ notify = "=8.2.2"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json.workspace = true
 rusqlite = { version = "=0.41.1", features = ["bundled"] }
-security-framework = "=3.7.0"
 toml_edit = "=0.25.19"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "=0.10.1"
+security-framework = "=3.7.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_Security_Cryptography"] }

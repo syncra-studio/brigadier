@@ -2,7 +2,18 @@
 //! exit: those its host saw under its agent (`sightings`), else those started with its mark, and what
 //! either proves by descent, group or session. Never by name, port or folder. Each has one owner.
 
+#[cfg(target_os = "macos")]
 pub mod apps;
+/// Only macOS tells an app's own process with a window apart, by its bundle (proposed: none
+/// elsewhere at first).
+#[cfg(not(target_os = "macos"))]
+pub mod apps {
+    pub fn open(
+        _: &[brigadier_frames::procs::Proc],
+    ) -> Vec<(brigadier_frames::procs::Proc, String)> {
+        vec![]
+    }
+}
 
 use crate::fold::Fold;
 use brigadier_frames::background::{Links, grow, shared};

@@ -182,8 +182,19 @@ pub fn data_dir() -> PathBuf {
 }
 
 /// The data folder when BRIGADIER_DATA doesn't name another.
+#[cfg(not(windows))]
 pub fn default_data_dir() -> PathBuf {
     adapters::home_path("Library/Application Support/Brigadier")
+}
+
+/// `%LOCALAPPDATA%\Brigadier`: sessions hold logs and worktrees, which are data, and a roaming
+/// profile would sync gigabytes (port.md "Data folder").
+#[cfg(windows)]
+pub fn default_data_dir() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| adapters::home_path("AppData/Local"))
+        .join("Brigadier")
 }
 
 /// A session id names one folder under `sessions/`, so it may hold only plain name characters:
@@ -422,7 +433,7 @@ pub fn sweep(f: &Fold, dir: &Path) -> usize {
     fold::live_groups(f, &procs::all())
         .iter()
         .filter(|g| here.to_str() == Some(g.2.as_str()))
-        .map(|&&(g, s, _)| procs::signal_group(g, s, libc::SIGKILL))
+        .map(|&&(g, s, _)| procs::kill_group(g, s))
         .sum()
 }
 
