@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use std::path::Path;
 
 /// Lock files, the UI's old icon table and the common rest.
-const LOCKS: &[&str] = &[
+pub(super) const LOCKS: &[&str] = &[
     "cargo.lock",
     "pnpm-lock.yaml",
     "package-lock.json",
@@ -75,7 +75,7 @@ const BUILD_PREFIXES: &[&str] = &[
 /// CI folders, by the CI's own convention for where its config lives.
 const CI_DIRS: &[&str] = &[".github/workflows/", ".circleci/", ".buildkite/", ".cargo/"];
 
-fn is_test(path: &str, name: &str) -> bool {
+pub(super) fn is_test(path: &str, name: &str) -> bool {
     let dirs = ["test/", "tests/", "__tests__/", "spec/", "e2e/"];
     dirs.iter()
         .any(|d| path.starts_with(d) || path.contains(&format!("/{d}")))

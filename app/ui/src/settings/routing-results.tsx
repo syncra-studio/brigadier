@@ -15,7 +15,7 @@ type Model = { agent: string; model: string; name: string; kept: number | null; 
  */
 export type Results = {
   jobs: { job: string | null; models: Model[] }[];
-  reviews: { count: number; off?: number; findings: number | null; fixed: number | null; rejected: number | null } | null;
+  reviews: { count: number; off?: number; skipped?: number; findings: number | null; fixed: number | null; rejected: number | null } | null;
 };
 
 /** Your results, grouped by job (spec §8): a share from 20 runs, counts below it. Nothing reorders from it [D2038]. `results` null is loading. */
@@ -82,8 +82,8 @@ function ResultRow({ agent, name, kept, of, finished, retried, cut = 0, group }:
   );
 }
 
-/** "76 reviews · 357 findings · 217 fixed · 48 rejected · 10 didn't run": each sum of the reviews that said it; one none said is left out, never 0 [D74]. */
-function reviewsLine({ count, off = 0, findings, fixed, rejected }: NonNullable<Results["reviews"]>) {
+/** "76 reviews · 357 findings · 217 fixed · 48 rejected · 10 didn't run · 40 not needed": each sum of the reviews that said it; one none said is left out, never 0 [D74, D46]. */
+function reviewsLine({ count, off = 0, skipped = 0, findings, fixed, rejected }: NonNullable<Results["reviews"]>) {
   const n = (v: number | null, one: string, many = one) => (v === null ? null : `${v} ${v === 1 ? one : many}`);
-  return [n(count, "review", "reviews"), n(findings, "finding", "findings"), n(fixed, "fixed"), n(rejected, "rejected"), off > 0 && `${off} didn't run`].filter(Boolean).join(" · ");
+  return [n(count, "review", "reviews"), n(findings, "finding", "findings"), n(fixed, "fixed"), n(rejected, "rejected"), off > 0 && `${off} didn't run`, skipped > 0 && `${skipped} not needed`].filter(Boolean).join(" · ");
 }

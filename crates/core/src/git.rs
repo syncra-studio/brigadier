@@ -19,6 +19,7 @@ pub mod diff;
 pub mod files;
 pub mod last;
 mod listed;
+pub mod needs;
 pub mod push;
 pub mod recover;
 pub mod risk;

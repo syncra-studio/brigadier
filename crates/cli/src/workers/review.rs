@@ -9,7 +9,8 @@
 //! `heads` the commits it sees, by repository; a reviewed worker's is `{"state", "by", "turn",
 //! "tried", "model", "reviewer", "findings", "line"}`, its state running (its reviewer works),
 //! sending (its findings go), sent (its fix turn runs), done or off (its result goes, with
-//! `line`), or agent (reviewed by `--reviewing`, so the switch never reviews it again).
+//! `line`), skipped (rule A found nothing that needs one: `why`, and `head` where the next decision
+//! starts) [D35, D46], or agent (reviewed by `--reviewing`, so the switch never reviews it again).
 //! `tried`: the reviewers that failed or met their limit, each passed by for the next eligible
 //! one; only when none is left does the review not run.
 
@@ -95,7 +96,8 @@ pub(super) fn lock_at(path: &Path) -> io::Result<fs::File> {
 fn note(data: &Path, into: &str, r: &Value, counts: [Option<u64>; 3], why: Option<&str>) {
     let [findings, fixed, rejected] = counts;
     let n = json!({"event": "outcome", "phase": "review", "id": r["id"], "reviewer": r["reviewer"], "findings": findings,
-        "fixed": fixed, "rejected": rejected, "ran": why.is_none(), "why": why});
+        "fixed": fixed, "rejected": rejected, "ran": why.is_none(), "why": why,
+        "skipped": r["state"] == "skipped"});
     if let Ok(spec) = core::load(data, into) {
         let _ = owner::ensure(data, &spec);
         let _ = owner::call(data, into, json!({"op": "note", "data": n}));
@@ -135,17 +137,29 @@ pub(super) fn holds(
     let r = l.review.clone();
     match r["state"].as_str() {
         // Its first commits, or new ones since its last review, for what it was asked after it.
-        None | Some("done" | "off") if on && again(l, &r, turn) => {
+        None | Some("done" | "off" | "skipped") if on && again(l, &r, turn) => {
             let past = past(&r);
             l.review = json!({"state": "running", "turn": turn, "past": past,
                 "since": r["head"], "head": r["head"],
                 "asked": r["at"], "at": r["at"], "line": null});
             let _ = save(data, wid, l);
-            if task::spans(data, wid, &l.review["since"]).is_empty() {
+            let spans = task::spans(data, wid, &l.review["since"]);
+            if spans.is_empty() {
                 // Nothing new of its own: as it was.
                 l.review = r;
                 let _ = save(data, wid, l);
                 return Some(how);
+            }
+            match task::needs(data, wid, turn, &spans, f) {
+                Ok(why) => l.review["why"] = why.into(),
+                Err(why) => {
+                    let (head, at) = task::heads(data, wid);
+                    l.review = json!({"state": "skipped", "turn": turn, "past": l.review["past"],
+                        "head": head, "at": at, "why": why, "line": format!("Not reviewed: {why}")});
+                    note(data, wid, &l.review, [None; 3], Some(&why));
+                    let _ = save(data, wid, l);
+                    return Some(how);
+                }
             }
             match next(data, l, wid) {
                 Ok(by) => l.review["by"] = by.into(),

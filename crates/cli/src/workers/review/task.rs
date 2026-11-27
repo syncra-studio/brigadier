@@ -8,6 +8,8 @@ pub(super) struct Span {
     pub repo: String,
     pub base: String,
     pub head: String,
+    /// Its worktree's folder.
+    pub at: String,
 }
 
 /// Each worktree `wid` commits in: its repository's name, its record's folder and its path.
@@ -34,9 +36,33 @@ pub(super) fn spans(data: &Path, wid: &str, since: &Value) -> Vec<Span> {
             let base = since.map_or(began, String::from);
             let head = git(&at, &["rev-parse", "HEAD"])?;
             let n = git(&at, &["rev-list", "--count", &format!("{base}..{head}")])?;
-            (n != "0").then_some(Span { repo, base, head })
+            (n != "0").then_some(Span {
+                repo,
+                base,
+                head,
+                at,
+            })
         })
         .collect()
+}
+
+/// Whether the switch reviews `spans` of `wid`'s `turn`: Ok with why, else Err with why not, by
+/// rule A from the commits [beat-competitors D35, D46]; commits git can't read are reviewed.
+pub(super) fn needs(
+    data: &Path,
+    wid: &str,
+    turn: &str,
+    spans: &[Span],
+    f: &Fold,
+) -> Result<String, String> {
+    let read: Option<Vec<_>> = (spans.iter())
+        .map(|s| core::git::needs::span(&s.repo, &s.at, &s.base, &s.head))
+        .collect();
+    let Some(read) = read else {
+        return Ok("its commits couldn't be read".into());
+    };
+    let said = last_of_turn(data, wid, turn);
+    core::git::needs::needs(&read, f.runs.last.as_ref(), said.as_deref())
 }
 
 /// Where each of its worktrees is now, for `spans` after the next ask, and when (ms).
@@ -205,8 +231,8 @@ pub(crate) fn plan(
             }
         };
     }
-    // After an earlier review: what came since is what this one is of.
-    let later = switch && l.review["past"].as_array().is_some_and(|p| !p.is_empty());
+    // After an earlier review or skip: what came since is what this one is of.
+    let later = switch && l.review["asked"].is_u64();
     let since = match later {
         false => String::new(),
         true => asked_since(data, of, &l, l.review["asked"].as_u64()),

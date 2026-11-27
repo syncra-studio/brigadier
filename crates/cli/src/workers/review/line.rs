@@ -27,7 +27,13 @@ pub(super) fn word(how: &str) -> &'static str {
     }
 }
 
-/// "Reviewed by ‹model›: 4 findings, 3 fixed, 1 rejected", each count only where it was said.
+/// "Reviewed by ‹model› because it changes `package.json`: 4 findings, 3 fixed, 1 rejected", each
+/// count only where it was said; the why only where rule A gave one [D46].
 pub(super) fn reviewed(r: &Value, fixed: Option<u64>, rejected: Option<u64>) -> String {
-    brigadier_core::fold::plan::reviewed("Reviewed by", r, fixed, rejected)
+    let mut r = r.clone();
+    if let Some(why) = r["why"].as_str() {
+        let model = r["model"].as_str().unwrap_or("another model");
+        r["model"] = format!("{model} because {why}").into();
+    }
+    brigadier_core::fold::plan::reviewed("Reviewed by", &r, fixed, rejected)
 }

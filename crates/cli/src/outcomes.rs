@@ -121,7 +121,7 @@ pub(crate) fn results(data: &Path) -> Value {
     let mut rows = vec![];
     let mut retried: HashMap<String, u64> = HashMap::new();
     // Each sum is of the reviews that said it: none is guessed [D74].
-    let (mut reviews, mut off) = ((0u64, [None::<u64>; 3]), 0u64);
+    let (mut reviews, mut off, mut skipped) = ((0u64, [None::<u64>; 3]), 0u64, 0u64);
     let mut add = |n: &Value| {
         reviews.0 += 1;
         // "Findings: 0" fixed and rejected none, said or not [D74, D357].
@@ -158,6 +158,8 @@ pub(crate) fn results(data: &Path) -> Value {
             match n["phase"] == "review" {
                 true if n["id"].is_string() && notes[i + 1..].iter().any(again) => {}
                 true if n["ran"] == true => add(n),
+                // Rule A found nothing that needs one: not needed, not a review that didn't run [D46].
+                true if n["skipped"] == true => skipped += 1,
                 true => off += 1,
                 false => {}
             }
@@ -254,8 +256,8 @@ pub(crate) fn results(data: &Path) -> Value {
         .map(|(job, models)| json!({"job": job, "models": models}))
         .collect();
     let (count, [findings, fixed, rejected]) = reviews;
-    let reviews = (count + off > 0).then(|| {
-        json!({"count": count, "off": off, "findings": findings, "fixed": fixed, "rejected": rejected})
+    let reviews = (count + off + skipped > 0).then(|| {
+        json!({"count": count, "off": off, "skipped": skipped, "findings": findings, "fixed": fixed, "rejected": rejected})
     });
     json!({"jobs": jobs, "reviews": reviews, "ok": true})
 }

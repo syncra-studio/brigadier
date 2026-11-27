@@ -5,7 +5,7 @@ use std::path::Path;
 
 /// How a worker lands its work: reviewed first [D385], merged into `base` in `to` with plain git
 /// [D97], changed in `folder` directly with no project (proposed, C70), or kept on its branch; a
-/// commit and merge only if it changed files [D311].
+/// commit and merge only if it changed files [D311]. Committed work may ask for its review [D46].
 pub(crate) fn land_line(
     merge: Option<(&str, &str, &str)>,
     review: bool,
@@ -22,14 +22,17 @@ pub(crate) fn land_line(
         (Some((to, branch, base)), _) => {
             let (dir, b) = (sh(to), sh(branch));
             format!(
-                "If you changed files, commit them on your branch when your work is done and right, then merge it into {base}: `git -C {dir} merge --no-edit {b}`. If that conflicts, run `git -C {dir} merge --abort` at once, rebase your branch onto {base}, resolve there, then merge again; never leave {to} mid-merge, and never touch its uncommitted changes. If it can't merge, say why. If you committed nothing, don't merge."
+                "If you changed files, commit them on your branch when your work is done and right, then merge it into {base}: `git -C {dir} merge --no-edit {b}`. If that conflicts, run `git -C {dir} merge --abort` at once, rebase your branch onto {base}, resolve there, then merge again; never leave {to} mid-merge, and never touch its uncommitted changes. If it can't merge, say why. If you committed nothing, don't merge. {ASK}"
             )
         }
         (None, None) => {
-            "If you changed files, commit them on your branch and don't merge it.".into()
+            format!("If you changed files, commit them on your branch and don't merge it. {ASK}")
         }
     }
 }
+
+/// The author's ask: it may add a review, never waive one [beat-competitors D46].
+const ASK: &str = "If your work needs a review its files may not show, end your last message with the line `Review: wanted — <why>`.";
 
 /// `s` as one shell word: as is when plain, else single-quoted ("Application Support") [D309].
 pub(super) fn sh(s: &str) -> String {
