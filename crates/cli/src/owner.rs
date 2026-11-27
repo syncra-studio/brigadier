@@ -31,9 +31,57 @@ pub fn ensure(data: &Path, spec: &Spec) -> io::Result<()> {
         return Err(io::Error::other("This project is being removed."));
     }
     if !lock_held(&dir.join("owner.lock")) {
-        let mut host = Command::new(host_exe()?);
+        spawn_host(data, &dir, true)?;
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match wire::connect(&dir.join("s"), Duration::from_secs(2)) {
+            Ok(_) if lock_held(&dir.join("owner.lock")) => return Ok(()),
+            Err(e) if Instant::now() > deadline => {
+                return Err(io::Error::other(format!("host did not answer: {e}")));
+            }
+            _ => thread::sleep(Duration::from_millis(20)),
+        }
+    }
+}
+
+/// Whether a systemd user manager runs here; `BRIGADIER_SYSTEMD=0` says not to use it.
+pub fn user_manager() -> bool {
+    cfg!(target_os = "linux")
+        && env::var_os("BRIGADIER_SYSTEMD").is_none_or(|v| v != "0")
+        && env::var_os("XDG_RUNTIME_DIR")
+            .is_some_and(|d| Path::new(&d).join("systemd/private").exists())
+}
+
+/// The data folder's systemd units' prefix, the same from every build: FNV-1a of its path.
+pub fn unit(data: &Path) -> String {
+    let hash = (data.to_string_lossy().bytes()).fold(0xcbf29ce484222325u64, |h, b| {
+        (h ^ b as u64).wrapping_mul(0x100000001b3)
+    });
+    format!("brigadier-{hash:016x}")
+}
+
+/// Starts a host in a session of its own. Under a systemd user manager it runs in a scope of its
+/// own too, so stopping the daemon's unit, or the app's scope at logout, never reaches it; a scope
+/// that couldn't be made falls back to a plain start (proposed).
+fn spawn_host(data: &Path, dir: &Path, scoped: bool) -> io::Result<()> {
+    let scoped = scoped && user_manager();
+    let mut host = match scoped {
+        true => {
+            let id = dir.file_name().unwrap_or_default().to_string_lossy();
+            let at = brigadier_frames::log::now_ms();
+            let mut run = Command::new("systemd-run");
+            run.args(["--user", "--scope", "--quiet", "--collect"])
+                .arg(format!("--unit={}-{id}-{at}", unit(data)))
+                .arg("--")
+                .arg(host_exe()?);
+            run
+        }
+        false => Command::new(host_exe()?),
+    };
+    {
         // Another session's agent can be who starts it: its mark and grant stay its own.
-        host.arg(&dir)
+        host.arg(dir)
             .env_remove(brigadier_core::agent::SESSION)
             .env_remove(brigadier_core::agent::GRANT)
             .stdin(Stdio::null())
@@ -50,18 +98,17 @@ pub fn ensure(data: &Path, spec: &Spec) -> io::Result<()> {
             })
         };
         let mut child = host.spawn()?;
-        thread::spawn(move || child.wait());
-    }
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        match wire::connect(&dir.join("s"), Duration::from_secs(2)) {
-            Ok(_) if lock_held(&dir.join("owner.lock")) => return Ok(()),
-            Err(e) if Instant::now() > deadline => {
-                return Err(io::Error::other(format!("host did not answer: {e}")));
+        let (data, dir, at) = (data.to_path_buf(), dir.to_path_buf(), Instant::now());
+        thread::spawn(move || {
+            // systemd-run fails at once when it can't make the scope, before any host holds the lock.
+            let failed = child.wait().is_ok_and(|s| !s.success());
+            let soon = at.elapsed() < Duration::from_secs(3);
+            if scoped && failed && soon && !lock_held(&dir.join("owner.lock")) {
+                let _ = spawn_host(&data, &dir, false);
             }
-            _ => thread::sleep(Duration::from_millis(20)),
-        }
+        });
     }
+    Ok(())
 }
 
 pub fn call(data: &Path, id: &str, req: Value) -> io::Result<Value> {

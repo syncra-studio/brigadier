@@ -81,7 +81,16 @@ jobs:
       - run: cargo build --locked -p brigadier-procs
       - run: cargo build --locked --workspace --keep-going
         continue-on-error: true
+      # A user manager, so the daemon runs as a unit and each host in a scope of its own.
+      - if: runner.os == 'Linux'
+        run: |
+          sudo loginctl enable-linger "$USER"
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          for i in $(seq 50); do [ -S "/run/user/$(id -u)/systemd/private" ] && break; sleep 0.2; done
       - run: node drills/drill.mjs procs
       - run: node drills/drill.mjs killloop 5
         timeout-minutes: 10
+        continue-on-error: true
+      - if: runner.os == 'Linux'
+        run: node drills/drill.mjs detach && BRIGADIER_SYSTEMD=0 node drills/drill.mjs detach
         continue-on-error: true

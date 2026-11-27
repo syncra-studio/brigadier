@@ -4,7 +4,7 @@
 // client sees.
 //
 //   BIN=<dir with brigadier, brigadier-host, brigadier-fake, brigadier-procs, brigadierd> node drills/drill.mjs <drill> [minutes]
-//   drills: killloop, hang, procs, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed
+//   drills: killloop, hang, procs, detach, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed
 //   killloop: BUILDS=<dir>:<dir> (; on Windows) rotates in more builds; OLD_BIN=<dir> adds hosts and the first
 //   daemon from a previous release's code.
 //
@@ -148,14 +148,30 @@ async function waitFor(fn, ms, step = 100) {
 // The daemon, run against this drill's data folder. Every one started is killed at the end, since
 // a new one may have replaced the old or left on its own.
 let daemons = []
+// On Linux with a systemd user manager the daemon runs as a user service, as the app starts it, and a
+// kill is a stop of its unit; BRIGADIER_SYSTEMD=0 runs it plain, as elsewhere (proposed).
+const UNITS = process.platform === 'linux' && process.env.BRIGADIER_SYSTEMD !== '0' && fs.existsSync(`${process.env.XDG_RUNTIME_DIR}/systemd/private`)
+const unitEnv = [] // per unit start: the daemon got this drill's HOME and data folder
+const systemctl = (...a) => spawnSync('systemctl', ['--user', ...a], { encoding: 'utf8' }).stdout.trim()
 function startDaemon(bin = BIN) {
-  const d = spawn(`${bin}/brigadierd`, [], { env: { ...process.env, BRIGADIER_DATA: DATA }, detached: true, stdio: 'ignore' })
-  d.unref()
-  d.start_us = record(d.pid)?.start_us
-  daemons.push(d)
+  const env = { ...process.env, BRIGADIER_DATA: DATA }
+  if (!UNITS) {
+    const d = spawn(`${bin}/brigadierd`, [], { env, detached: true, stdio: 'ignore' })
+    d.unref()
+    d.start_us = record(d.pid)?.start_us
+    return daemons.push(d)
+  }
+  const unit = `brigadier-drill-${cid('d')}.service`
+  const set = Object.entries(env).filter(([k, v]) => !/[\x00-\x08\x0b-\x1f\x7f]/.test(k + v)).map(([k, v]) => `--setenv=${k}=${v}`)
+  spawnSync('systemd-run', ['--user', '--quiet', '--collect', '--service-type=exec', `--unit=${unit}`, ...set, '--', `${bin}/brigadierd`])
+  const pid = +systemctl('show', unit, '-p', 'MainPID', '--value') || 0
+  // Its environment as the daemon got it, not as asked for.
+  const got = pid ? Object.fromEntries(fs.readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').map((l) => l.split(/=(.*)/s))) : {}
+  unitEnv.push(!pid || (got.HOME === env.HOME && got.BRIGADIER_DATA === DATA))
+  daemons.push({ unit, pid, get exitCode() { return pid && alive(pid) ? null : 0 } })
 }
 function stopDaemon() {
-  const hit = daemons.map((d) => kill(d)).includes(true)
+  const hit = daemons.map((d) => d.unit ? systemctl('is-active', d.unit) === 'active' && spawnSync('systemctl', ['--user', 'stop', d.unit]).status === 0 : kill(d)).includes(true)
   daemons = []
   return hit
 }
@@ -471,7 +487,31 @@ async function killloop(minutes) {
     status_right_within_2s: summary.correct_within_2s === events.length, same_list: summary.daemon_same_list === events.length,
     history_same: Object.values(history).every((h) => h.mismatched === 0 && h.rehash_equal), idle_hosts_kept_their_pid: summary.idle_same_pid_min === idles.length,
     no_leftovers: summary.leftovers.length === 0,
+    ...(UNITS && { daemon_unit_env: unitEnv.every(Boolean) }),
   })
+}
+
+// A tool that double-forks into a session of its own (port phase 3): its session's row shows it as
+// left running, and its Stop there ends it.
+async function detach() {
+  freshData('detach')
+  startDaemon()
+  startFake('t1')
+  const held = () => ps().filter((p) => p.cmd.includes('brigadier-fake hold') && p.cmd.includes(`${DATA}/`))
+  const r = { send: cli(['send', 't1', `${cid()} detach:1`]).out.result }
+  r.started = (await waitFor(() => held().length, 5000)).ok
+  r.reparented = held().length > 0 && held().every((p) => !agentsOf('t1').some((a) => a.pid === p.ppid))
+  let job
+  for (const t = now(); !job && now() - t < 15000; await sleep(250)) {
+    const row = (await daemonCall({ op: 'subscribe' }, 1000))?.rows?.find((x) => x.id === 't1')
+    job = row?.background?.find((j) => held().some((p) => p.pid === j.pid && p.start_us === j.start_us))
+    r.found_ms = job ? now() - t : null
+  }
+  r.stop = job ? cli(['jobs', 't1', 'stop', String(job.pid), String(job.start_us)]).out : null
+  r.stopped_ms = (await waitFor(() => !held().length, 10000)).ok ? 0 : null
+  r.leftovers = cleanup()
+  log({ drill: 'detach', units: UNITS, ...r })
+  verdict('detach', { started: r.started, reparented: r.reparented, found: !!job, stopped: r.stop?.ok === true && r.stopped_ms !== null, no_leftovers: r.leftovers.length === 0 })
 }
 
 // The drill's own process lister and checked signals, on any system [D97 D100] (proposed): a child of
@@ -2159,6 +2199,6 @@ async function standing() {
 const [drill, arg] = process.argv.slice(2)
 if (!BIN) throw new Error('set BIN to a folder with the brigadier binaries')
 fs.mkdirSync(ROOT, { recursive: true })
-const run = { killloop: () => killloop(+(arg ?? 30)), hang, procs: procsDrill, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed }[drill]
-if (!run) throw new Error('drills: killloop [minutes], hang, procs, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed')
+const run = { killloop: () => killloop(+(arg ?? 30)), hang, procs: procsDrill, detach, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed }[drill]
+if (!run) throw new Error('drills: killloop [minutes], hang, procs, detach, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed')
 await run()

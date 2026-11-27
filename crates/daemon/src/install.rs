@@ -58,6 +58,10 @@ pub fn install_and_exec(data: &Path) -> io::Result<()> {
         if start_job(data, &bin)? {
             return Ok(());
         }
+        #[cfg(target_os = "linux")]
+        if start_unit(data, &bin)? {
+            return Ok(());
+        }
     }
     Err(Command::new(bin.join("current/brigadierd")).exec())
 }
@@ -174,6 +178,77 @@ fn start_job(data: &Path, bin: &Path) -> io::Result<bool> {
     let started = lock_held(&lock);
     if !started {
         bootout();
+    }
+    Ok(started)
+}
+
+/// Starts the daemon as the data folder's systemd user service, as `start_job` does with launchd,
+/// and says whether systemd took it: the app's scope ending never reaches it, and its hosts run in
+/// scopes of their own (owner.rs), so stopping it never reaches them. Runs under the install lock.
+#[cfg(target_os = "linux")]
+fn start_unit(data: &Path, bin: &Path) -> io::Result<bool> {
+    use std::process::Stdio;
+    if !brigadier::owner::user_manager() {
+        return Ok(false);
+    }
+    let lock = data.join("daemon.lock");
+    if lock_held(&lock) {
+        match crate::answering(data)? {
+            Some((pid, build)) if build.is_none_or(|b| b < wire::build() as u64) => {
+                crate::stop(data, pid);
+                if lock_held(&lock) {
+                    return Ok(true);
+                }
+            }
+            _ => return Ok(true),
+        }
+    }
+    let unit = format!("{}.service", brigadier::owner::unit(data));
+    let systemctl = |verb: &str| {
+        let _ = (Command::new("systemctl").args(["--user", verb, &unit]))
+            .stderr(Stdio::null())
+            .status();
+    };
+    // A unit name is taken until its last run is gone, failed or not.
+    systemctl("stop");
+    systemctl("reset-failed");
+    let log = data.join("daemon.log");
+    let mut output = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log)?;
+    crate::logging::trim(&mut output)?;
+    let mut run = Command::new("systemd-run");
+    run.args(["--user", "--quiet", "--collect", "--service-type=exec"])
+        .arg(format!("--unit={unit}"))
+        .arg(format!("--property=StandardError=append:{}", log.display()))
+        .arg("--property=StandardOutput=null");
+    // The whole environment, as the plist gives it, so the data folder and homes are this one's.
+    let vars = std::env::vars_os()
+        .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)));
+    for (k, v) in vars {
+        if !format!("{k}{v}")
+            .chars()
+            .any(|c| c.is_control() && !"\t\n".contains(c))
+        {
+            run.arg(format!("--setenv={k}={v}"));
+        }
+    }
+    if !run
+        .arg("--")
+        .arg(bin.join("current/brigadierd"))
+        .status()?
+        .success()
+    {
+        return Ok(false);
+    }
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !lock_held(&lock) && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(20));
+    }
+    let started = lock_held(&lock);
+    if !started {
+        systemctl("stop");
     }
     Ok(started)
 }

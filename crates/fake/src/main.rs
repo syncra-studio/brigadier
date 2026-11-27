@@ -413,6 +413,8 @@ fn main() {
         }
         Some("agent") => agent(&args),
         Some("--version") => println!("fake 1"),
+        // The `detach` directive's tool: it waits to be found and stopped.
+        Some("hold") => thread::sleep(Duration::from_secs(300)),
         Some("gen") => {
             let (dir, bytes) = (PathBuf::from(&args[1]), args[2].parse().unwrap_or(1 << 20));
             let id = dir
