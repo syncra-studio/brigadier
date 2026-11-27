@@ -153,7 +153,10 @@ pub fn settle(
                     false,
                 )
             }
-            "input" if origin == "user" => (s("text").into(), true, false),
+            // A `!` command's report is its output, not the user's words.
+            "input" if origin == "user" => {
+                (s("text").into(), !item["parts"]["shell"].is_string(), false)
+            }
             "input" if origin.starts_with("result:") || origin.starts_with("peer:") => {
                 (s("text").into(), false, false)
             }
