@@ -94,3 +94,7 @@ jobs:
       - if: runner.os == 'Linux'
         run: node drills/drill.mjs detach && BRIGADIER_SYSTEMD=0 node drills/drill.mjs detach
         continue-on-error: true
+      - if: runner.os == 'Linux'
+        run: node drills/drill.mjs hang && node drills/drill.mjs catalogue
+        timeout-minutes: 15
+        continue-on-error: true
