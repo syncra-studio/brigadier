@@ -31,12 +31,22 @@ pub(super) fn act(
     let mut args = args;
     // Ours, not the driver's: whether the drag is meant to drop something (shot.rs).
     let drop = (args.as_object_mut()).and_then(|a| a.remove("drop")) == Some(Value::Bool(true));
+    // Ours too: a Finder rename (typing.rs). It and a drop can move the rows after them.
+    let voids = (args.as_object_mut()).and_then(|a| a.remove("voids")) == Some(Value::Bool(true));
     // A run's step reads nothing after it, so it needn't wait for a window to show.
     if s.batch && name != "drag" {
         args["post_action_wait"] = "none".into();
     }
     super::sent();
-    let done = match tool(data, name, args, &|| !here()) {
+    let done = tool(data, name, args, &|| !here());
+    // Once sent, whatever came back (an answer, none in time, an error), the numbers are void,
+    // kept past any error below; only a call never sent, or one Cua refused, keeps them.
+    let refused = matches!(&done, Ok(Ok(d)) if d["effect"] == "refused");
+    if (drop || voids) && !refused && !matches!(done, Err(Fail::NotSent(_))) {
+        s.moved = true;
+        moved(me);
+    }
+    let done = match done {
         // A run stops at a step it can't vouch for: the next one may depend on it.
         Err(Fail::Unknown) if s.batch => {
             return Err(refuse(&format!(
@@ -88,12 +98,9 @@ pub(super) fn act(
             // The steps after it may count on the drop: the run stops here.
             _ if undropped => Err(refuse(&format!("{line}: {NO_DROP}"))),
             // A file dropped leaves its list, and the rows after it move: the run stops for a read.
-            _ if drop => {
-                moved(me);
-                Err(refuse(&format!(
-                    "{line}: sent. A file dropped in Finder moves the rows after it, so the steps after it weren't sent: read again."
-                )))
-            }
+            _ if drop => Err(refuse(&format!(
+                "{line}: sent. A file dropped in Finder moves the rows after it, so the steps after it weren't sent: read again."
+            ))),
             _ => Ok(format!("{line}: sent.")),
         };
     }
@@ -118,9 +125,9 @@ pub(super) fn act(
     Ok(format!("{line}: {}\n{diff}", how.trim_end()))
 }
 
-/// The window's numbers are void for `me`, kept even though the step stops its run with an error:
-/// `verb` saves its copy of the session only on success.
-pub(super) fn moved(me: &str) {
+/// The window's numbers are void for `me`, kept even when the step ends in an error: `verb` saves
+/// its copy of the session only on success.
+fn moved(me: &str) {
     lock(&SESSIONS).entry(me.to_string()).or_default().moved = true;
 }
 

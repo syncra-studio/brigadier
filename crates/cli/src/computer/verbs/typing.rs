@@ -140,7 +140,8 @@ fn rename(
     text: &str,
     here: &dyn Fn() -> bool,
 ) -> Result<String, Value> {
-    let args = json!({"element_token": token(s, n), "pid": s.pid, "window_id": s.window, "value": text, "session": me});
+    // `voids`: once sent, act() voids the numbers, whatever comes back.
+    let args = json!({"element_token": token(s, n), "pid": s.pid, "window_id": s.window, "value": text, "session": me, "voids": true});
     let line = format!("Renamed [{n}] to \"{text}\"");
     if let Some(no) = save::renaming(data, s, here) {
         return Err(refuse(&format!("[{n}] isn't renamed: {no}")));
@@ -150,11 +151,9 @@ fn rename(
     if first.contains(": refused") {
         return Ok(out);
     }
-    // A window sorted by name moves the file's row and the rows between: the numbers are void.
-    s.moved = true;
-    // A run's later steps would act on the old numbers: it stops here for a read.
+    // A window sorted by name moves the file's row and the rows between, so a run's later steps
+    // would act on the old numbers: it stops here for a read.
     if s.batch {
-        super::act::moved(me);
         return Err(refuse(&format!(
             "{line}: sent. A renamed file can move in Finder's list, so the steps after it weren't sent: read again."
         )));
