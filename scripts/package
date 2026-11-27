@@ -1,49 +1,85 @@
 #!/usr/bin/env bash
-# Builds out/Brigadier-darwin-arm64/Brigadier.app, signed ad hoc. The Rust binaries ride in
-# Contents/Resources/bin; the app installs them outside the bundle at launch [D40].
+# Builds Brigadier's packages with electron-builder [D160], each on the system it targets:
+# - macOS: a dmg and a zip per arch in ARCHS, "arm64" by default, "arm64 x64" adds Intel, cross-built [D168];
+#   the app itself is out/Brigadier-darwin-<arch>/Brigadier.app, signed ad hoc.
+# - Windows: a per-user NSIS installer. Linux: an AppImage, a deb and an rpm.
+# The Rust binaries ride in the package's resources/bin; the app installs them outside it at launch [D40].
+# Every package gets its third-party licences, checked for copyleft obligations (scripts/notices) [D34].
 # APP_ID gives a test build its own bundle id, and with it its own privacy permissions.
 # BRIGADIER_SIGN_IDENTITY (+ BRIGADIER_SIGN_KEYCHAIN) signs with that identity instead. Only one with an
 # Apple Team ID (a Developer ID) keeps the keychain's Always Allow across builds: the keychain ties code
 # without a team to each build's cdhash, so a self-signed certificate asks again every build [D492, D493].
+# PREPACKAGED=<folder> builds the Windows installer from an already built, signed app folder (release.yml).
+# A Developer ID build is notarized when APPLE_API_KEY (the .p8 file's path), APPLE_API_KEY_ID and APPLE_API_ISSUER are set.
 set -eu
 cd "$(git rev-parse --show-toplevel)"
 export PATH="$HOME/.cargo/bin:$PATH"
 # Packaged builds number themselves by commit count, as `pnpm start` does (proposed).
 BUILD=$(git rev-list --count HEAD)
-BRIGADIER_BUILD=$BUILD cargo build --release --locked
-pnpm build
-rm -rf target/bin
-mkdir target/bin
-cp target/release/{brigadierd,brigadier,brigadier-host,brigadier-fake,brigadier-procs,brigadier-remote,libbrigadier_panel.dylib} target/bin/
-# The daemon's launcher is a small app of its own, so macOS's privacy prompts read as Brigadier and
-# keep their answers by its id, not by each build's path (crates/daemon/src/install.rs).
-LAUNCHER="target/bin/Brigadier.app/Contents"
-mkdir -p "$LAUNCHER/MacOS" "$LAUNCHER/Resources"
-cp target/release/brigadier-launcher "$LAUNCHER/MacOS/Brigadier"
-cp app/main/icons/icon.icns "$LAUNCHER/Resources/"
-cp crates/daemon/Info.plist "$LAUNCHER/"
-for pair in "CFBundleIdentifier ${APP_ID:-sh.brigadier.app}.agents" "CFBundleExecutable Brigadier" "CFBundlePackageType APPL" \
-  "CFBundleIconFile icon.icns" "CFBundleVersion $BUILD" "CFBundleShortVersionString $BUILD"; do
-  plutil -replace "${pair%% *}" -string "${pair#* }" "$LAUNCHER/Info.plist"
-done
-plutil -replace LSUIElement -bool true "$LAUNCHER/Info.plist"
-# Computer use's helper is its own app, launched through LaunchServices, so macOS charges the
-# Accessibility and Screen Recording grants to it, not to Brigadier or an agent's shell [D908, D913].
-# It hosts Cua Driver 0.54.0 (MIT) as released; osx-sign re-signs it, inside out, with the app.
-CUA=cua-driver-rs-0.54.0-darwin-universal-binary.tar.gz
-mkdir -p target/cua
-if [ ! -f "target/cua/$CUA" ]; then
-  curl -fsSL -o "target/cua/$CUA.part" "https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.54.0/$CUA"
-  mv "target/cua/$CUA.part" "target/cua/$CUA"
+[ -n "${PREPACKAGED:-}" ] || pnpm build
+case "$(uname -s)" in
+  Darwin) OS=mac ARCHS=${ARCHS:-arm64} EXE= ;;
+  Linux) OS=linux ARCHS=x64 EXE= ;;
+  *) OS=win ARCHS=x64 EXE=.exe ;;
+esac
+export OS ARCHS
+if [ $OS = mac ]; then
+  # Computer use's helper hosts Cua Driver 0.54.0 (MIT) as released, and its source gives the driver's crates' licences.
+  CUA=cua-driver-rs-0.54.0-darwin-universal-binary.tar.gz
+  CUA_SRC=cua-driver-rs-v0.54.0.tar.gz
+  mkdir -p target/cua
+  for get in "$CUA releases/download/cua-driver-rs-v0.54.0/$CUA" "$CUA_SRC archive/refs/tags/$CUA_SRC"; do
+    [ -f "target/cua/${get%% *}" ] && continue
+    curl -fsSL -o "target/cua/${get%% *}.part" "https://github.com/trycua/cua/${get#* }"
+    mv "target/cua/${get%% *}.part" "target/cua/${get%% *}"
+  done
+  shasum -a 256 -c - <<EOF
+c0ddcf71381ec4b745703694c2cd19812d2938b8a095cbccac994d8d2dc4893d  target/cua/$CUA
+2210d069849ae4e5a301bb8c06c82939f85ef38b734f452c360682f42755c807  target/cua/$CUA_SRC
+EOF
+  rm -rf target/cua/src
+  mkdir target/cua/src
+  tar -xzf "target/cua/$CUA_SRC" -C target/cua/src
+  export CUA_RUST=target/cua/src/cua-cua-driver-rs-v0.54.0/libs/cua-driver/rust
 fi
-echo "c0ddcf71381ec4b745703694c2cd19812d2938b8a095cbccac994d8d2dc4893d  target/cua/$CUA" | shasum -a 256 -c -
-HELPER="target/Brigadier Computer Use.app/Contents"
-rm -rf "target/Brigadier Computer Use.app"
-mkdir -p "$HELPER/MacOS" "$HELPER/Resources"
-cp target/release/brigadier-computer "$HELPER/MacOS/"
-tar -xzf "target/cua/$CUA" -C "$HELPER/Resources" cua-driver
-cp app/main/icons/icon.icns "$HELPER/Resources/"
-cat >"$HELPER/Info.plist" <<EOF
+for ARCH in $([ -n "${PREPACKAGED:-}" ] || echo $ARCHS); do
+  case $OS-$ARCH in
+    mac-arm64) TRIPLE=aarch64-apple-darwin ;;
+    mac-x64) TRIPLE=x86_64-apple-darwin ;;
+    linux-x64) TRIPLE=x86_64-unknown-linux-gnu ;;
+    win-x64) TRIPLE=x86_64-pc-windows-msvc ;;
+    *) echo "package: no $ARCH build on $OS" >&2; exit 1 ;;
+  esac
+  BRIGADIER_BUILD=$BUILD cargo build --release --locked --target $TRIPLE
+  RELEASE=target/$TRIPLE/release
+  PKG=target/pkg/$ARCH
+  rm -rf "$PKG"
+  mkdir -p "$PKG/bin"
+  for bin in brigadierd brigadier brigadier-host brigadier-fake brigadier-procs brigadier-remote; do cp "$RELEASE/$bin$EXE" "$PKG/bin/"; done
+  # The panel addon, the launcher and computer use are macOS's [D158].
+  [ $OS = mac ] || continue
+  cp "$RELEASE/libbrigadier_panel.dylib" "$PKG/bin/"
+  # The daemon's launcher is a small app of its own, so macOS's privacy prompts read as Brigadier and
+  # keep their answers by its id, not by each build's path (crates/daemon/src/install.rs).
+  LAUNCHER="$PKG/bin/Brigadier.app/Contents"
+  mkdir -p "$LAUNCHER/MacOS" "$LAUNCHER/Resources"
+  cp "$RELEASE/brigadier-launcher" "$LAUNCHER/MacOS/Brigadier"
+  cp app/main/icons/icon.icns "$LAUNCHER/Resources/"
+  cp crates/daemon/Info.plist "$LAUNCHER/"
+  for pair in "CFBundleIdentifier ${APP_ID:-sh.brigadier.app}.agents" "CFBundleExecutable Brigadier" "CFBundlePackageType APPL" \
+    "CFBundleIconFile icon.icns" "CFBundleVersion $BUILD" "CFBundleShortVersionString $BUILD"; do
+    plutil -replace "${pair%% *}" -string "${pair#* }" "$LAUNCHER/Info.plist"
+  done
+  plutil -replace LSUIElement -bool true "$LAUNCHER/Info.plist"
+  # Computer use's helper is its own app, launched through LaunchServices, so macOS charges the
+  # Accessibility and Screen Recording grants to it, not to Brigadier or an agent's shell [D908, D913].
+  # It hosts Cua Driver as released; osx-sign re-signs it, inside out, with the app.
+  HELPER="$PKG/Brigadier Computer Use.app/Contents"
+  mkdir -p "$HELPER/MacOS" "$HELPER/Resources"
+  cp "$RELEASE/brigadier-computer" "$HELPER/MacOS/"
+  tar -xzf "target/cua/$CUA" -C "$HELPER/Resources" cua-driver
+  cp app/main/icons/icon.icns "$HELPER/Resources/"
+  cat >"$HELPER/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -61,59 +97,129 @@ cat >"$HELPER/Info.plist" <<EOF
 </dict>
 </plist>
 EOF
+done
 node --input-type=module <<'EOF'
-import { packager } from "@electron/packager";
-// Electron's own checksums, as its installer uses: a cached zip needs no network.
-import checksums from "electron/checksums.json" with { type: "json" };
-// osx-sign's own defaults for an Electron app, plus Apple Events for agents that script other apps.
-const entitlements = ["allow-jit", "device.audio-input", "device.bluetooth", "device.camera", "device.print", "device.usb",
-  "personal-information.location", "personal-information.photos-library", "automation.apple-events"]
+import { build, Arch, Platform } from "electron-builder";
+import { execFileSync } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+// electron-builder's own osx-sign, reached through it: the custom sign below keeps our per-file options.
+const builderRequire = createRequire(createRequire(import.meta.url).resolve("electron-builder"));
+const { signAsync } = createRequire(builderRequire.resolve("app-builder-lib"))("@electron/osx-sign");
+const { OS, ARCHS, CUA_RUST } = process.env;
+const identity = process.env.BRIGADIER_SIGN_IDENTITY || "-";
+// osx-sign 2's defaults for an Electron app, as @electron/packager signed with; electron-builder's osx-sign 1 drops photos.
+// Its GPU and Renderer helpers get only allow-jit.
+const defaults = ["allow-jit", "device.audio-input", "device.bluetooth", "device.camera", "device.print", "device.usb",
+  "personal-information.location", "personal-information.photos-library"]
   .map((e) => `com.apple.security.${e.startsWith("allow") ? "cs." : ""}${e}`);
+// The app's own, plus Apple Events for agents that script other apps.
+const entitlements = [...defaults, "com.apple.security.automation.apple-events"];
 // Hardened runtime needs a Team ID: ad hoc and self-signed code fail its library validation on Electron's
 // own framework. A Developer ID build runs every part hardened, so no dylib can be injected into one [O300].
-const hardenedRuntime = (process.env.BRIGADIER_SIGN_IDENTITY ?? "").startsWith("Developer ID");
+const hardenedRuntime = identity.startsWith("Developer ID");
+// Notarization needs a secure timestamp on every signature; ad hoc builds skip the server.
+const timestamp = hardenedRuntime ? undefined : "none";
 // The daemon's launcher is the responsible process for its agents: hardened, macOS asks for these on their behalf
 // only if it declares them, so it declares every resource Apple lists for hardened runtime, and the
 // daemon too, which runs alone where launchd refuses the launcher [D606].
 const daemon = ["automation.apple-events", "device.audio-input", "device.camera", "personal-information.location",
   "personal-information.photos-library", "personal-information.addressbook", "personal-information.calendars"]
   .map((e) => `com.apple.security.${e}`);
-await packager({
-  dir: ".",
-  name: "Brigadier",
-  appBundleId: process.env.APP_ID ?? "sh.brigadier.app",
-  // The old app's icon, as it was: Dock, Finder and ⌘Tab.
-  icon: "app/main/icons/icon.icns",
-  out: "out",
-  overwrite: true,
-  download: { checksums },
-  extraResource: ["target/bin", "target/Brigadier Computer Use.app", "THIRD_PARTY_NOTICES.md", "LICENSE"],
-  extendInfo: {
-    NSAppleEventsUsageDescription: "An agent in Brigadier wants to control this app for your task.",
-    // The old app's words; macOS asks with them when a page the person allowed wants a position [D516, C68].
-    NSLocationUsageDescription: "Only web pages you allow in Brigadier's browser can know your location, like in any browser.",
-    NSLocationWhenInUseUsageDescription: "Only web pages you allow in Brigadier's browser can know your location, like in any browser.",
-    // Finder's Open With on a folder [D165, D2004].
-    CFBundleDocumentTypes: [{ CFBundleTypeName: "Folder", CFBundleTypeRole: "Viewer", LSHandlerRank: "Alternate", LSItemContentTypes: ["public.folder"] }],
-  },
-  // Only what the app reads at run time: the UI is bundled, so no node_modules; the menu bar's icon (tray.ts).
-  ignore: /^\/(?!package\.json$|app($|\/main($|\/dist|\/browser($|\/browser_agent\.js$)|\/icons($|\/tray(-active)?\.png$))|\/ui($|\/dist($|\/)|\/src($|\/(theme\.css|shortcuts\.json)$))))/,
-  osxSign: {
-    identity: process.env.BRIGADIER_SIGN_IDENTITY || "-",
-    keychain: process.env.BRIGADIER_SIGN_KEYCHAIN || undefined,
-    identityValidation: false,
-    // Computer use's helper and its driver run hardened with Cua's own release entitlements, so no
-    // other process can load code into what holds the grants [D913]. Electron's helpers keep osx-sign's
-    // per-helper defaults, but for the Plugin helper's disable-library-validation: nothing loads plugins.
-    // Our Rust binaries need nothing more than brigadierd's.
-    optionsForFile: (file) =>
-      file.includes("/Brigadier Computer Use.app")
-        ? { timestamp: "none", hardenedRuntime: true, entitlements: ["com.apple.security.automation.apple-events", "com.apple.security.device.screen-capture"] }
-        : { timestamp: "none", hardenedRuntime,
-            // Hardened, the app gets only the resources it declares: every one the daemon does too [D951].
-            ...(file.endsWith("/Brigadier.app") && { entitlements: hardenedRuntime ? [...new Set([...entitlements, ...daemon])] : entitlements }),
-            ...(file.includes("(Plugin).app") && { entitlements: ["com.apple.security.cs.allow-jit", "com.apple.security.cs.allow-unsigned-executable-memory"] }),
-            ...(file.includes("/Resources/bin/") && { entitlements: file.endsWith("/brigadierd") || file.includes("/bin/Brigadier.app") ? daemon : [] }) },
+// Computer use's helper and its driver run hardened with Cua's own release entitlements, so no
+// other process can load code into what holds the grants [D913]. Electron's helpers keep osx-sign's
+// per-helper defaults, but for the Plugin helper's disable-library-validation: nothing loads plugins.
+// Our Rust binaries need nothing more than brigadierd's.
+const optionsForFile = (file) =>
+  file.includes("/Brigadier Computer Use.app")
+    ? { timestamp, hardenedRuntime: true, entitlements: ["com.apple.security.automation.apple-events", "com.apple.security.device.screen-capture"] }
+    : { timestamp, hardenedRuntime, entitlements: defaults,
+        // Hardened, the app gets only the resources it declares: every one the daemon does too [D951].
+        ...(file.endsWith("/Brigadier.app") && { entitlements: hardenedRuntime ? [...new Set([...entitlements, ...daemon])] : entitlements }),
+        ...(/\((GPU|Renderer)\)\.app/.test(file) && { entitlements: ["com.apple.security.cs.allow-jit"] }),
+        ...(file.includes("(Plugin).app") && { entitlements: ["com.apple.security.cs.allow-jit", "com.apple.security.cs.allow-unsigned-executable-memory"] }),
+        ...(file.includes("/Resources/bin/") && { entitlements: file.endsWith("/brigadierd") || file.includes("/bin/Brigadier.app") ? daemon : [] }) };
+const triple = (arch) => `${{ x64: "x86_64", arm64: "aarch64" }[arch]}-${{ mac: "apple-darwin", linux: "unknown-linux-gnu", win: "pc-windows-msvc" }[OS]}`;
+const appId = process.env.APP_ID ?? "sh.brigadier.app";
+const platform = { mac: Platform.MAC, linux: Platform.LINUX, win: Platform.WINDOWS }[OS];
+await build({
+  targets: platform.createTarget(null, ...ARCHS.split(" ").map((a) => Arch[a])),
+  // Only the release workflow's publish job uploads; config.publish still writes the update files.
+  publish: "never",
+  ...(process.env.PREPACKAGED && { prepackaged: process.env.PREPACKAGED }),
+  config: {
+    appId,
+    copyright: "Copyright © 2026 SYNCRA, SRL",
+    directories: { output: "out" },
+    // Only what the app reads at run time: the UI is bundled, so no node_modules; the menu bar's icons (tray.ts),
+    // and off macOS the window's, the tray's and the taskbar badge's (tray.ts, notices.ts).
+    files: ["package.json", "app/main/dist/**", "app/main/browser/browser_agent.js", "app/ui/dist/**",
+      "app/ui/src/theme.css", "app/ui/src/shortcuts.json", "app/main/icons/tray.png", "app/main/icons/tray-active.png",
+      ...(OS === "mac" ? [] : ["app/main/icons/icon.png", "app/main/icons/icon.ico", "app/main/icons/badge.png"]), "!node_modules"],
+    npmRebuild: false,
+    // CFBundleVersion stays the version, as before, not CI's run number.
+    buildVersion: JSON.parse(readFileSync("package.json", "utf8")).version,
+    extraResources: [{ from: "target/pkg/${arch}/bin", to: "bin" }, "THIRD_PARTY_NOTICES.md", "LICENSE",
+      ...(OS === "mac" ? [{ from: "target/pkg/${arch}/Brigadier Computer Use.app", to: "Brigadier Computer Use.app" }] : [])],
+    // Each package's licences, checked before it's signed [D34].
+    afterPack: ({ appOutDir, arch, packager }) => {
+      const contents = path.join(appOutDir, `${packager.appInfo.productFilename}.app/Contents`);
+      const resources = OS === "mac" ? path.join(contents, "Resources") : path.join(appOutDir, "resources");
+      // Electron's helpers keep their names and version as @electron/packager wrote them.
+      if (OS === "mac") for (const helper of readdirSync(path.join(contents, "Frameworks")).filter((f) => f.endsWith(".app"))) {
+        const plist = path.join(contents, "Frameworks", helper, "Contents/Info.plist");
+        const name = helper === `${packager.appInfo.productFilename} Helper.app` ? packager.appInfo.productName : helper.slice(0, -4);
+        execFileSync("plutil", ["-replace", "CFBundleName", "-string", name, plist]);
+        execFileSync("plutil", ["-replace", "CFBundleShortVersionString", "-string", packager.appInfo.version, plist]);
+      }
+      execFileSync("node", ["scripts/notices", triple(Arch[arch]), path.join(OS === "mac" ? resources : appOutDir, "LICENSES.chromium.html"),
+        path.join(resources, "THIRD_PARTY_LICENSES.txt"), ...(CUA_RUST ? [CUA_RUST] : [])], { stdio: "inherit" });
+    },
+    publish: [{ provider: "github", owner: "syncra-studio", repo: "brigadier" }],
+    mac: {
+      target: ["dmg", "zip"],
+      // Brigadier-<version>-arm64.dmg and -x64.dmg, each Mac's own [D168].
+      artifactName: "${productName}-${version}-${arch}.${ext}",
+      // The old app's icon, as it was: Dock, Finder and ⌘Tab.
+      icon: "app/main/icons/icon.icns",
+      // Electron's helpers keep one id, as @electron/packager gave them.
+      ...Object.fromEntries(["", "Renderer", "Plugin", "GPU", "EH", "NP"].map((k) => [`helper${k}BundleId`, `${appId}.helper`])),
+      identity,
+      hardenedRuntime,
+      notarize: hardenedRuntime,
+      sign: (options) => signAsync({ ...options, keychain: process.env.BRIGADIER_SIGN_KEYCHAIN || options.keychain, optionsForFile }),
+      extendInfo: {
+        NSAppleEventsUsageDescription: "An agent in Brigadier wants to control this app for your task.",
+        // The old app's words; macOS asks with them when a page the person allowed wants a position [D516, C68].
+        NSLocationUsageDescription: "Only web pages you allow in Brigadier's browser can know your location, like in any browser.",
+        NSLocationWhenInUseUsageDescription: "Only web pages you allow in Brigadier's browser can know your location, like in any browser.",
+        // Finder's Open With on a folder [D165, D2004].
+        CFBundleDocumentTypes: [{ CFBundleTypeName: "Folder", CFBundleTypeRole: "Viewer", LSHandlerRank: "Alternate", LSItemContentTypes: ["public.folder"] }],
+      },
+    },
+    win: { target: "nsis", icon: "app/main/icons/icon.ico" },
+    // Per user, no admin: %LOCALAPPDATA%\Programs\Brigadier, its shortcut's AppUserModelID the appId [D2] (proposed).
+    nsis: { oneClick: true, perMachine: false },
+    linux: {
+      target: ["AppImage", "deb", "rpm"],
+      icon: "app/main/icons/icon.png",
+      category: "Development",
+      // sh.brigadier.app.desktop, package.json's desktopName, which the window's app id matches.
+      syncDesktopName: true,
+      // Open With on a folder, as Finder's on macOS.
+      mimeTypes: ["inode/directory"],
+      maintainer: "SYNCRA, SRL <hello@syncra.studio>",
+      vendor: "SYNCRA, SRL",
+      description: "Run all your AI coding agents side by side, in one app.",
+    },
   },
 });
 EOF
+# The apps keep the paths scripts and people already use.
+if [ $OS = mac ]; then
+  for ARCH in $ARCHS; do
+    rm -rf "out/Brigadier-darwin-$ARCH"
+    mv "out/mac$([ $ARCH = x64 ] || echo "-$ARCH")" "out/Brigadier-darwin-$ARCH"
+  done
+fi

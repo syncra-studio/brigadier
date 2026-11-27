@@ -1,0 +1,3 @@
+# electron-builder pulls in Squirrel's installer, which Brigadier doesn't use; its build script stays off.
+allowBuilds:
+  electron-winstaller: false

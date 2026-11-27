@@ -1,0 +1,141 @@
+#!/usr/bin/env node
+// Writes one package's third-party licences [D34], run by scripts/package on each built package: the Rust crates
+// its binaries link, the UI bundle's npm packages, Cua Driver's crates on macOS, and Electron's flagged Chromium
+// components, whose own notices ship beside it (LICENSE.electron.txt, LICENSES.chromium.html). Every licence must
+// have its obligation recorded below; one without fails the package (proposed).
+// Usage: scripts/notices <rust target triple> <LICENSES.chromium.html> <out file> [<Cua's Rust workspace>]
+"use strict";
+const { execFileSync } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
+const os = require("node:os");
+
+const [triple, credits, outFile, cua] = process.argv.slice(2);
+if (!outFile) throw new Error("usage: scripts/notices <triple> <LICENSES.chromium.html> <out file> [<Cua workspace>]");
+const root = path.resolve(__dirname, "..");
+const electron = require(path.join(root, "node_modules/electron/package.json")).version;
+
+const PERMISSIVE = new Set(["MIT", "MIT-0", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib", "0BSD",
+  "Unlicense", "CC0-1.0", "BSL-1.0", "Unicode-3.0", "Unicode-DFS-2016", "CDLA-Permissive-2.0", "BlueOak-1.0.0"].map((id) => id.toUpperCase()));
+// Copyleft licences with what shipping them asks of us (proposed). Anything not here and not permissive fails.
+const OBLIGATIONS = {
+  "MPL-2.0": "MPL-2.0, file-level copyleft: used unmodified, notice kept, and the covered source is public at the exact released version named here (MPL-2.0 §3.2)",
+};
+const CHROMIUM_SOURCE = `notice and licence text in LICENSES.chromium.html; Electron publishes the complete corresponding source of this build (https://github.com/electron/electron/tree/v${electron} and the Chromium revision its DEPS pins)`;
+// Chromium's credits whose text names a copyleft licence (Electron ${electron}), each with its obligation (proposed).
+const CHROMIUM = {
+  ffmpeg: `LGPL-2.1: Electron builds FFmpeg without its GPL parts as a separate shared library (libffmpeg, ffmpeg.dll) the user can replace; ${CHROMIUM_SOURCE}`,
+  JSZip: "MIT or GPL-3.0: used under MIT",
+};
+for (const title of ["Android NDK", "AXE-CORE Accessibility Audit", "Eigen", "grpc", "Netscape Portable Runtime (NSPR)",
+  "symphonia", "symphonia-bundle-flac", "symphonia-bundle-mp3", "symphonia-codec-pcm", "symphonia-codec-vorbis",
+  "symphonia-common", "symphonia-core", "symphonia-format-isomp4", "symphonia-format-mkv", "symphonia-format-ogg",
+  "symphonia-format-riff", "symphonia-metadata", "Braille Translation Library", "DirectX-Shader-Compiler", "glibc", "gtk",
+  "libbrlapi", "libsecret", "libusbx", "plasma-wayland-protocols", "Speech Dispatcher", "v4l-utils", "WebKit", "hunspell",
+  "hunspell dictionaries", "hyphenation-patterns", "Mozilla Windows Cert code", "ScreenAI Library", "icu", "Node.js",
+  "ISimpleDOM COM interfaces for accessibility", "Mozilla Personal Security Manager", "url_parse"])
+  CHROMIUM[title] ??= CHROMIUM_SOURCE;
+
+// An SPDX expression's obligations, taking the most permissive alternative of each OR; null if one has none recorded.
+function obligations(expression) {
+  const tokens = expression.replace(/\//g, " OR ").match(/\(|\)|[^\s()]+/g) ?? [];
+  let i = 0;
+  const atom = () => {
+    if (tokens[i] === "(") { i++; const v = or(); i++; return v; }
+    const id = tokens[i++]?.toUpperCase(); // npm writes some ids in lower case
+    if (tokens[i] === "WITH") i += 2;
+    return PERMISSIVE.has(id) ? [] : OBLIGATIONS[id] ? [OBLIGATIONS[id]] : null;
+  };
+  const and = () => { let v = atom(); while (tokens[i] === "AND") { i++; const w = atom(); v = v && w && [...v, ...w]; } return v; };
+  const or = () => {
+    const options = [and()];
+    while (tokens[i] === "OR") { i++; options.push(and()); }
+    return options.filter(Boolean).sort((a, b) => a.length - b.length)[0] ?? null;
+  };
+  return tokens.length ? or() : null;
+}
+
+const run = (cmd, args, cwd, env) => execFileSync(cmd, args, { cwd, env: { ...process.env, ...env }, encoding: "utf8",
+  stdio: ["ignore", "pipe", "pipe"], maxBuffer: 1 << 28, shell: process.platform === "win32" });
+const LICENCE_FILE = /^(licen[cs]e|copying|notice|copyright|unlicense)/i;
+const texts = new Map();
+function licenceFiles(dir) {
+  let names = [];
+  try { names = fs.readdirSync(dir).filter((n) => LICENCE_FILE.test(n) && fs.statSync(path.join(dir, n)).isFile()).sort(); } catch {}
+  return names.map((n) => {
+    const text = fs.readFileSync(path.join(dir, n), "utf8").trim();
+    if (!texts.has(text)) texts.set(text, texts.size + 1);
+    return `${n} [${texts.get(text)}]`;
+  });
+}
+
+const cargoHome = process.env.CARGO_HOME ?? path.join(os.homedir(), ".cargo");
+const registries = fs.readdirSync(path.join(cargoHome, "registry/src")).map((d) => path.join(cargoHome, "registry/src", d));
+// Registry crates linked into `pkgs` for this target; workspace (path) crates are the workspace's own.
+function crates(cwd, pkgs, targets, env) {
+  const found = new Map();
+  for (const target of targets) {
+    const tree = run("cargo", ["tree", "--locked", "--target", target, "-e", "normal,no-proc-macro", "--prefix", "none",
+      "--format", "{p}|{l}", ...pkgs.flatMap((p) => ["-p", p])], cwd, env);
+    for (const line of tree.split("\n")) {
+      const m = /^(\S+) v(\S+)( \(.*?\))?\|(.*?)( \(\*\))?$/.exec(line.trim());
+      if (!m || m[3]) continue; // a path crate: the workspace's own; neither workspace has git crates
+      found.set(`${m[1]} ${m[2]}`, { name: m[1], version: m[2], licence: m[4] });
+    }
+  }
+  return [...found.values()].sort((a, b) => a.name.localeCompare(b.name)).map((c) => {
+    const dir = registries.map((r) => path.join(r, `${c.name}-${c.version}`)).find((d) => fs.existsSync(d));
+    return { ...c, files: dir ? licenceFiles(dir) : [] };
+  });
+}
+
+const failures = [];
+const copyleft = [];
+const lines = [];
+function section(title, list, overrides = {}) {
+  lines.push(`\n## ${title}\n`);
+  for (const p of list) {
+    const due = overrides[p.name] ? [overrides[p.name]] : obligations(p.licence || "");
+    if (!due) failures.push(`${title}: ${p.name} ${p.version} (${p.licence || "no licence declared"})`);
+    else if (due.length) copyleft.push(`${p.name} ${p.version} (${p.licence}): ${due.join("; ")}`);
+    lines.push(`- ${p.name} ${p.version}: ${p.licence || "no licence declared"}. ${p.files.length ? p.files.join(", ") : `No licence file in its package; its declared licence's standard text applies (https://spdx.org/licenses/).`}`);
+  }
+}
+
+const mac = triple.endsWith("apple-darwin");
+const ours = ["brigadierd", "brigadier", "brigadier-host", "brigadier-fake", "brigadier-procs", "brigadier-remote",
+  ...(mac ? ["brigadier-panel", "brigadier-computer"] : [])];
+section(`Rust crates in Brigadier's binaries (${triple})`, crates(root, ours, [triple]));
+
+const npm = JSON.parse(run("pnpm", ["licenses", "list", "--prod", "--json"], root));
+section("npm packages in the app's interface", Object.values(npm).flat().flatMap((p) => p.versions.map((version, i) =>
+  ({ name: p.name, version, licence: p.license, files: licenceFiles(p.paths[i] ?? p.paths[0]) })))
+  .sort((a, b) => a.name.localeCompare(b.name)));
+
+if (cua) {
+  // The pinned Cua Driver is one universal binary, so both Mac targets' crates count. Any toolchain reads the tree.
+  const toolchain = /channel\s*=\s*"([^"]+)"/.exec(fs.readFileSync(path.join(root, "rust-toolchain.toml"), "utf8"))[1];
+  section("Rust crates in Cua Driver 0.54.0", crates(cua, ["cua-driver"], ["aarch64-apple-darwin", "x86_64-apple-darwin"], { RUSTUP_TOOLCHAIN: toolchain }));
+  lines.push(`\nCua Driver's own crates are MIT (Cua, see THIRD_PARTY_NOTICES.md). Its notices, as released:\n\n${fs.readFileSync(path.join(cua, "THIRD_PARTY_NOTICES.md"), "utf8").trim()}`);
+}
+
+const html = fs.readFileSync(credits, "utf8");
+lines.push(`\n## Electron ${electron} and Chromium\n\nElectron's licence is LICENSE.electron.txt and Chromium's credits are LICENSES.chromium.html, both in this package. Their components that name a copyleft licence:\n`);
+for (const [, title, text] of html.matchAll(/<span class="title">([\s\S]*?)<\/span>[\s\S]*?<pre>([\s\S]*?)<\/pre>/g)) {
+  if (!/GNU (LESSER |LIBRARY |AFFERO )?GENERAL PUBLIC|Mozilla Public License|Eclipse Public/i.test(text)) continue;
+  const name = title.trim();
+  if (!CHROMIUM[name]) failures.push(`Chromium: ${name}`);
+  else { copyleft.push(`Chromium's ${name}: ${CHROMIUM[name]}`); lines.push(`- ${name}: ${CHROMIUM[name]}`); }
+}
+
+const out = [`# Third-party licences in this package (${triple})`, "",
+  "Brigadier is MIT, copyright SYNCRA, SRL (LICENSE). THIRD_PARTY_NOTICES.md credits copied source and assets.",
+  "Each one's copyright and licence text are kept below. The copyleft ones, with what each asks:", "",
+  ...copyleft.map((c) => `- ${c}`), ...lines, "\n## Licence texts\n",
+  ...[...texts].map(([text, n]) => `### [${n}]\n\n${text}\n`)].join("\n");
+fs.writeFileSync(outFile, out + "\n");
+console.log(`notices: ${outFile}, ${texts.size} licence texts, ${copyleft.length} copyleft with obligations recorded`);
+if (failures.length) {
+  console.error(`notices: no obligation recorded for:\n  ${failures.join("\n  ")}`);
+  process.exit(1);
+}
