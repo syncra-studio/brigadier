@@ -34,7 +34,7 @@ import { ModelPill } from "./Model";
 import { Pill, PillDivider } from "./Pill";
 import { QueueCard } from "./Queue";
 import { ThreadImage } from "../thread/Image";
-import { type Attachment, forMac, newId, type Picked, withChips } from "./state";
+import { type Attachment, forMac, newId, type Picked, type ToLost, withChips } from "./state";
 
 /** A session's row with what the composer needs from Rust, as the desktop's ComposerRow. */
 type ComposerRow = ModelRow & {
@@ -125,8 +125,12 @@ export function Composer({ id }: { id: string }) {
   // Kept apart from its row: a worker gone from the list keeps its To:, and Send waits till the user changes it.
   const [to, setTo] = useState<To | null>(null);
   const [toSending, setToSending] = useState(false);
-  /** A message to a worker whose reply was lost: it may have gone, so it's kept with its command, tried again as itself. */
-  const [toLost, setToLost] = useState<{ target: To; args: string[]; text: string; error: string; back: () => void } | null>(null);
+  /** Messages to workers whose reply was lost: they may have gone, so each is kept with its command, tried again as itself. */
+  const toLost = useSyncExternalStore(mac.lostTo.store.subscribe, () => mac.lostTo.of(id));
+  // One through the queue that's in Rust's queue now went: settled.
+  useEffect(() => {
+    for (const lost of toLost) if (lost.queued && row?.queue?.items.some((each) => each.id === lost.cid)) mac.lostTo.put(id, lost.cid, null);
+  });
   const toRow = useSyncExternalStore(lists.subscribe, () => (to ? lists.get().rows.find((each) => each.id === to.id && each.worker?.parent === id) : undefined));
   const toWorker = to && { id: to.id, name: toRow?.title || to.name };
   const toGone = to !== null && !toRow;
@@ -397,26 +401,31 @@ export function Composer({ id }: { id: string }) {
     const pulled = take();
     if (pulled) act({ kind: "add", qid: pulled.qid, text: pulled.text, slot: pulled.slot }, ["restore"]);
     fileStore.sent(id);
-    toGo(target, toArgs(id, target.id, message, { qid: cid }, steer, draft), message, () => {
+    setToSending(true);
+    setError(null);
+    const entry = { cid, target, args: toArgs(id, target.id, message, { qid: cid }, steer, draft), text: message, queued: !steer };
+    void run(entry.args).then((reply) => {
+      setToSending(false);
+      const went = reply.ok || reply.result === "logged";
+      if (went || lostReply(reply)) setTo((now) => (now?.id === target.id ? null : now));
+      if (went) return;
+      // No answer: it may have gone, so it waits under its own id for Try again or Discard.
+      if (lostReply(reply)) return mac.lostTo.put(id, cid, { ...entry, error: failure(reply) });
+      // Refused: its words come back above what's typed since, with its files and its To: [D363].
       const since = partsNow();
       setField(isEmpty({ parts: since, attachmentIds: [] }) ? parts : [...parts, "\n\n", ...since]);
       fileStore.restore(id, tiles);
-    });
-  };
-  /** Runs a message's command to a worker: taken, it's gone; refused, `back` gives it back with its To:; no answer, it may have gone, so it waits under its own id for Try again or Discard. */
-  const toGo = (target: To, args: string[], text: string, back: () => void) => {
-    setToSending(true);
-    setError(null);
-    setToLost(null);
-    void run(args).then((reply) => {
-      setToSending(false);
-      if (reply.ok || reply.result === "logged" || lostReply(reply)) setTo((now) => (now?.id === target.id ? null : now));
-      if (reply.ok || reply.result === "logged") return;
-      if (lostReply(reply)) return setToLost({ target, args, text, error: failure(reply), back });
-      back();
       setTo(target);
       setError(failure(reply));
     });
+  };
+  /** Try again: its own command, under its id; it stays kept unless the Mac took it, as a retry's refusal doesn't say the first never went. */
+  const toAgain = (lost: ToLost) =>
+    void run(lost.args).then((reply) => mac.lostTo.put(id, lost.cid, reply.ok || reply.result === "logged" ? null : { ...lost, error: failure(reply) }));
+  /** Discard: one through the queue is taken out of it; a steer can't be, so it only stops showing here. */
+  const toDiscard = (lost: ToLost) => {
+    if (!lost.queued) return mac.lostTo.put(id, lost.cid, null);
+    void run(["queue", id, "remove", lost.cid]).then((reply) => mac.lostTo.put(id, lost.cid, lostReply(reply) ? { ...lost, error: failure(reply) } : null));
   };
   /**
    * Send as new, from a project's session (the /new chip): the message starts a new session there and the user stays.
@@ -612,16 +621,17 @@ export function Composer({ id }: { id: string }) {
     <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={header}>
       <SafeAreaView edges={{ bottom: "maximum" }} style={st.column}>
         {shownSends.map((each) => <OnItsWay key={each.cid} entry={each} id={id} />)}
-        {toLost ? (
-          <View style={st.going}>
-            <Text style={st.goingText} numberOfLines={3}>{toLost.text}</Text>
-            <Text style={st.error}>May have been sent · {toLost.error}</Text>
+        {toLost.map((lost) => (
+          <View key={lost.cid} style={st.going}>
+            <Text style={st.goingText} numberOfLines={3}>{lost.text}</Text>
+            <Text style={st.error}>May have been sent to {lost.target.name} · {lost.error}</Text>
+            {lost.queued ? null : <Text style={st.muted}>If it went, it still reaches {lost.target.name}</Text>}
             <View style={st.actions}>
-              <Link title="Try again" onPress={() => toGo(toLost.target, toLost.args, toLost.text, toLost.back)} />
-              <Link title="Discard" onPress={() => setToLost(null)} />
+              <Link title="Try again" onPress={() => toAgain(lost)} />
+              <Link title={lost.queued ? "Discard" : "Stop showing"} onPress={() => toDiscard(lost)} />
             </View>
           </View>
-        ) : null}
+        ))}
         {/* A menu takes the rail's place, just over the card. */}
         {menu?.kind === "/" ? (
           <Commands listed={listed} extra={extra} query={menu.query} onPick={(command) => pickCommand(command, (chip) => replace(`${chip.label} `, chip))} />

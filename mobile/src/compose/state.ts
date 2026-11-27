@@ -24,6 +24,10 @@ if (!g.localStorage) {
 
 export const newId = (): string => crypto.randomUUID();
 
+/** A message to a worker whose reply was lost (`queued`: through this session's queue, else a steer), with why. */
+export type ToLost = { cid: string; target: { id: string; name: string }; args: string[]; text: string; queued: boolean; error: string };
+const NO_LOST: readonly ToLost[] = [];
+
 /** A `brigadier` command on the connected Mac, answered with its reply, a refusal included; with no stream, refused with why. */
 /** The sample screens' replies, set by mac/sample.ts: no Mac there. */
 export const canned: { reply?: (args: string[]) => Record<string, any> | undefined } = {};
@@ -202,7 +206,18 @@ function macState(pk: string) {
   const shells = new Map<string, string>();
   /** Each /new whose reply was lost, by session and message: confirmed again, it's the same signed command, so one session is made. */
   const sides = new Map<string, string[]>();
-  return { run, unsaved, uncertain, drafts, sends, chips: chipState(uncertain, run), files: fileState(run), models: modelState(), edits, shells, sides };
+  /** Each session's messages to its workers whose reply was lost, by command id, till each is settled or let go. */
+  const toWorkers = store<ReadonlyMap<string, readonly ToLost[]>>(new Map());
+  const lostTo = {
+    store: toWorkers,
+    of: (id: string) => toWorkers.get().get(id) ?? NO_LOST,
+    /** `entry` kept in place of the one under `cid`; null, it goes. */
+    put: (id: string, cid: string, entry: ToLost | null) => {
+      const rest = lostTo.of(id).filter((each) => each.cid !== cid);
+      toWorkers.set(new Map(toWorkers.get()).set(id, entry ? [...rest, entry] : rest));
+    },
+  };
+  return { run, unsaved, uncertain, drafts, sends, chips: chipState(uncertain, run), files: fileState(run), models: modelState(), edits, shells, sides, lostTo };
 }
 
 const macs = new Map<string, ReturnType<typeof macState>>();
