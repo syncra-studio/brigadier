@@ -45,8 +45,10 @@ pub(super) fn drag(
         )
     };
     let ((fx, fy), (tx, ty)) = (at(a), at(b));
-    // A file dragged in Finder means a drop; a pane's divider or a slider means none [D129].
-    let drop = (s.controls.iter()).any(|c| c.n == from && c.cell) && finder(s.pid);
+    // A file dragged in Finder, by its row, cell or name, means a drop; a pane's divider or a
+    // slider means none [D129].
+    let item = |c: &&super::diff::Control| c.cell || ["AXRow", "AXCell"].contains(&c.role.as_str());
+    let drop = (s.controls.iter()).any(|c| c.n == from && item(&c)) && finder(s.pid);
     Ok(
         json!({"pid": s.pid, "window_id": s.window, "from_x": fx, "from_y": fy, "to_x": tx, "to_y": ty, "session": me, "drop": drop}),
     )
