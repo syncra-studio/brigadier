@@ -29,3 +29,33 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: scripts/limits
+
+  # The port's compile map [D135 D171]: informational and expected red until each system's phase
+  # clears it. The failing steps continue, so every step's own outcome still shows.
+  port-linux:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show active-toolchain || rustup toolchain install
+      - run: cargo clippy --locked --keep-going --target x86_64-unknown-linux-gnu -- -D warnings
+        continue-on-error: true
+
+  port-windows:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: windows-2025
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup show active-toolchain || rustup toolchain install
+      - run: cargo clippy --locked --keep-going --target x86_64-pc-windows-msvc -- -D warnings
+        continue-on-error: true
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+        continue-on-error: true
