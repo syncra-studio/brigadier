@@ -46,7 +46,8 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
             let specs = specs(data);
             let mut all = each(&specs, |spec| measure(data, spec, kind));
             if kind == "history" {
-                all.insert(REST.into(), size(&rest(data, &specs), &[]));
+                let code: Vec<PathBuf> = specs.iter().flat_map(code).collect();
+                all.insert(REST.into(), size(&rest(data, &specs), &code));
             }
             let mut sizes: BTreeMap<&str, u64> = BTreeMap::new();
             let mut shared: HashMap<(u64, u64), u64> = HashMap::new();
