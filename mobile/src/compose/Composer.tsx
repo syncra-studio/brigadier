@@ -89,6 +89,10 @@ const body = (parts: Draft["parts"], sent: readonly PanelChip[], tiles: readonly
 
 /** The desktop's home/start.ts sessionId: a new session's id, made here. */
 const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+/** A reply lost with the link: what it asked may have been done. */
+const lostReply = (reply: Record<string, any>) => reply.error === "closed" || reply.error === "disconnected";
+/** The worker a To: sends to, its name as it was picked. */
+type To = { id: string; name: string };
 const isNew = (part: Draft["parts"][number]) => typeof part !== "string" && part.kind === "command" && part.id === NEW_SESSION.id;
 
 export function Composer({ id }: { id: string }) {
@@ -118,10 +122,14 @@ export function Composer({ id }: { id: string }) {
   const [plus, setPlus] = useState(false);
   const [opened, setOpened] = useState(0);
   /** The To: the worker the next message goes to alone (@ › Message directly); leaving the session takes it away. */
-  const [to, setTo] = useState<string | null>(null);
+  // Kept apart from its row: a worker gone from the list keeps its To:, and Send waits till the user changes it.
+  const [to, setTo] = useState<To | null>(null);
   const [toSending, setToSending] = useState(false);
-  const toRow = useSyncExternalStore(lists.subscribe, () => (to ? lists.get().rows.find((each) => each.id === to && each.worker?.parent === id) : undefined));
-  const toWorker = toRow ? { id: toRow.id, name: toRow.title || "New session" } : null;
+  /** A message to a worker whose reply was lost: it may have gone, so it's kept with its command, tried again as itself. */
+  const [toLost, setToLost] = useState<{ target: To; args: string[]; text: string; error: string; back: () => void } | null>(null);
+  const toRow = useSyncExternalStore(lists.subscribe, () => (to ? lists.get().rows.find((each) => each.id === to.id && each.worker?.parent === id) : undefined));
+  const toWorker = to && { id: to.id, name: toRow?.title || to.name };
+  const toGone = to !== null && !toRow;
   const worker = Boolean(row?.worker);
   const partsNow = () => partsOf(words$.current, named$.current);
   // A `!` first makes the field a shell command, shown without its `!` [D316]: never a worker's, nor with a To:.
@@ -350,7 +358,7 @@ export function Composer({ id }: { id: string }) {
       });
     }
     if (waitsFor()) return;
-    if (toWorker && !isEmpty({ parts, attachmentIds: tiles })) return sendTo(toWorker.id, parts, tiles, other);
+    if (toWorker && !isEmpty({ parts, attachmentIds: tiles })) return sendTo(toWorker, parts, tiles, other);
     if (inProject && parts.some(isNew)) return submitNew(parts, tiles);
     if (isEmpty({ parts, attachmentIds: tiles }) && sent.length === 0) {
       // Held with nothing typed, it steers the first queued message [D183].
@@ -379,23 +387,33 @@ export function Composer({ id }: { id: string }) {
    * now or holds it in this session's queue, "To ‹name›", till that worker's turn is over. Taken, the To: goes; refused,
    * the message and its To: come back [D3006, D3013, D3050].
    */
-  const sendTo = (target: string, parts: Draft["parts"], tiles: string[], other: boolean) => {
-    if (toSending) return;
+  const sendTo = (target: To, parts: Draft["parts"], tiles: string[], other: boolean) => {
+    if (toSending || toGone) return;
     const [cid, message, draft] = [newId(), plainText(parts), payload(parts, tiles)];
     if (message.startsWith("--")) return setError("A message can't start with --");
-    const steer = sendMode(true, "queue", other, (lists.get().rows.find((each) => each.id === target) as ComposerRow | undefined)?.steer === true) === "steer";
+    // A steer can't take files from here [allow.rs `send --from`]: with them it goes through the queue.
+    const steer = tiles.length === 0 && sendMode(true, "queue", other, (lists.get().rows.find((each) => each.id === target.id) as ComposerRow | undefined)?.steer === true) === "steer";
     // A message pulled back to edit is never one for a worker here: it goes back to its place.
     const pulled = take();
     if (pulled) act({ kind: "add", qid: pulled.qid, text: pulled.text, slot: pulled.slot }, ["restore"]);
     fileStore.sent(id);
-    setToSending(true);
-    setError(null);
-    void run(toArgs(id, target, message, { qid: cid }, steer, draft)).then((reply) => {
-      setToSending(false);
-      if (reply.ok || reply.result === "logged") return setTo((now) => (now === target ? null : now));
+    toGo(target, toArgs(id, target.id, message, { qid: cid }, steer, draft), message, () => {
       const since = partsNow();
       setField(isEmpty({ parts: since, attachmentIds: [] }) ? parts : [...parts, "\n\n", ...since]);
       fileStore.restore(id, tiles);
+    });
+  };
+  /** Runs a message's command to a worker: taken, it's gone; refused, `back` gives it back with its To:; no answer, it may have gone, so it waits under its own id for Try again or Discard. */
+  const toGo = (target: To, args: string[], text: string, back: () => void) => {
+    setToSending(true);
+    setError(null);
+    setToLost(null);
+    void run(args).then((reply) => {
+      setToSending(false);
+      if (reply.ok || reply.result === "logged" || lostReply(reply)) setTo((now) => (now?.id === target.id ? null : now));
+      if (reply.ok || reply.result === "logged") return;
+      if (lostReply(reply)) return setToLost({ target, args, text, error: failure(reply), back });
+      back();
       setTo(target);
       setError(failure(reply));
     });
@@ -538,7 +556,8 @@ export function Composer({ id }: { id: string }) {
   const verb = running && !blank ? "Queue" : "Send message";
   // Why Send waits, in the desktop's words: offline it says so, as it does.
   const held = connected ? undefined : "Reconnecting…";
-  const blocked = held ?? waits ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined);
+  const gone = toGone ? `${to.name} is no longer on your Mac` : undefined;
+  const blocked = held ?? waits ?? gone ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined);
   const runs = state === "send" && shell;
   const tip = state === "stop" ? "Stop" : state === "resume" ? "Resume" : (blocked ?? (runs ? (running || commands ? "Run when the turn ends" : "Run command") : toWorker ? `Send to ${toWorker.name}` : verb));
   const off = (state === "send" && (blank || blocked !== undefined)) || (state === "stop" && stopping) || (state === "resume" && (resuming || !connected));
@@ -583,6 +602,16 @@ export function Composer({ id }: { id: string }) {
     <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={header}>
       <SafeAreaView edges={{ bottom: "maximum" }} style={st.column}>
         {shownSends.map((each) => <OnItsWay key={each.cid} entry={each} id={id} />)}
+        {toLost ? (
+          <View style={st.going}>
+            <Text style={st.goingText} numberOfLines={3}>{toLost.text}</Text>
+            <Text style={st.error}>May have been sent · {toLost.error}</Text>
+            <View style={st.actions}>
+              <Link title="Try again" onPress={() => toGo(toLost.target, toLost.args, toLost.text, toLost.back)} />
+              <Link title="Discard" onPress={() => setToLost(null)} />
+            </View>
+          </View>
+        ) : null}
         {/* A menu takes the rail's place, just over the card. */}
         {menu?.kind === "/" ? (
           <Commands listed={listed} extra={extra} query={menu.query} onPick={(command) => pickCommand(command, (chip) => replace(`${chip.label} `, chip))} />
@@ -594,7 +623,7 @@ export function Composer({ id }: { id: string }) {
             onDirect={(target) => {
               // Message directly leaves no mention in the text: only the To: chip.
               replace("");
-              setTo(target);
+              setTo({ id: target.id, name: target.name ?? target.label });
             }}
           />
         ) : plus ? (
@@ -666,7 +695,7 @@ export function Composer({ id }: { id: string }) {
           </View>
         </View>
         {/* Why Send waits: the desktop's tip for it, which a phone can't hover. */}
-        {(held ?? waits) && (!blank || held) ? <Text style={st.waits}>{held ?? waits}</Text> : null}
+        {(held ?? waits ?? gone) && (!blank || held || gone) ? <Text style={st.waits}>{held ?? waits ?? gone}</Text> : null}
         <ImageSigns />
         {night.sheet}
         {power ? (

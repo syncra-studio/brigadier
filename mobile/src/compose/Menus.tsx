@@ -160,7 +160,7 @@ export function Commands({ listed, extra, query, onPick }: { listed: Command[] |
 }
 
 /** The `@` menu: the Mac's groups for the query, only the last asked shown [D127]; `onDirect`, a Message directly row. */
-export function Mentions({ id, query, onPick, onDirect }: { id: string; query: string; onPick: (item: Mention) => void; onDirect?: (worker: string) => void }) {
+export function Mentions({ id, query, onPick, onDirect }: { id: string; query: string; onPick: (item: Mention) => void; onDirect?: (worker: Mention) => void }) {
   const [found, setFound] = useState<{ query: string; groups: MentionGroup[] } | null>(null);
   const asked = useRef(query);
   useEffect(() => {
@@ -190,7 +190,7 @@ export function Mentions({ id, query, onPick, onDirect }: { id: string; query: s
                 title={<MatchedText words={item.name ?? item.label} query={query} />}
                 detail={item.detail}
                 hint={item.type === "chat" ? "Chat" : item.hint}
-                onPress={() => (item.type === "direct" ? onDirect?.(item.id) : onPick(item))}
+                onPress={() => (item.type === "direct" ? onDirect?.(item) : onPick(item))}
               />
             ))}
             {group.note ? <MenuNote>{group.note}</MenuNote> : null}
