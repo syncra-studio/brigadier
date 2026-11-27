@@ -72,7 +72,7 @@ export function PeerBubble({ item }: { item: Message }) {
 export function AssistantMessage({ item, final }: { item: Message; final: boolean }) {
   return (
     <View style={{ gap: 6 }}>
-      <ReplyImages>
+      <ReplyImages keep={item.id}>
         <Markdown text={tidy(item.text)} />
       </ReplyImages>
       {final && <AnswerMarks time={item.sentAt} />}

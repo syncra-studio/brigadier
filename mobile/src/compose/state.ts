@@ -193,8 +193,8 @@ function macState(pk: string) {
   const sends = sendState(uncertain, drafts, { connection: streamNow, sendFailed: () => {} });
   /** The queued message this phone pulled back to edit, by session: Rust's one `editing` may be another device's. */
   const edits = new Map<string, { qid: string; slot: number; text: string }>();
-  /** A `!` command whose reply was lost, by session: confirmed again, it keeps its id, so the Mac runs it once. */
-  const shells = new Map<string, { line: string; qid: string }>();
+  /** Each `!` command whose reply was lost, by session and line: confirmed again, it keeps its id till the Mac takes it, so it runs once. */
+  const shells = new Map<string, string>();
   return { run, unsaved, uncertain, drafts, sends, chips: chipState(uncertain, run), files: fileState(run), models: modelState(), edits, shells };
 }
 

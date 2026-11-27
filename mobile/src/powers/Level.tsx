@@ -1,6 +1,6 @@
 // The session's permission pill, as the desktop's session/level.tsx and composer/pickers.tsx: the agent's own levels,
 // Ask alone where the folder isn't trusted, each change signed with Face ID (power `level`), Full access with the
-// desktop's confirm words. It applies from the next turn.
+// desktop's confirm words.
 import { useState } from "react";
 import { ActionSheetIOS, Pressable, StyleSheet, Text } from "react-native";
 import type { ModelRow } from "../../vendor/brigadier-shared/session/model";
@@ -64,7 +64,7 @@ export function LevelPill({ id, row, connected }: { id: string; row: LevelRow | 
         <Confirm
           {...(asking.level === "full"
             ? FULL_ACCESS
-            : { title: `Change to ${sheet.label}?`, body: "From the next turn.", shown: `${sheet.label}: ${sheet.detail}` })}
+            : { title: `Change to ${sheet.label}?`, shown: `${sheet.label}: ${sheet.detail}` })}
           args={["level", id, asking.level, "--op", asking.op]}
           onDone={(reply) => {
             setAsking(null);

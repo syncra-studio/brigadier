@@ -303,14 +303,15 @@ export function Composer({ id }: { id: string }) {
       setPowerError(null);
       const pulled = editing.get();
       // One whose reply was lost keeps its id when confirmed again: the Mac runs or queues an id once.
-      const retry = mac.shells.get(id);
-      const qid = pulled?.qid ?? (retry?.line === line ? retry.qid : `c-${newId()}`);
+      const shellKey = `${id}\n${line}`;
+      const qid = pulled?.qid ?? mac.shells.get(shellKey) ?? `c-${newId()}`;
       const typed = words$.current;
       return setPower({
         ...shellPower(id, line, qid, pulled?.slot),
         then: (reply) => {
-          if (reply.error === "closed") mac.shells.set(id, { line, qid });
-          else mac.shells.delete(id);
+          // Kept through refusals too ("Turned off…"): only the Mac taking this id lets it go.
+          if (reply.error === "closed") mac.shells.set(shellKey, qid);
+          else if (reply.ok && mac.shells.get(shellKey) === qid) mac.shells.delete(shellKey);
           if (!reply.ok) return setPowerError(refusal(reply));
           if (editing.get()?.qid === qid) editing.set(null);
           // Only the command leaves the field: a message given back above it while the sheet was open stays.
