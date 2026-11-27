@@ -6,7 +6,7 @@
 use crate::adapters::setup;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Where a quote was found: an item written before the summary input, under its reference.
 #[derive(Clone)]
@@ -172,6 +172,14 @@ pub fn check(text: &str, found: &Found, cwd: &str, was: Option<&str>) -> Value {
     hashes.sort_unstable();
     hashes.dedup();
     let known = commits(cwd, &hashes);
+    // The folder a fork moved from, whole components only, as written and with its links
+    // resolved; a path is matched as written and resolved too. shortcut: case-sensitive, so on a
+    // case-insensitive volume a path cased unlike the record's is looked for where it was, not
+    // marked; fold case if summaries do that.
+    let was: Vec<PathBuf> = (was.into_iter())
+        .flat_map(|w| [w.into(), std::fs::canonicalize(w).unwrap_or_default()])
+        .filter(|w: &PathBuf| !w.as_os_str().is_empty())
+        .collect();
     let mut start = 0;
     for line in text.split_inclusive('\n') {
         let base = start;
@@ -231,12 +239,15 @@ pub fn check(text: &str, found: &Found, cwd: &str, was: Option<&str>) -> Value {
         let mut ticks = body.split('`');
         let mut off = base + ticks.next().map_or(0, str::len) + 1;
         while let (Some(p), Some(after)) = (ticks.next(), ticks.next()) {
-            let path = named(p).map(|p| match (was, p.starts_with('/')) {
-                (Some(w), true) if p.starts_with(w) => format!("{cwd}{}", &p[w.len()..]),
-                (_, true) => p.to_string(),
-                _ => format!("{cwd}/{p}"),
+            let path = named(p).map(|p| {
+                let p = Path::new(cwd).join(p);
+                let real = std::fs::canonicalize(&p).unwrap_or_default();
+                let inside = (was.iter())
+                    .flat_map(|w| [p.strip_prefix(w), real.strip_prefix(w)])
+                    .find_map(Result::ok);
+                inside.map_or_else(|| p.clone(), |i| Path::new(cwd).join(i))
             });
-            if path.is_some_and(|p| !Path::new(&p).exists()) {
+            if path.is_some_and(|p| !p.exists()) {
                 bump("paths_missing");
                 marks.push(json!({"at": off + p.len() + 1, "kind": "path"}));
             }
