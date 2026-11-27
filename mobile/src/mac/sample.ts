@@ -1,5 +1,8 @@
 // Sample lists and a thread for `-screen sessions` and `-screen thread` (simulator screenshots: no Mac, no network).
 import type { Row } from "../../vendor/brigadier-shared/rows";
+import approvals from "../../vendor/brigadier-shared/samples/approval-cards.json";
+import questions from "../../vendor/brigadier-shared/samples/question-cards.json";
+import type { PendingApproval, PendingQuestion } from "../../vendor/brigadier-shared/cards";
 import file from "../../vendor/brigadier-shared/samples/file-change.json";
 import group from "../../vendor/brigadier-shared/samples/group.json";
 import message from "../../vendor/brigadier-shared/samples/message.json";
@@ -26,5 +29,5 @@ export function loadSample() {
     ],
   });
   const items = [...message.items, ...group.items, ...tool.items, ...file.items] as Item[];
-  thread.set({ id: "s1", status: "ready", session: { id: "s1", title: "Fix the failing login test", before: null, turns: [], items, work: [] } });
+  thread.set({ id: "s1", status: "ready", session: { id: "s1", title: "Fix the failing login test", before: null, turns: [], items, work: [], approvals: [approvals[0]] as PendingApproval[], questions: [questions[2]] as PendingQuestion[] } });
 }

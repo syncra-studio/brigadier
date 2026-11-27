@@ -52,7 +52,7 @@ export function Rows({ session, onOlder = older }: { session: Session; onOlder?:
       onEndReached={() => void onOlder()}
       onEndReachedThreshold={0.5}
       // Inverted: the header is at the bottom, under the newest row.
-      ListHeaderComponent={<Cards approvals={session.approvals} questions={session.questions} />}
+      ListHeaderComponent={<Cards approvals={session.approvals} questions={session.questions} session={session.id} />}
       ListFooterComponent={session.before != null ? <ActivityIndicator style={{ padding: 16 }} color={color.mutedForeground} /> : undefined}
     />
   );
