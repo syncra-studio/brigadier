@@ -158,7 +158,7 @@ fn quit(pid: i64, wait: bool) -> bool {
         let gone = unsafe { libc::kill(pid, 0) } == -1
             && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
         #[cfg(not(unix))]
-        let gone = false;
+        let gone = !brigadier_frames::procs::alive(pid);
         if gone || !wait || start.elapsed() >= Duration::from_secs(1) {
             return gone;
         }
