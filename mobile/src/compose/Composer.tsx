@@ -91,6 +91,8 @@ const body = (parts: Draft["parts"], sent: readonly PanelChip[], tiles: readonly
 const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 /** A reply lost with the link: what it asked may have been done. */
 const lostReply = (reply: Record<string, any>) => reply.error === "closed" || reply.error === "disconnected";
+/** Not a definite refusal: no answer, or one that says the worker's host may have it (`answered: false`, its I/O failing). */
+const unsure = (reply: Record<string, any>) => lostReply(reply) || reply.answered === false;
 /** Stopped before the command ran: the Mac's Face ID gate turned it down, so what it asked wasn't done. */
 const unsigned = (reply: Record<string, any>) => ["Needs Face ID", "Turned off for this iPhone on your Mac", "no randomness"].includes(String(reply.error));
 /** The worker a To: sends to, its name as it was picked. */
@@ -397,8 +399,9 @@ export function Composer({ id }: { id: string }) {
     if (toSending || toGone) return;
     const [cid, message, draft] = [newId(), plainText(parts), payload(parts, tiles)];
     if (message.startsWith("--")) return setError("A message can't start with --");
-    // A steer can't take files from here [allow.rs `send --from`]: with them it goes through the queue.
-    const steer = tiles.length === 0 && sendMode(true, "queue", other, (lists.get().rows.find((each) => each.id === target.id) as ComposerRow | undefined)?.steer === true) === "steer";
+    // A steer can't take files from here, nor another worker's mention, which the Mac reads as the target's [allow.rs
+    // `send --from`]: with them it goes through the queue.
+    const steer = tiles.length === 0 && !parts.some((part) => typeof part !== "string" && part.kind === "mention" && part.type === "worker") && sendMode(true, "queue", other, (lists.get().rows.find((each) => each.id === target.id) as ComposerRow | undefined)?.steer === true) === "steer";
     // A message pulled back to edit is never one for a worker here: it goes back to its place.
     const pulled = take();
     if (pulled) act({ kind: "add", qid: pulled.qid, text: pulled.text, slot: pulled.slot }, ["restore"]);
@@ -409,25 +412,28 @@ export function Composer({ id }: { id: string }) {
     void run(entry.args).then((reply) => {
       setToSending(false);
       const went = reply.ok || reply.result === "logged";
-      if (went || lostReply(reply)) setTo((now) => (now?.id === target.id ? null : now));
+      if (went || unsure(reply)) setTo((now) => (now?.id === target.id ? null : now));
       if (went) return;
-      // No answer: it may have gone, so it waits under its own id for Try again or Discard.
-      if (lostReply(reply)) return mac.lostTo.put(id, cid, { ...entry, error: failure(reply) });
-      // Refused: its words come back above what's typed since, with its files and its To: [D363].
-      const since = partsNow();
-      setField(isEmpty({ parts: since, attachmentIds: [] }) ? parts : [...parts, "\n\n", ...since]);
-      fileStore.restore(id, tiles);
+      // No answer, or one that can't say: it may have gone, so it waits under its own id for Try again or Discard.
+      if (unsure(reply)) return mac.lostTo.put(id, cid, { ...entry, error: failure(reply) });
+      // Refused: its words come back as Rust's give-backs do, into the composer open now or the draft kept [D363].
+      drafts.takeBack(run, id, { cid, parts, attachmentIds: tiles, error: failure(reply) });
       setTo(target);
-      setError(failure(reply));
     });
   };
   /** Try again: its own command, under its id; it stays kept unless the Mac took it, as a retry's refusal doesn't say the first never went. */
   const toAgain = (lost: ToLost) =>
     void run(lost.args).then((reply) => mac.lostTo.put(id, lost.cid, reply.ok || reply.result === "logged" ? null : { ...lost, error: failure(reply) }));
-  /** Discard: one through the queue is taken out of it; a steer can't be, so it only stops showing here. */
+  /**
+   * Discard: one through the queue is taken out of this session's queue, then the worker's, which it may have been handed
+   * to meanwhile; it's let go only once both have taken it out. A steer can't be taken back, so it only stops showing here.
+   */
   const toDiscard = (lost: ToLost) => {
     if (!lost.queued) return mac.lostTo.put(id, lost.cid, null);
-    void run(["queue", id, "remove", lost.cid]).then((reply) => mac.lostTo.put(id, lost.cid, lostReply(reply) ? { ...lost, error: failure(reply) } : null));
+    void run(["queue", id, "remove", lost.cid])
+      // A worker no longer listed has no queue left to hold it.
+      .then((reply) => (reply.ok && lists.get().rows.some((each) => each.id === lost.target.id) ? run(["queue", lost.target.id, "remove", lost.cid]) : reply))
+      .then((reply) => mac.lostTo.put(id, lost.cid, reply.ok ? null : { ...lost, error: failure(reply) }));
   };
   /**
    * Send as new, from a project's session (the /new chip): the message starts a new session there and the user stays.
