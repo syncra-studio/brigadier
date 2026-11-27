@@ -1,6 +1,8 @@
 //! A review's words: the counts its messages say, and the line its worker's result carries.
 
+use brigadier_core as core;
 use serde_json::Value;
+use std::path::Path;
 
 pub(super) use brigadier_core::fold::plan::count;
 
@@ -36,4 +38,21 @@ pub(super) fn reviewed(r: &Value, fixed: Option<u64>, rejected: Option<u64>) -> 
         r["model"] = format!("{model} because {why}").into();
     }
     brigadier_core::fold::plan::reviewed("Reviewed by", &r, fixed, rejected)
+}
+
+/// A turn's own last message, by the turn's stable id: its own rows, a wake's or a rebirth's
+/// carry-on of it included, over the whole thread [D88, D118].
+pub(crate) fn last_of_turn(data: &Path, id: &str, turn: &str) -> Option<String> {
+    last_by(data, id, turn, u64::MAX)
+}
+
+/// The same, as it was at `until` (ms).
+pub(crate) fn last_by(data: &Path, id: &str, turn: &str, until: u64) -> Option<String> {
+    let mut thread = core::thread::Thread::default();
+    let _ = core::rewind::read_active(&core::session_dir(data, id), |i| {
+        if i["ts"].as_u64().is_none_or(|ts| ts <= until) {
+            thread.push(i);
+        }
+    });
+    thread.last_said(turn)
 }

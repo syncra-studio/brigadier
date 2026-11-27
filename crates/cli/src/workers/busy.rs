@@ -56,5 +56,6 @@ pub(super) fn busy_in<F: Borrow<Fold>>(
     let Ok(f) = f() else {
         return !made;
     };
-    !made || l.review["state"] == "running" || super::result::going(data, id, l, f.borrow(), direct)
+    let review = matches!(l.review["state"].as_str(), Some("running" | "glancing"));
+    !made || review || super::result::going(data, id, l, f.borrow(), direct)
 }

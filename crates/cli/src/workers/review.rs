@@ -10,10 +10,12 @@
 //! "tried", "model", "reviewer", "findings", "line"}`, its state running (its reviewer works),
 //! sending (its findings go), sent (its fix turn runs), done or off (its result goes, with
 //! `line`), skipped (rule A found nothing that needs one: `why`, and `head` where the next decision
-//! starts) [D35, D46], or agent (reviewed by `--reviewing`, so the switch never reviews it again).
+//! starts) [D35, D46], glancing (a quick look decides, `glance.rs`) [D56], or agent (reviewed by
+//! `--reviewing`, so the switch never reviews it again).
 //! `tried`: the reviewers that failed or met their limit, each passed by for the next eligible
 //! one; only when none is left does the review not run.
 
+mod glance;
 mod line;
 mod plan;
 mod task;
@@ -25,8 +27,11 @@ use crate::{owner, routing};
 use brigadier_core::{
     self as core,
     fold::{End, Fold},
+    git::needs::Need,
 };
 use brigadier_frames::procs;
+pub(super) use line::last_by;
+pub(crate) use line::last_of_turn;
 use line::{count, cut, reviewed, word};
 use result::Of;
 use serde_json::{Value, json};
@@ -151,15 +156,12 @@ pub(super) fn holds(
                 return Some(how);
             }
             match task::needs(data, wid, turn, &spans, f) {
-                Ok(why) => l.review["why"] = why.into(),
-                Err(why) => {
-                    let (head, at) = task::heads(data, wid);
-                    l.review = json!({"state": "skipped", "turn": turn, "past": l.review["past"],
-                        "head": head, "at": at, "why": why, "line": format!("Not reviewed: {why}")});
-                    note(data, wid, &l.review, [None; 3], Some(&why));
-                    let _ = save(data, wid, l);
+                Need::Review(why) => l.review["why"] = why.into(),
+                Need::Skip(why) => {
+                    skip(data, l, wid, turn, &why);
                     return Some(how);
                 }
+                Need::Look(size) => return glance::start(data, l, wid, &size, &spans),
             }
             match next(data, l, wid) {
                 Ok(by) => l.review["by"] = by.into(),
@@ -184,6 +186,7 @@ pub(super) fn holds(
             let _ = save(data, wid, l);
             Some(how)
         }
+        Some("glancing") => glance::held(data, l, wid, how),
         // A restart cut its findings' send: the reviewer's own record says whether it went.
         Some("sending") => {
             let out = core::session_dir(data, r["by"].as_str().unwrap_or("")).join("peers/out");
@@ -222,6 +225,15 @@ pub(super) fn holds(
         _ if l.last["how"] == "stopped" => Some("stopped"),
         _ => Some(how),
     }
+}
+
+/// Not reviewed, saying why: saved with where the next decision starts, noted as not needed.
+fn skip(data: &Path, l: &mut Link, wid: &str, turn: &str, why: &str) {
+    let (head, at) = task::heads(data, wid);
+    l.review = json!({"state": "skipped", "turn": turn, "past": l.review["past"],
+        "head": head, "at": at, "why": why, "line": format!("Not reviewed: {why}")});
+    note(data, wid, &l.review, [None; 3], Some(why));
+    let _ = save(data, wid, l);
 }
 
 /// Whether `turn` may be reviewed after `r`: the first, or one asked for after the last review
@@ -448,15 +460,18 @@ fn act(data: &Path, l: &Link, wid: &str, turn: &str, how: &str) -> Option<String
 pub(super) fn stop(data: &Path, top: &str, wid: &str, ended: &str) {
     let by = {
         let Ok(_one) = lock(data) else { return };
-        let Some(mut a) = link(data, wid).filter(|a| a.review["state"] == "running") else {
+        let waits = |a: &Link| matches!(a.review["state"].as_str(), Some("running" | "glancing"));
+        let Some(mut a) = link(data, wid).filter(waits) else {
             return;
         };
         off(data, &mut a, wid, "it was stopped");
         let _ = save(data, wid, &a);
         a.review["by"].as_str().unwrap_or("").to_string()
     };
-    // Its reviewer ends as it did, by the same hand [C76].
-    let _ = super::end(data, top, &by, ended);
+    // Its reviewer ends as it did, by the same hand [C76]; a quick look has none.
+    if !by.is_empty() {
+        let _ = super::end(data, top, &by, ended);
+    }
     let _ = result::write_ended(data, wid, false);
 }
 
@@ -476,21 +491,4 @@ pub(super) fn said(data: &Path, l: &Link, wid: &str, turn: &str) -> String {
         ),
         None => format!("{line}.\n"),
     }
-}
-
-/// A turn's own last message, by the turn's stable id: its own rows, a wake's or a rebirth's
-/// carry-on of it included, over the whole thread [D88, D118].
-pub(crate) fn last_of_turn(data: &Path, id: &str, turn: &str) -> Option<String> {
-    last_by(data, id, turn, u64::MAX)
-}
-
-/// The same, as it was at `until` (ms).
-pub(super) fn last_by(data: &Path, id: &str, turn: &str, until: u64) -> Option<String> {
-    let mut thread = core::thread::Thread::default();
-    let _ = core::rewind::read_active(&core::session_dir(data, id), |i| {
-        if i["ts"].as_u64().is_none_or(|ts| ts <= until) {
-            thread.push(i);
-        }
-    });
-    thread.last_said(turn)
 }

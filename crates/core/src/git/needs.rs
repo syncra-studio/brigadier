@@ -1,7 +1,8 @@
-//! Whether a worker's new commits need an adversarial review, from the commits alone: no model
-//! call [beat-competitors D35, D46; review-design rev 2 §3 A]. Docs, lockfiles and generated files
-//! leave first, for every trigger alike; what's left is reviewed when it touches risky or sensitive
-//! files, is large, took many commits, or its last check failed; its author may ask, never waive.
+//! Whether a worker's new commits need an adversarial review, from the commits [beat-competitors
+//! D35, D46, D56; review-design rev 2 §3 A]. Docs, lockfiles and generated files leave first, for
+//! every trigger alike; what's left is reviewed when it touches risky files, is large, took many
+//! commits, or its last check failed; its author may ask, never waive. What none of these decide
+//! goes to a quick look by a small model (`Need::Look`): no list of path words [D52, D59].
 
 use super::listed::listed;
 use super::risk::{LOCKS, flag, is_test};
@@ -10,21 +11,6 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::process::Command;
 
-/// Paths whose name says they hold sign-in, secrets, permissions or money (review-design §3 A 2).
-const SENSITIVE: &[&str] = &[
-    "auth",
-    "login",
-    "token",
-    "secret",
-    "credential",
-    "crypt",
-    "permission",
-    "sandbox",
-    "keychain",
-    "payment",
-    "billing",
-    ".env",
-];
 /// How its HEAD log names a commit the worktree made itself.
 const OWN: &[&str] = &[
     "commit",
@@ -51,6 +37,16 @@ pub struct Span {
     pub repo: String,
     pub files: Vec<Value>,
     pub commits: Vec<Vec<String>>,
+    /// Its own commits, oldest first.
+    pub own: Vec<String>,
+    dir: String,
+}
+
+/// What rule A makes of a change: a review and why, a skip and why, or neither, with its size.
+pub enum Need {
+    Review(String),
+    Skip(String),
+    Look(String),
 }
 
 fn git(dir: &str, args: &[&str], input: Vec<u8>) -> Option<Vec<u8>> {
@@ -155,6 +151,8 @@ pub fn span(repo: &str, dir: &str, base: &str, head: &str) -> Option<Span> {
         repo: repo.into(),
         files,
         commits,
+        own: own.iter().rev().map(|c| c.to_string()).collect(),
+        dir: dir.into(),
     })
 }
 
@@ -185,9 +183,9 @@ fn plural(n: u64, one: &str) -> String {
     format!("{n} {one}{}", if n == 1 { "" } else { "s" })
 }
 
-/// Ok with why it needs a review, else Err with why not, both in the result's words. `asked`: the
-/// author's last message; `run`: the fold's last recognised check.
-pub fn needs(spans: &[Span], run: Option<&Run>, asked: Option<&str>) -> Result<String, String> {
+/// Whether it needs a review, and why, in the result's words. `asked`: the author's last message;
+/// `run`: the fold's last recognised check.
+pub fn needs(spans: &[Span], run: Option<&Run>, asked: Option<&str>) -> Need {
     let shown = |s: &Span, f: &Value| match s.repo.as_str() {
         "" => format!("`{}`", f["path"].as_str().unwrap_or("")),
         r => format!("`{r}/{}`", f["path"].as_str().unwrap_or("")),
@@ -196,19 +194,19 @@ pub fn needs(spans: &[Span], run: Option<&Run>, asked: Option<&str>) -> Result<S
     let last = asked.and_then(|m| m.lines().rev().map(str::trim).find(|l| !l.is_empty()));
     if let Some(why) = last.and_then(|l| l.strip_prefix("Review: wanted")) {
         let why = why.trim_start_matches([' ', '—', '–', '-', ':']).trim();
-        return Ok(match why {
+        return Need::Review(match why {
             "" => "its author asked for one".into(),
             why => format!("its author asked: {why}"),
         });
     }
     if spans.iter().all(|s| s.commits.is_empty()) {
-        return Err("nothing of its own since its last one".into());
+        return Need::Skip("nothing of its own since its last one".into());
     }
     let counted: Vec<(&Span, &Value)> = (spans.iter())
-        .flat_map(|s| s.files.iter().filter(|f| !excluded(f)).map(move |f| (s, f)))
+        .flat_map(|s| counted(s).into_iter().map(move |f| (s, f)))
         .collect();
     if counted.is_empty() {
-        return Err("docs, lockfiles or generated files only".into());
+        return Need::Skip("docs, lockfiles or generated files only".into());
     }
     for (s, f) in &counted {
         let ins = f["insertions"].as_u64().unwrap_or(0);
@@ -216,10 +214,12 @@ pub fn needs(spans: &[Span], run: Option<&Run>, asked: Option<&str>) -> Result<S
         let deleted = f["status"] == "deleted";
         match flag(f).as_ref().and_then(|k| k["kind"].as_str()) {
             Some("build" | "manifest" | "migration") => {
-                return Ok(format!("it changes {}", shown(s, f)));
+                return Need::Review(format!("it changes {}", shown(s, f)));
             }
-            Some("test") if deleted => return Ok(format!("it deletes {}", shown(s, f))),
-            Some("test") if del > ins => return Ok(format!("it shrinks {}", shown(s, f))),
+            Some("test") if deleted => return Need::Review(format!("it deletes {}", shown(s, f))),
+            Some("test") if del > ins => {
+                return Need::Review(format!("it shrinks {}", shown(s, f)));
+            }
             _ => {}
         }
         // A rename's source counts as its own: a test moved out of the tests, a manifest moved away.
@@ -228,20 +228,10 @@ pub fn needs(spans: &[Span], run: Option<&Run>, asked: Option<&str>) -> Result<S
         };
         let was = serde_json::json!({"path": from, "status": "renamed"});
         if test(from) && !test(f["path"].as_str().unwrap_or("")) {
-            return Ok(format!("it moves {} out of the tests", shown(s, &was)));
+            return Need::Review(format!("it moves {} out of the tests", shown(s, &was)));
         }
         if flag(&was).is_some_and(|k| k["kind"] != "test" && k["kind"] != "lock") {
-            return Ok(format!("it changes {}", shown(s, &was)));
-        }
-    }
-    for (s, f) in &counted {
-        let names = [&f["path"], &f["from"]].map(|p| p.as_str().unwrap_or("").to_lowercase());
-        if let Some(n) = names
-            .iter()
-            .find(|n| SENSITIVE.iter().any(|w| n.contains(w)))
-        {
-            let at = serde_json::json!({"path": n});
-            return Ok(format!("it touches {}", shown(s, &at)));
+            return Need::Review(format!("it changes {}", shown(s, &was)));
         }
     }
     let code: u64 = (counted.iter())
@@ -249,10 +239,10 @@ pub fn needs(spans: &[Span], run: Option<&Run>, asked: Option<&str>) -> Result<S
         .map(|(_, f)| lines(f))
         .sum();
     if code > LINES {
-        return Ok(format!("it changes {code} lines"));
+        return Need::Review(format!("it changes {code} lines"));
     }
     if counted.len() > FILES {
-        return Ok(format!("it changes {} files", counted.len()));
+        return Need::Review(format!("it changes {} files", counted.len()));
     }
     // Each repository's commits against its own counted files.
     let mine =
@@ -265,11 +255,11 @@ pub fn needs(spans: &[Span], run: Option<&Run>, asked: Option<&str>) -> Result<S
         .filter_map(|(_, f)| f["path"].as_str())
         .collect();
     if commits >= COMMITS {
-        return Ok(format!("it took {commits} commits"));
+        return Need::Review(format!("it took {commits} commits"));
     }
     if let Some(run) = run {
         if run.exit.is_some_and(|e| e != 0) {
-            return Ok(format!("its last check failed (`{}`)", run.command));
+            return Need::Review(format!("its last check failed (`{}`)", run.command));
         }
         let later = |a: &String| {
             let a = a.trim_start_matches("./");
@@ -278,13 +268,58 @@ pub fn needs(spans: &[Span], run: Option<&Run>, asked: Option<&str>) -> Result<S
                 .any(|p| a == *p || a.ends_with(&format!("/{p}")))
         };
         if run.after.iter().any(later) {
-            return Ok("it changed files after its last check".into());
+            return Need::Review("it changed files after its last check".into());
         }
     }
     let all: u64 = counted.iter().map(|(_, f)| lines(f)).sum();
-    Err(format!(
-        "{} in {}, nothing risky",
+    Need::Look(format!(
+        "{} in {}",
         plural(all, "line"),
         plural(counted.len() as u64, "file")
     ))
+}
+
+/// Its files that count: all but docs, lockfiles and generated files.
+pub fn counted(s: &Span) -> Vec<&Value> {
+    s.files.iter().filter(|f| !excluded(f)).collect()
+}
+
+/// Its own commits' patches to its counted files, oldest first, as a quick look reads them; None
+/// where git can't, a file shows no patch of its own (binary, mode only), or it's over `most`
+/// bytes: never cut, so a "no" is only ever about the whole change.
+pub fn diff(s: &Span, most: usize) -> Option<String> {
+    let paths: Vec<&str> = (counted(s).iter())
+        .flat_map(|f| [&f["path"], &f["from"]])
+        .filter_map(|p| p.as_str())
+        .collect();
+    if counted(s).iter().any(|f| f["binary"] == true) {
+        return None;
+    }
+    // None of its files count: an empty pathspec would show them all.
+    if paths.is_empty() {
+        return Some(String::new());
+    }
+    let mut out = String::new();
+    for c in &s.own {
+        let mut args = vec!["--literal-pathspecs", "show", "--format=commit %H", "-M"];
+        args.extend(["--no-ext-diff", "--no-textconv", "--no-color", c, "--"]);
+        args.extend(&paths);
+        out += &String::from_utf8(git(&s.dir, &args, vec![])?).ok()?;
+        if out.len() > most {
+            return None;
+        }
+    }
+    // Every counted file has a hunk of its own, or a rename's header, or it wasn't seen whole.
+    let shown = |p: &str| {
+        let p = format!(" b/{p}\n");
+        out.contains(&format!("+++{p}")) || out.contains(&format!("rename to {}", &p[3..]))
+    };
+    let whole = counted(s).iter().all(|f| {
+        let p = f["path"].as_str().unwrap_or("");
+        match f["status"] == "deleted" {
+            true => out.contains(&format!("--- a/{p}\n")),
+            false => shown(p),
+        }
+    });
+    whole.then_some(out)
 }

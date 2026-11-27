@@ -33,7 +33,7 @@ export const ROUTING_ROWS = {
   jobs: { label: "Jobs", description: "Your agents start each worker on the job that fits. Each job tries its models in your order: the next runs only when one is out of quota or can't run." },
   review: {
     label: "Adversarial review",
-    description: "Another company's agent tries to break work that needs it before you get it: a worker's changes that touch security, data, build or dependency files, remove tests, are large, took many tries, or that its author flags; and each plan before it's acted on. Small, ordinary changes, docs, lockfiles and generated files go through without one, and each result says why.",
+    description: "Another company's agent tries to break work that needs it before you get it: a worker's changes that touch build or dependency files, remove tests, are large, took many tries, that its author flags, or that a quick look by a small model finds sensitive (sign-in, secrets, permissions, money, user data); and each plan before it's acted on. Small, ordinary changes, docs, lockfiles and generated files go through without one, and each result says why.",
   },
   images: { label: "Images", description: "Images your agents are asked to make or edit go to this model first, else to another that makes images." },
   rules: { label: "Rules", description: "Every model Brigadier starts follows these" },

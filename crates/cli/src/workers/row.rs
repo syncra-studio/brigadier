@@ -92,6 +92,7 @@ pub fn row(dir: &Path, state: &str, f: &Fold) -> Value {
         // What its review did, or why it didn't run.
         "review": match l.review["state"].as_str() {
             Some("running" | "sending" | "sent") => json!("Being reviewed"),
+            Some("glancing") => json!("Deciding whether it needs a review"),
             _ => l.review["line"].clone(),
         },
         // When its wait is over, for the daemon's pass.

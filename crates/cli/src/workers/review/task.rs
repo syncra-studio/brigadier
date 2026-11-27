@@ -46,20 +46,14 @@ pub(super) fn spans(data: &Path, wid: &str, since: &Value) -> Vec<Span> {
         .collect()
 }
 
-/// Whether the switch reviews `spans` of `wid`'s `turn`: Ok with why, else Err with why not, by
-/// rule A from the commits [beat-competitors D35, D46]; commits git can't read are reviewed.
-pub(super) fn needs(
-    data: &Path,
-    wid: &str,
-    turn: &str,
-    spans: &[Span],
-    f: &Fold,
-) -> Result<String, String> {
+/// Whether the switch reviews `spans` of `wid`'s `turn`, by rule A from the commits
+/// [beat-competitors D35, D46, D56]; commits git can't read are reviewed.
+pub(super) fn needs(data: &Path, wid: &str, turn: &str, spans: &[Span], f: &Fold) -> Need {
     let read: Option<Vec<_>> = (spans.iter())
         .map(|s| core::git::needs::span(&s.repo, &s.at, &s.base, &s.head))
         .collect();
     let Some(read) = read else {
-        return Ok("its commits couldn't be read".into());
+        return Need::Review("its commits couldn't be read".into());
     };
     let said = last_of_turn(data, wid, turn);
     core::git::needs::needs(&read, f.runs.last.as_ref(), said.as_deref())
@@ -203,7 +197,8 @@ pub(crate) fn plan(
             "--reviewing takes one of your own workers, by its id, or `session`.",
         ));
     };
-    if !switch && (l.last.is_null() || l.review["state"] == "running") {
+    let waits = matches!(l.review["state"].as_str(), Some("running" | "glancing"));
+    if !switch && (l.last.is_null() || waits) {
         return Err(refuse(&format!(
             "{of} hasn't ended. Wait for its result, then review it."
         )));
