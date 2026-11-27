@@ -353,17 +353,22 @@ pub fn kill_tree(pid: u32) {
 }
 
 /// Starts `command` out of every job and console this process is in, so nothing that ends them
-/// ends it; a job around it that forbids leaving is named as the reason.
+/// ends it. A job around it that forbids leaving (a CI runner's, some terminals') keeps it in: it
+/// then starts detached in that job, and ends with it.
 pub fn detached(command: &mut Command) -> io::Result<std::process::Child> {
     use windows_sys::Win32::System::Threading::{
         CREATE_BREAKAWAY_FROM_JOB, CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS,
     };
     command.creation_flags(DETACHED_PROCESS | CREATE_BREAKAWAY_FROM_JOB | CREATE_NEW_PROCESS_GROUP);
-    command.spawn().map_err(|e| match e.raw_os_error() {
-        // ERROR_ACCESS_DENIED: a job around this process doesn't let its children leave.
-        Some(5) => io::Error::other(
-            "Brigadier couldn't start on its own: the program that started it holds its children in a job they can't leave. Start Brigadier from the Start menu instead.",
-        ),
-        _ => e,
-    })
+    match command.spawn() {
+        // ERROR_ACCESS_DENIED: the job doesn't let its children leave.
+        Err(e) if e.raw_os_error() == Some(5) => {
+            eprintln!(
+                "brigadier: a job around this process keeps what it starts; starting it there"
+            );
+            command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+            command.spawn()
+        }
+        spawned => spawned,
+    }
 }
