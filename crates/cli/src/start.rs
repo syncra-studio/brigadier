@@ -10,7 +10,7 @@ use brigadier_core::{self as core, Spec, adapters};
 use brigadier_frames::log;
 use serde_json::{Value, json};
 use std::path::Path;
-use std::{env, fs, io};
+use std::{fs, io};
 
 pub(crate) fn start(data: &Path, args: &[String]) -> io::Result<Value> {
     let (spec, parts) = match ready(data, args).map_err(unsent)? {
@@ -46,6 +46,7 @@ fn ready(data: &Path, args: &[String]) -> io::Result<Result<(Spec, Value), Value
         .filter_map(|w| w[1].split_once('='))
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
+    models::prepare_start(data, args)?;
     // New project sessions have their own worktree unless Local checkout is chosen [D160].
     let (projects_lock, projects) = core::projects::locked(data)?;
     let project = flag(args, "--project")
@@ -60,12 +61,7 @@ fn ready(data: &Path, args: &[String]) -> io::Result<Result<(Spec, Value), Value
     let worktree = project.is_some() && !has(args, "--local");
     // A chat with no project works in a folder of its own, gone with the session [D35, D388].
     let scratch = has(args, "--scratch").then(|| core::session_dir(data, id).join("scratch"));
-    let cwd = flag(args, "--cwd")
-        .map(String::from)
-        .or_else(|| worktree.then(|| core::worktrees::path(data, id).display().to_string()))
-        .or_else(|| project.as_ref().map(|p| p.folder.clone()))
-        .or_else(|| scratch.as_ref().map(|d| d.display().to_string()))
-        .unwrap_or_else(|| env::current_dir().unwrap_or_default().display().to_string());
+    let cwd = models::start_cwd(data, args, project.as_ref());
     let spec = Spec {
         project: project.as_ref().map(|p| p.id.clone()),
         id: id.into(),
@@ -100,6 +96,7 @@ fn ready(data: &Path, args: &[String]) -> io::Result<Result<(Spec, Value), Value
                 json!({"ok": false, "error": "sign_in", "message": why}),
             ));
         }
+        models::check_start(data, &spec, project.as_ref())?;
         plugins::sync(data);
         core::share::one_local(data, project.as_ref(), &spec)?;
         core::create(data, &spec)?

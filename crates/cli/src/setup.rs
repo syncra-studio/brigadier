@@ -259,7 +259,7 @@ fn now_ns() -> u64 {
 
 /// The lock covers daemon threads and CLI processes, and dies with its holder. A caller that
 /// waited reuses checks completed since it arrived; an interrupted check is tried again.
-fn agents(
+pub(crate) fn agents(
     data: &Path,
     cwd: &Path,
     names: Vec<&'static dyn Adapter>,

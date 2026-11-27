@@ -2,13 +2,15 @@
 //! check, grouped with its mark and efforts so the list shows at once [D123, D128], and `set`,
 //! which records the model and effort the next turn takes, or the agent the next message goes to.
 
+// Start reads its options as the book does: words `--text` carries stay its own [C65].
+use crate::attach::book::{has_opt, opt};
 use crate::{flag, owner, setup};
 use brigadier_core::adapters::{self, Adapter, s};
 use brigadier_core::fold::Fold;
 use brigadier_core::{self as core, Spec};
 use serde_json::{Value, json};
-use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::{env, io};
 
 /// The folder a session runs in, a project's folder, or `--cwd`; and whether that project holds
 /// its turns to Ask.
@@ -173,6 +175,93 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     Ok(json!({"ok": true, "groups": groups}))
 }
 
+fn has_effort(model: &Value, effort: &str) -> bool {
+    model["efforts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|e| e == effort)
+}
+
+/// The directory a new session runs in, shared with its catalogue preparation.
+pub(crate) fn start_cwd(
+    data: &Path,
+    args: &[String],
+    project: Option<&core::projects::Project>,
+) -> String {
+    let id = args.get(1).map_or("", String::as_str);
+    let worktree = project.is_some() && !has_opt(args, "--local");
+    opt(args, "--cwd")
+        .map(String::from)
+        .or_else(|| worktree.then(|| core::worktrees::path(data, id).display().to_string()))
+        .or_else(|| project.map(|p| p.folder.clone()))
+        .or_else(|| {
+            has_opt(args, "--scratch").then(|| {
+                core::session_dir(data, id)
+                    .join("scratch")
+                    .display()
+                    .to_string()
+            })
+        })
+        .unwrap_or_else(|| env::current_dir().unwrap_or_default().display().to_string())
+}
+
+fn start_folder(cwd: &str, project: Option<&core::projects::Project>) -> PathBuf {
+    match Path::new(cwd).is_dir() {
+        true => cwd.into(),
+        false => project.map_or_else(|| adapters::home_path(""), |p| p.folder.clone().into()),
+    }
+}
+
+/// Warm the session's catalogue before start takes the projects lock.
+pub(crate) fn prepare_start(data: &Path, args: &[String]) -> io::Result<()> {
+    if opt(args, "--effort").is_none()
+        || args
+            .get(1)
+            .is_some_and(|id| core::session_dir(data, id).join("session.json").exists())
+    {
+        return Ok(());
+    }
+    let backend = opt(args, "--backend").unwrap_or("fake");
+    let project = opt(args, "--project")
+        .map(|id| core::projects::get(data, id))
+        .transpose()?;
+    let cwd = start_folder(&start_cwd(data, args, project.as_ref()), project.as_ref());
+    if core::checked::saved(data, backend, &cwd).is_none() {
+        let a = adapters::get(backend)
+            .ok_or_else(|| io::Error::other("That agent isn't available."))?;
+        setup::agents(data, &cwd, vec![a], false)?;
+    }
+    Ok(())
+}
+
+/// Refuse an unsupported effort before making a session, using the selected model or the
+/// agent's reported default. A worktree or scratch folder not made yet uses its source folder.
+pub(crate) fn check_start(
+    data: &Path,
+    spec: &Spec,
+    project: Option<&core::projects::Project>,
+) -> io::Result<()> {
+    let Some(effort) = spec.effort.as_deref() else {
+        return Ok(());
+    };
+    let cwd = start_folder(&spec.cwd, project);
+    let check = core::checked::kept(data, &spec.backend, &cwd).unwrap_or_default();
+    let model = check["models"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|m| match &spec.model {
+            Some(id) => m["id"] == *id,
+            None => m["default"] == true,
+        })
+        .ok_or_else(|| io::Error::other("Choose an available model before setting its effort."))?;
+    if !has_effort(model, effort) {
+        return Err(io::Error::other("That effort isn't one this model has."));
+    }
+    Ok(())
+}
+
 /// `set <session> --agent B --model M [--effort E] [--fast] --op OP` [D129, D557]: the
 /// conversation's own agent takes M, E and the fast tier (where M has one) from its next turn;
 /// another agent is picked, and the next message goes to it in a new conversation with the
@@ -223,9 +312,8 @@ fn set(data: &Path, args: &[String]) -> io::Result<Value> {
     else {
         return refuse("no_model", "That model isn't available here.");
     };
-    let efforts = model["efforts"].as_array().cloned().unwrap_or_default();
     // No effort: the CLI's own default.
-    if effort.is_some_and(|e| !efforts.iter().any(|x| x == e)) {
+    if effort.is_some_and(|e| !has_effort(model, e)) {
         return refuse("no_effort", "That effort isn't one this model has.");
     }
     let fast = args.iter().any(|a| a == "--fast");
