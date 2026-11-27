@@ -160,18 +160,21 @@ pub fn listening(pid: i32) -> BTreeSet<u16> {
     ports
 }
 
-/// The pipe ends a process has as its stdin and stdout, by the kernel's own ids: the same in another
-/// one it passed them on to. None when either isn't a pipe.
+/// The pipe or socket ends a process has as its stdin and stdout, by the kernel's own ids: the same
+/// in another one it passed them on to. Node's children get socket pairs. None when either is
+/// neither.
 pub fn stdio(pid: i32) -> Option<[u64; 2]> {
-    // `struct pipe_fdinfo`, which libc has no type for: its size, and where its end's id is, as
+    // `struct pipe_fdinfo` and `struct socket_fdinfo`, which libc has no type for: each one's
+    // flavor and size; both have the end's id, `pipe_handle` or `soi_so`, at the same place, as
     // u64s (`sys/proc_info.h`).
-    const PIPE: i32 = 6; // PROC_PIDFDPIPEINFO
-    const SIZE: usize = 184;
+    const KINDS: [(i32, usize); 2] = [(6, 184), (3, 792)]; // PROC_PIDFDPIPEINFO, PROC_PIDFDSOCKETINFO
     let end = |fd: i32| {
-        let mut buf = [0u64; SIZE / 8];
-        let at = buf.as_mut_ptr().cast();
-        let n = unsafe { libc::proc_pidfdinfo(pid, fd, PIPE, at, SIZE as i32) };
-        (n as usize == SIZE).then_some(buf[20])
+        KINDS.iter().find_map(|&(kind, size)| {
+            let mut buf = [0u64; 792 / 8];
+            let at = buf.as_mut_ptr().cast();
+            let n = unsafe { libc::proc_pidfdinfo(pid, fd, kind, at, size as i32) };
+            (n as usize == size).then_some(buf[20])
+        })
     };
     Some([end(0)?, end(1)?])
 }
