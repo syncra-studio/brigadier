@@ -141,9 +141,10 @@ fn decided(dir: &Path, call: &Call) -> io::Result<String> {
         why: call.need("--why")?,
         other: call.need("--other")?,
     };
-    // Its log note names the turn it was made in, so a rewind past that turn drops it [§8].
-    let f = core::fold(dir, true)?.fold;
-    let turn = f.turns.first().map(|t| t.id.clone());
+    // Its log note names the turn it was made in and the log's frame then, so a rewind past that
+    // turn drops it, and a fork takes it with that turn, whenever it's logged [§8].
+    let folded = core::fold(dir, true)?;
+    let (turn, seq) = (folded.fold.turns.first().map(|t| t.id.clone()), folded.seq);
     change(dir, |o| {
         in_night(o)?;
         let id = format!(
@@ -152,7 +153,7 @@ fn decided(dir: &Path, call: &Call) -> io::Result<String> {
             o.decided.len()
         );
         let decided = json!({"title": d.title, "why": d.why, "other": d.other});
-        (o.notes).push(json!({"id": id, "decided": decided, "turn": turn}));
+        (o.notes).push(json!({"id": id, "decided": decided, "turn": turn, "seq": seq}));
         o.decided.push(d);
         Ok("Logged for the morning.".into())
     })

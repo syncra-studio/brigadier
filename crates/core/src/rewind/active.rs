@@ -16,6 +16,10 @@ pub struct Active {
     /// The inputs a rewind dropped: a note written later for a turn they began goes with it.
     #[serde(default)]
     dropped: Vec<String>,
+    /// The frames each rewind dropped, from its message to its note: a note written later, made
+    /// at a frame among them (`seq`), goes too, whatever began its turn.
+    #[serde(default)]
+    spans: Vec<(u64, u64)>,
     last: u64,
     /// Where the scan stopped in the log, and that frame's sequence number.
     scanned: (u64, u64),
@@ -55,7 +59,9 @@ impl Active {
                 .cuts
                 .iter()
                 .filter(|(to, at)| item["cid"] == to.as_str() && *at > seq);
-            self.until = found.map(|(_, at)| *at).max().unwrap_or(0).max(self.until);
+            let to = found.map(|(_, at)| *at).max();
+            self.spans.extend(to.map(|to| (seq, to)));
+            self.until = to.unwrap_or(0).max(self.until);
             if let Some(cid) = item["cid"].as_str().filter(|_| seq <= self.until) {
                 self.dropped.push(cid.into());
             }
@@ -64,9 +70,13 @@ impl Active {
             item["event"].as_str(),
             Some("overnight" | "kept" | "summary")
         );
-        // One noted after the rewind, as a night's deferred decision is, still names its turn.
+        // One noted after the rewind, as a night's deferred decision is, still names its turn, or
+        // the frame it was made at.
         let turn = item["turn"].as_str();
-        if ran && turn.is_some_and(|t| self.dropped.iter().any(|d| d == t)) {
+        let made = item["seq"].as_u64();
+        let gone = turn.is_some_and(|t| self.dropped.iter().any(|d| d == t))
+            || made.is_some_and(|m| self.spans.iter().any(|(a, b)| (*a..=*b).contains(&m)));
+        if ran && gone {
             return false;
         }
         // A night's lines, the kept list's ops and a summary go with the turns they ran in; what else is noted
