@@ -229,15 +229,11 @@ fn walk(
         }
         let origin = s("origin");
         let (text, user, tool) = match s("kind") {
+            // Overnight's, a reviewer's or a parent's answer is citable, as theirs, not the user's.
             "input" if item["control"].is_object() => {
                 let mine = item["control"]["by"].is_null();
-                (
-                    crate::archive::answer(item)
-                        .filter(|_| mine)
-                        .unwrap_or_default(),
-                    true,
-                    false,
-                )
+                let text = crate::archive::answer(item).unwrap_or_default();
+                (text, mine, false)
             }
             // A `!` command's report is its output, not the user's words.
             "input" if origin == "user" => {
