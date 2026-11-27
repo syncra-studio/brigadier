@@ -24,12 +24,14 @@ pub(super) fn server(all: &[procs::Proc], child: i32) -> BTreeSet<i32> {
 
 /// The command lines, a program then its args, the session's agent may start an MCP server with: its
 /// config's, the library's and Brigadier's own.
-pub(super) fn mcp_lines(dir: &Path, backend: &str) -> Vec<Vec<String>> {
+pub(super) fn mcp_lines(dir: &Path, fold: &super::Fold, backend: &str) -> Vec<Vec<String>> {
     let spec = std::fs::read(dir.join("session.json")).ok();
     let Some(mut spec) = spec.and_then(|b| serde_json::from_slice::<crate::Spec>(&b).ok()) else {
         return vec![];
     };
     spec.dir = dir.into();
+    // On the account it runs on now, whose home holds its config.
+    let spec = crate::account::as_run(&spec, fold, backend, None);
     let mut servers = crate::adapters::get(backend).map_or(vec![], |a| a.launched_servers(&spec));
     servers.extend(crate::library::on_for(
         &crate::data_of(&spec),
@@ -49,16 +51,20 @@ pub(super) fn mcp_lines(dir: &Path, backend: &str) -> Vec<Vec<String>> {
     all
 }
 
-/// Whether `argv` runs `line`, a program then its args: as it is, through the interpreter its script
-/// names, or under the title it gave itself in their place, ending with them from the first that
+/// Whether `argv` runs `line`, a program then its args, a program named by its path only there and
+/// a bare one wherever its PATH found it: as it is, through the interpreter its script names, or under the title it gave itself in their place, ending with them from the first that
 /// isn't a flag (npm's `npm exec <package> <args>`, for `npx -y <package> <args>`).
 pub(super) fn runs(argv: &[String], line: &[String]) -> bool {
     let Some((program, args)) = line.split_first() else {
         return false;
     };
     let base = |a: &str| a.rsplit('/').next().unwrap_or(a).to_string();
+    let same = |a: &str| match program.contains('/') {
+        true => a == program,
+        false => base(a) == *program,
+    };
     let at = (argv.len().checked_sub(args.len())).filter(|n| (1..=3).contains(n));
-    let direct = at.is_some_and(|n| argv[n..] == *args && base(&argv[n - 1]) == base(program));
+    let direct = at.is_some_and(|n| argv[n..] == *args && same(&argv[n - 1]));
     let tail: Vec<&str> = (args.iter())
         .skip_while(|a| a.starts_with('-'))
         .map(String::as_str)

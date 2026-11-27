@@ -144,7 +144,7 @@ fn left_running(
         own(p)
             || (cli.contains(&p.ppid) && procs::stdio(p.pid).is_some() && {
                 let argv = procs::args(p.pid).map(|a| a.0).unwrap_or_default();
-                let lines = lines.get_or_init(|| mcp_lines(dir, backend));
+                let lines = lines.get_or_init(|| mcp_lines(dir, fold, backend));
                 lines.iter().any(|l: &Vec<String>| runs(&argv, l))
             })
     };
