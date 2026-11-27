@@ -91,6 +91,19 @@ const body = (parts: Draft["parts"], sent: readonly PanelChip[], tiles: readonly
 const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 /** A reply lost with the link: what it asked may have been done. */
 const lostReply = (reply: Record<string, any>) => reply.error === "closed" || reply.error === "disconnected";
+/** The failure that came last of `errors`, each a source's own; once it's cleared, any other still there. */
+function useLatest(errors: (string | null)[]): string | null {
+  const seen = useRef<(string | null)[]>([]);
+  const [latest, setLatest] = useState<string | null>(null);
+  useEffect(() => {
+    const fresh = errors.find((each, at) => each && each !== seen.current[at]);
+    seen.current = errors;
+    if (fresh) setLatest(fresh);
+    else if (latest !== null && !errors.includes(latest)) setLatest(errors.find(Boolean) ?? null);
+  });
+  return latest;
+}
+
 /** Not a definite refusal: no answer, or one that says the worker's host may have it (`answered: false`, its I/O failing). */
 const unsure = (reply: Record<string, any>) => lostReply(reply) || reply.answered === false;
 /** Stopped before the command ran: the Mac's Face ID gate turned it down, so what it asked wasn't done. */
@@ -416,24 +429,39 @@ export function Composer({ id }: { id: string }) {
       if (went) return;
       // No answer, or one that can't say: it may have gone, so it waits under its own id for Try again or Discard.
       if (unsure(reply)) return mac.lostTo.put(id, cid, { ...entry, error: failure(reply) });
-      // Refused: its words come back as Rust's give-backs do, into the composer open now or the draft kept [D363].
-      drafts.takeBack(run, id, { cid, parts, attachmentIds: tiles, error: failure(reply) });
-      setTo(target);
+      // Refused: it waits on its own with Edit, never merged into a field that may be addressed elsewhere by now.
+      mac.lostTo.put(id, cid, { ...entry, error: failure(reply), refused: { parts, tiles } });
     });
   };
+  /** The message under `cid` as it's kept now; none once it went or was let go. */
+  const keptLost = (cid: string) => mac.lostTo.of(id).find((each) => each.cid === cid);
+  /** Settles `lost` from a reply to it, unless it was let go meanwhile. */
+  const settleLost = (lost: ToLost, next: ToLost | null) => keptLost(lost.cid) && mac.lostTo.put(id, lost.cid, next);
   /** Try again: its own command, under its id; it stays kept unless the Mac took it, as a retry's refusal doesn't say the first never went. */
-  const toAgain = (lost: ToLost) =>
-    void run(lost.args).then((reply) => mac.lostTo.put(id, lost.cid, reply.ok || reply.result === "logged" ? null : { ...lost, error: failure(reply) }));
+  const toAgain = (lost: ToLost) => {
+    mac.lostTo.put(id, lost.cid, { ...lost, busy: true });
+    void run(lost.args).then((reply) => settleLost(lost, reply.ok || reply.result === "logged" ? null : { ...lost, error: failure(reply) }));
+  };
+  /** Edit: a refused one's words and files back in an empty field, with its To:. */
+  const toEdit = (lost: ToLost) => {
+    if (!lost.refused || !isEmpty({ parts: partsNow(), attachmentIds: [...tilesNow()] })) return;
+    mac.lostTo.put(id, lost.cid, null);
+    setField(lost.refused.parts);
+    fileStore.restore(id, lost.refused.tiles);
+    setTo(lost.target);
+  };
   /**
    * Discard: one through the queue is taken out of this session's queue, then the worker's, which it may have been handed
    * to meanwhile; it's let go only once both have taken it out. A steer can't be taken back, so it only stops showing here.
    */
   const toDiscard = (lost: ToLost) => {
-    if (!lost.queued) return mac.lostTo.put(id, lost.cid, null);
+    // A refused one never went anywhere.
+    if (!lost.queued || lost.refused) return mac.lostTo.put(id, lost.cid, null);
+    mac.lostTo.put(id, lost.cid, { ...lost, busy: true });
     void run(["queue", id, "remove", lost.cid])
       // A worker no longer listed has no queue left to hold it.
       .then((reply) => (reply.ok && lists.get().rows.some((each) => each.id === lost.target.id) ? run(["queue", lost.target.id, "remove", lost.cid]) : reply))
-      .then((reply) => mac.lostTo.put(id, lost.cid, reply.ok ? null : { ...lost, error: failure(reply) }));
+      .then((reply) => settleLost(lost, reply.ok ? null : { ...lost, error: failure(reply) }));
   };
   /**
    * Send as new, from a project's session (the /new chip): the message starts a new session there and the user stays.
@@ -626,7 +654,7 @@ export function Composer({ id }: { id: string }) {
   ].filter(Boolean);
   // The night's look, but not on a command [D316].
   const look = shell ? st.shell : night.now ? st.night : null;
-  const shownError = powerError ?? night.error ?? (items.length === 0 ? error : null);
+  const shownError = useLatest([powerError, night.error, items.length === 0 ? error : null]);
   const placeholder = shell ? "Run a command" : toWorker ? `Message ${toWorker.name}` : (nightPlaceholder(night.now, busy, asked) ?? "Do anything");
   return (
     <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={header}>
@@ -635,11 +663,11 @@ export function Composer({ id }: { id: string }) {
         {toLost.map((lost) => (
           <View key={lost.cid} style={st.going}>
             <Text style={st.goingText} numberOfLines={3}>{lost.text}</Text>
-            <Text style={st.error}>May have been sent to {lost.target.name} · {lost.error}</Text>
-            {lost.queued ? null : <Text style={st.muted}>If it went, it still reaches {lost.target.name}</Text>}
+            <Text style={st.error}>{lost.refused ? `Not sent to ${lost.target.name}: ${lost.error}` : `May have been sent to ${lost.target.name} · ${lost.error}`}</Text>
+            {lost.queued || lost.refused ? null : <Text style={st.muted}>If it went, it still reaches {lost.target.name}</Text>}
             <View style={st.actions}>
-              <Link title="Try again" onPress={() => toAgain(lost)} />
-              <Link title={lost.queued ? "Discard" : "Stop showing"} onPress={() => toDiscard(lost)} />
+              {lost.refused ? <Link title="Edit" disabled={!empty} onPress={() => toEdit(lost)} /> : <Link title="Try again" disabled={lost.busy} onPress={() => toAgain(lost)} />}
+              <Link title={lost.queued || lost.refused ? "Discard" : "Stop showing"} disabled={lost.busy} onPress={() => toDiscard(lost)} />
             </View>
           </View>
         ))}
@@ -916,8 +944,8 @@ function OnItsWay({ id, entry }: { id: string; entry: Going }) {
   );
 }
 
-const Link = ({ title, onPress }: { title: string; onPress: () => void }) => (
-  <Pressable accessibilityRole="button" onPress={onPress} hitSlop={8}>
+const Link = ({ title, disabled, onPress }: { title: string; disabled?: boolean; onPress: () => void }) => (
+  <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} hitSlop={8} style={disabled && { opacity: size.disabled }}>
     <Text style={st.link}>{title}</Text>
   </Pressable>
 );

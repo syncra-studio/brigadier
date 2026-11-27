@@ -3,6 +3,7 @@
 import { File, Paths } from "expo-file-system";
 import { uuid } from "expo-modules-core";
 import type { Chip as PanelChip } from "../../vendor/brigadier-shared/chips";
+import type { Draft } from "../../vendor/brigadier-shared/draft";
 import { draftState } from "../../vendor/brigadier-shared/session/draft";
 import { modelState } from "../../vendor/brigadier-shared/session/model";
 import type { Runner } from "../../vendor/brigadier-shared/session/run";
@@ -24,8 +25,11 @@ if (!g.localStorage) {
 
 export const newId = (): string => crypto.randomUUID();
 
-/** A message to a worker whose reply was lost (`queued`: through this session's queue, else a steer), with why. */
-export type ToLost = { cid: string; target: { id: string; name: string }; args: string[]; text: string; queued: boolean; error: string };
+/**
+ * A message to a worker whose reply was lost (`queued`: through this session's queue, else a steer), with why; or one
+ * the Mac refused (`refused`: its words and files, for Edit). `busy`: a Try again or Discard of it under way.
+ */
+export type ToLost = { cid: string; target: { id: string; name: string }; args: string[]; text: string; queued: boolean; error: string; refused?: { parts: Draft["parts"]; tiles: string[] }; busy?: boolean };
 const NO_LOST: readonly ToLost[] = [];
 
 /** A `brigadier` command on the connected Mac, answered with its reply, a refusal included; with no stream, refused with why. */
