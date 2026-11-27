@@ -1,6 +1,7 @@
 // The composer under a session's thread, as the desktop's session/composer.tsx wires it [D183, D188, D363]: Send, or
 // while a turn runs Queue (hold Send to Steer, where the agent can); Stop and Resume; the queue card; messages on their
-// way with Try again and Discard, nothing sent again by itself; this phone's own draft kept on the Mac; `/` and `@`.
+// way with Try again and Discard, nothing sent again by itself; this phone's own draft kept on the Mac; `/` and `@`;
+// `!` commands, Run in background, the level pill and Overnight, each signed with Face ID [D57].
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
@@ -14,9 +15,14 @@ import { inThread, type QueuedMessage, queuedOf, type RustQueued } from "../../v
 import { failure } from "../../vendor/brigadier-shared/session/run";
 import { chipArgs, draftArgs, sendOp, sends } from "../../vendor/brigadier-shared/session/sent";
 import type { Going } from "../../vendor/brigadier-shared/session/uncertain";
+import type { Frame } from "../../vendor/brigadier-shared/client";
+import { Confirm } from "../act/Confirm";
 import { request, streamNow } from "../link";
 import { lists, thread } from "../mac/mac";
 import { color, text } from "../theme";
+import { LevelPill } from "../powers/Level";
+import { OvernightPill, OvernightStrip } from "../powers/Overnight";
+import { backgroundPower, type Power, refusal, shellOf, shellPower } from "../powers/powers";
 import { ModelPill } from "./Model";
 import { QueueCard } from "./Queue";
 import { ThreadImage } from "../thread/Image";
@@ -122,6 +128,8 @@ export function Composer({ id }: { id: string }) {
   const [ops, setOps] = useState<Op[]>([]);
   const [error, setError] = useState<string | null>(() => drafts.givenError(id));
   const [stopping, setStopping] = useState(false);
+  /** The Face ID sheet for a `!` command or Run in background, and what its reply does. */
+  const [power, setPower] = useState<(Power & { then: (reply: Frame) => void }) | null>(null);
   const editing = { get: () => edits.get(id) ?? null, set: (pulled: Pulled) => void (pulled ? edits.set(id, pulled) : edits.delete(id)) };
 
   // A message pulled back to edit that this phone can't prove is its own (another device's, or from before a relaunch)
@@ -215,6 +223,10 @@ export function Composer({ id }: { id: string }) {
   items = [...items, ...queueGoing.filter((each) => !delivered.has(each.cid) && !items.some((one) => one.id === each.cid)).map((each): QueuedMessage => ({ id: each.cid, draft: each.draft, state: each.stuck === undefined ? "local" : each.reached === false ? "unadded" : "uncertain" }))];
   const textOf = (qid: string) => row?.queue?.items.find((each) => each.id === qid)?.text ?? live.find((op) => op.qid === qid)?.text ?? "";
   const commands = (row?.queue?.running?.length ?? 0) > 0;
+  const runningCommands = (row?.queue?.running ?? []).map((cmd) => {
+    const ran = session?.items.find((each) => each.kind === "shell" && each.cmd === cmd);
+    return { id: cmd, line: ran?.kind === "shell" ? ran.command : "" };
+  });
 
   const act = (op: Omit<Op, "key">, args: string[], fail?: (reply: Record<string, any>) => void, then?: (reply: Record<string, any>) => void) => {
     const key = newId();
@@ -279,6 +291,15 @@ export function Composer({ id }: { id: string }) {
     const parts = partsNow();
     const sent = waitingChips.of(id);
     const tiles = readyNow();
+    // A `!` line runs on the Mac's shell, through the queue: shown whole and signed, the field kept till the Mac has it.
+    // A worker's is a message, as on the desktop.
+    const line = row?.worker ? null : shellOf(parts);
+    if (line !== null) {
+      if (!line) return;
+      if (line.startsWith("--")) return setError("A command can't start with --");
+      const pulled = editing.get();
+      return setPower({ ...shellPower(id, line, pulled?.qid ?? `c-${newId()}`, pulled?.slot), then: (reply) => (reply.ok ? void take() : setError(refusal(reply))) });
+    }
     if (waitsFor()) return;
     if (isEmpty({ parts, attachmentIds: tiles }) && sent.length === 0) {
       // Held with nothing typed, it steers the first queued message [D183].
@@ -384,12 +405,14 @@ export function Composer({ id }: { id: string }) {
         {shownSends.map((each) => <OnItsWay key={each.cid} entry={each} id={id} />)}
         <QueueCard
           items={items}
+          running={runningCommands}
           paused={paused}
           resuming={resuming || stopping || !connected}
           steer={canSteer && running}
           canEdit={empty}
           error={(stuck ? `Not sent: ${stuck.error}. Edit or delete it to go on.` : null) ?? (items.length > 0 ? error : null)}
           onResume={resume}
+          onBackground={(command) => setPower({ ...backgroundPower(id, command.id, command.line), then: (reply) => setError(reply.ok ? null : refusal(reply)) })}
           onSteer={steerQueued}
           onRemove={(qid) => (lost(qid) ? sending.discard(run, id, lost(qid)!) : act({ kind: "remove", qid }, ["remove", qid]))}
           onEdit={edit}
@@ -397,6 +420,7 @@ export function Composer({ id }: { id: string }) {
           onMove={move}
           pulled={foreign && !live.some((op) => op.qid === foreign.id) ? { text: foreign.parts ? plainText(foreign.parts.parts) : foreign.text, onPutBack: () => act({ kind: "add", qid: foreign.id, text: foreign.text, slot: foreign.slot }, ["restore"]) } : null}
         />
+        {row && !row.worker ? <OvernightStrip id={id} row={row} connected={connected} /> : null}
         {menu?.kind === "/" ? <Commands id={id} query={menu.query} fresh={running} onPick={(command) => (command.instant ? runCommand(command) : replace(`${command.label} `, { kind: "command", id: command.id, type: command.kind, label: command.label }))} /> : null}
         {menu?.kind === "@" ? <Mentions id={id} query={menu.query} onPick={(item) => replace(`${item.label} `, { kind: "mention", id: item.id, type: item.type as Extract<Named, { kind: "mention" }>["type"], label: item.label })} /> : null}
         {panel.length > 0 ? (
@@ -428,7 +452,11 @@ export function Composer({ id }: { id: string }) {
             <Pressable accessibilityRole="button" accessibilityLabel="Add photos or files" disabled={!connected} onPress={pick} hitSlop={8} style={({ pressed }) => [st.plus, (pressed || !connected) && { opacity: 0.5 }]}>
               <Text style={st.plusGlyph}>+</Text>
             </Pressable>
-            <ModelPill id={id} row={row} connected={connected} />
+            <View style={st.pills}>
+              <ModelPill id={id} row={row} connected={connected} />
+              <LevelPill id={id} row={row} connected={connected} />
+              {row && !row.worker ? <OvernightPill id={id} row={row} connected={connected} /> : null}
+            </View>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={state === "stop" ? "Stop" : state === "resume" ? "Resume" : verb}
@@ -442,6 +470,18 @@ export function Composer({ id }: { id: string }) {
             </Pressable>
           </View>
         </View>
+        {power ? (
+          <Confirm
+            title={power.title}
+            body={power.body}
+            shown={power.shown}
+            args={power.args}
+            onDone={(reply) => {
+              setPower(null);
+              if (reply) power.then(reply);
+            }}
+          />
+        ) : null}
         {waits && !blank ? <Text style={st.muted}>{waits}</Text> : error && items.length === 0 ? <Text style={st.error}>{error}</Text> : null}
       </SafeAreaView>
     </KeyboardAvoidingView>
@@ -579,6 +619,7 @@ const st = StyleSheet.create({
   input: { ...text.base, color: color.foreground, maxHeight: 150, padding: 0 },
   chip: { color: color.link },
   bar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  pills: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, flexShrink: 1 },
   send: { marginLeft: "auto", width: 32, height: 32, borderRadius: 16, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
   sendGlyph: { fontSize: 16, fontWeight: "700", color: color.primaryFg },
   waiting: { flexDirection: "row", flexWrap: "wrap", gap: 6 },

@@ -1,5 +1,6 @@
 // The queue card over the field, as the desktop's composer/queue.tsx: what waits for the running turn, one row each in
-// sending order, with Steer, Delete and ⋯ (Edit, Move up, Move down in place of the drag).
+// sending order, with Steer, Delete and ⋯ (Edit, Move up, Move down in place of the drag); over them, each `!` command
+// they wait for, with Run in background.
 import { useState } from "react";
 import { ActionSheetIOS, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Draft } from "../../vendor/brigadier-shared/draft";
@@ -18,8 +19,10 @@ const preview = (draft: Draft) =>
 const hasFiles = (draft: Draft) =>
   draft.attachmentIds.length > 0 || draft.parts.some((part) => typeof part !== "string" && (part.kind === "image" || part.kind === "paste" || (part.kind === "mention" && (part.type === "file" || part.type === "folder"))));
 
-export function QueueCard({ items, paused, resuming, steer, canEdit, error, onResume, onSteer, onRemove, onEdit, onAddAgain, onMove, pulled }: {
+export function QueueCard({ items, running, paused, resuming, steer, canEdit, error, onResume, onBackground, onSteer, onRemove, onEdit, onAddAgain, onMove, pulled }: {
   items: readonly QueuedMessage[];
+  /** The `!` commands running now that what's queued waits for: their ids and lines. */
+  running: readonly { id: string; line: string }[];
   paused: boolean;
   /** Resume was asked and hasn't settled: its button waits. */
   resuming: boolean;
@@ -29,6 +32,7 @@ export function QueueCard({ items, paused, resuming, steer, canEdit, error, onRe
   canEdit: boolean;
   error: string | null;
   onResume: () => void;
+  onBackground: (command: { id: string; line: string }) => void;
   onSteer: (id: string) => void;
   onRemove: (id: string) => void;
   onEdit: (id: string) => void;
@@ -60,6 +64,15 @@ export function QueueCard({ items, paused, resuming, steer, canEdit, error, onRe
           <Small title="Resume" disabled={resuming} onPress={onResume} />
         </View>
       ) : null}
+      {running.map((command) => (
+        <View key={command.id} style={st.row}>
+          <Text style={[st.words, { fontFamily: "Menlo" }]} numberOfLines={1}>
+            <Text style={st.muted}>Running </Text>
+            {command.line}
+          </Text>
+          <Small title="Run in background" disabled={resuming} onPress={() => onBackground(command)} />
+        </View>
+      ))}
       {pulled ? (
         <View style={st.row}>
           <Text style={st.words} numberOfLines={1}>{pulled.text.replace(/\s+/g, " ").trim()}</Text>
