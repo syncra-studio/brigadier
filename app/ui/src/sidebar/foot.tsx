@@ -10,7 +10,7 @@ import { StateDot } from "../components/state-dot";
 import { Switch } from "../components/switch";
 import { spacingPx } from "../components/tooltip";
 import { useDaemon } from "../daemon";
-import { lidHint, loadLid, seenSlept, setLid, setSetting, useLid, useSettings } from "../settings/api";
+import { lidHint, lidShown, loadLid, seenSlept, setLid, setSetting, useLid, useSettings } from "../settings/api";
 import { KEEP_AWAKE } from "../settings/general";
 import { useRoutingDot } from "../settings/routing";
 import { openSettings } from "../settings/shell";
@@ -93,7 +93,7 @@ function KeepAwakeMenu() {
           />
           <p className="text-xs text-muted-foreground">{option?.hint}</p>
         </div>
-        {settings && (
+        {settings && lidShown(lid.state) && (
           <div className="flex items-start gap-3 border-t border-divider pt-3">
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span id={`${lidId}-label`} className="text-sm">

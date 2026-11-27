@@ -15,7 +15,8 @@ import type { SlashCommand } from "./menus";
 export type Tool = { id: string; line: string; Icon: ComponentType<{ className?: string }> };
 
 export const TOOLS: Tool[] = [
-  { id: "computer", line: "Use the apps on your Mac", Icon: Desktop },
+  // Computer use is macOS's alone for now [D158].
+  ...(window.brigadier?.platform === "darwin" ? [{ id: "computer", line: "Use the apps on your Mac", Icon: Desktop }] : []),
   { id: "browser", line: "Open pages, click and type in Brigadier's browser", Icon: Globe },
   { id: "mockup", line: "Draw 3 looks to pick from before building", Icon: Grid },
   { id: "image", line: "Make or edit a picture", Icon: ImageSquare },

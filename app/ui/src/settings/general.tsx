@@ -10,7 +10,7 @@ import { Switch } from "../components/switch";
 import { useDaemon } from "../daemon";
 import { errorText } from "../onboarding/api";
 import { startTour } from "../onboarding/tour";
-import { type Settings, lidHint, setChatLayout, setLid, setSetting, useLid, useSettings } from "./api";
+import { type Settings, lidHint, lidShown, setChatLayout, setLid, setSetting, useLid, useSettings } from "./api";
 import { ChatLayoutChoice } from "./chat-layout";
 import { sendNotice } from "./notices";
 import { SettingsPage, SettingsSection } from "./parts";
@@ -243,14 +243,16 @@ function PowerSection({ settings }: { settings: Settings }) {
         <SettingsRow label={GENERAL_ROWS.keepAwake.label} description={GENERAL_ROWS.keepAwake.description} error={save.error}>
           <Select label={GENERAL_ROWS.keepAwake.label} value={settings.awake} options={KEEP_AWAKE} onChange={(value) => save.run(() => setSetting("awake", value))} />
         </SettingsRow>
-        <SettingsRow label={GENERAL_ROWS.lidClosed.label} description={lidHint(settings, lid)} error={lidSave.error}>
-          <Switch
-            aria-label={GENERAL_ROWS.lidClosed.label}
-            checked={settings.awake_lid}
-            disabled={lid.settingUp}
-            onCheckedChange={(on) => lidSave.run(() => setLid(on))}
-          />
-        </SettingsRow>
+        {lidShown(lid.state) && (
+          <SettingsRow label={GENERAL_ROWS.lidClosed.label} description={lidHint(settings, lid)} error={lidSave.error}>
+            <Switch
+              aria-label={GENERAL_ROWS.lidClosed.label}
+              checked={settings.awake_lid}
+              disabled={lid.settingUp}
+              onCheckedChange={(on) => lidSave.run(() => setLid(on))}
+            />
+          </SettingsRow>
+        )}
       </SettingsCard>
     </SettingsSection>
   );

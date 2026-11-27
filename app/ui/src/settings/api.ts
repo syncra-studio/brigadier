@@ -86,8 +86,8 @@ async function saveShown(change: Partial<Settings>, args: string[]): Promise<voi
   }
 }
 
-/** How the lid stands, as Rust reads it: no rule yet, battery too low, sleep off now (Brigadier's or another app's), or ready [D333]. */
-export type LidState = "setup" | "low" | "on" | "ready";
+/** How the lid stands, as Rust reads it: no rule yet, battery too low, sleep off now (Brigadier's or another app's), ready [D333], or no hold on this system. */
+export type LidState = "setup" | "low" | "on" | "ready" | "unsupported";
 /** With the lid closed too, as the daemon pushes it: held now, this discharge's low-battery warning, and the sleep a low battery brought, until seen. */
 export type LidHold = { held: boolean; warned: { at: number; percent: number } | null; slept: { at: number; percent: number } | null };
 const lid = store<{ state?: LidState; settingUp?: boolean }>({});
@@ -107,6 +107,9 @@ export function loadLid(): void {
     (cause: unknown) => console.error(cause),
   );
 }
+
+/** Whether the lid's rows show: where Rust has a hold for it, which macOS always has, so it shows there before Rust answers. */
+export const lidShown = (state: LidState | undefined): boolean => (state === undefined ? window.brigadier?.platform === "darwin" : state !== "unsupported");
 
 /** The user has seen that a low battery slept the computer: Rust's next list drops it. */
 export function seenSlept(at: number): void {
