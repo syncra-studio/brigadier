@@ -147,12 +147,22 @@ fn rename(
     }
     let out = act(data, me, s, &line, "set_value", args, here)?;
     let first = out.lines().next().unwrap_or("").to_string();
-    if s.batch || first.contains(": refused") || first.contains("the outcome is unknown") {
+    if first.contains(": refused") {
         return Ok(out);
     }
-    // A window sorted by name moves the file's row: it's found again by its new name, never by [n].
-    let found = call(data, "get_window_state", window::state_args(s, me), here);
+    // A window sorted by name moves the file's row and the rows between: the numbers are void.
     s.moved = true;
+    // A run's later steps would act on the old numbers: it stops here for a read.
+    if s.batch {
+        return Err(refuse(&format!(
+            "{line}: sent. A renamed file can move in Finder's list, so the steps after it weren't sent: read again."
+        )));
+    }
+    if first.contains("the outcome is unknown") {
+        return Ok(out);
+    }
+    // It's found again by its new name, never by [n].
+    let found = call(data, "get_window_state", window::state_args(s, me), here);
     let said = match found.ok().as_ref().map(|f| named(f, text)) {
         Some(Some(m)) => {
             format!("{line}: done, [{m}] reads it back. Read again before using the numbers.")

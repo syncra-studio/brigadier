@@ -81,6 +81,10 @@ pub(super) fn act(
             ))),
             // The steps after it may count on the drop: the run stops here.
             _ if undropped => Err(refuse(&format!("{line}: {NO_DROP}"))),
+            // A file dropped leaves its list, and the rows after it move: the run stops for a read.
+            _ if drop => Err(refuse(&format!(
+                "{line}: sent. A file dropped in Finder moves the rows after it, so the steps after it weren't sent: read again."
+            ))),
             _ => Ok(format!("{line}: sent.")),
         };
     }
