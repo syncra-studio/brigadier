@@ -419,16 +419,19 @@ pub(crate) fn env(spec: &Spec) -> Option<(String, Vec<(String, String)>)> {
     let token = grant(spec)?;
     let me = std::env::current_exe().ok()?;
     let data = crate::data_of(spec).display().to_string();
+    let temp = crate::background::temp(&spec.dir).display().to_string();
+    // Windows' own programs read TEMP and TMP: the same folder, so their files go with the session.
+    #[cfg(windows)]
+    let windows = ["TEMP", "TMP"].map(|k| (k.to_string(), temp.clone()));
     let mut vars = vec![
         (SESSION.into(), spec.dir.display().to_string()),
         (GRANT.into(), token),
         ("BRIGADIER_DATA".into(), data),
         // The standing line's folder; without it an agent makes its own.
-        (
-            "TMPDIR".into(),
-            crate::background::temp(&spec.dir).display().to_string(),
-        ),
+        ("TMPDIR".into(), temp),
     ];
+    #[cfg(windows)]
+    vars.extend(windows);
     vars.extend(browser_shim().map(|shim| ("BROWSER".into(), shim)));
     Some((me.parent()?.display().to_string(), vars))
 }

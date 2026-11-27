@@ -93,9 +93,9 @@ impl Adapter for OpenCode {
         ("opencode", &[".opencode/bin"])
     }
     fn install(&self) -> Option<&'static str> {
-        // Its docs list npm, Scoop and Chocolatey on Windows; npm is what a Node user has.
+        // OpenCode 2's own npm package: its docs give no Windows installer or package manager.
         #[cfg(windows)]
-        return Some("npm install -g opencode-ai");
+        return Some("npm install -g @opencode/cli");
         #[cfg(unix)]
         Some("curl -fsSL https://opencode.ai/v2/install | bash")
     }

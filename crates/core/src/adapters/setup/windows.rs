@@ -58,7 +58,8 @@ pub(super) fn exe_in(dir: &Path, bin: &str) -> Option<PathBuf> {
 /// script if one shows up.
 fn shim_exe(shim: &Path, bin: &str) -> Option<PathBuf> {
     let text = std::fs::read_to_string(shim).ok()?;
-    let rel = text.split('"').find_map(|w| w.strip_prefix(r"%dp0%\"))?;
+    // The last: a script's shim names its `%dp0%\node.exe` first, the package's target after.
+    let rel = text.rsplit('"').find_map(|w| w.strip_prefix(r"%dp0%\"))?;
     let target = shim.parent()?.join(rel);
     if target
         .extension()
