@@ -1,10 +1,10 @@
 //! Windows' process facts: Toolhelp snapshots, GetProcessTimes for the start, and the named jobs
-//! (crate::win) for groups and hosts. There are no process sessions or stopped processes, so `sid`
-//! is 0 and `stopped` false; a pgid is the pid of the child whose `g` job holds the process.
+//! (crate::win) for groups and hosts. There are no process sessions, so `sid` is 0; `stopped` is a
+//! process all of whose threads are suspended; a pgid is the pid of the child whose `g` job holds it.
 
 use super::Proc;
 use crate::win::{self, GROUP, HOST, Handle};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io;
 use std::mem::size_of;
 use std::path::{Path, PathBuf};
@@ -44,7 +44,58 @@ fn pgids() -> HashMap<u32, (i32, u64)> {
     of
 }
 
-fn proc_of(pid: u32, ppid: u32, groups: &HashMap<u32, (i32, u64)>) -> Option<Proc> {
+/// The processes every thread of which waits suspended: Windows' stopped, as a freeze leaves one.
+fn suspended() -> HashSet<u32> {
+    use windows_sys::Wdk::System::SystemInformation::{
+        NtQuerySystemInformation, SystemProcessInformation,
+    };
+    use windows_sys::Win32::System::WindowsProgramming::{
+        SYSTEM_PROCESS_INFORMATION as P, SYSTEM_THREAD_INFORMATION as T,
+    };
+    // KTHREAD_STATE's Waiting, for KWAIT_REASON's Suspended; the list grew, for the mismatch.
+    const WAITING: u32 = 5;
+    const SUSPENDED: u32 = 5;
+    const LENGTH_MISMATCH: i32 = 0xC000_0004_u32 as i32;
+    // u64s, so every entry the kernel lays out is aligned.
+    let mut buf = vec![0u64; 1 << 17];
+    loop {
+        let mut len = 0;
+        let bytes = (buf.len() * 8) as u32;
+        let at = buf.as_mut_ptr().cast();
+        let status =
+            unsafe { NtQuerySystemInformation(SystemProcessInformation, at, bytes, &mut len) };
+        if status >= 0 {
+            break;
+        }
+        if status != LENGTH_MISMATCH || buf.len() >= 1 << 24 {
+            return HashSet::new();
+        }
+        let more = (len as usize / 8 + 1).max(buf.len() * 2);
+        buf.resize(more, 0);
+    }
+    let (base, mut at, mut out) = (buf.as_ptr().cast::<u8>(), 0, HashSet::new());
+    loop {
+        let p = unsafe { &*base.add(at).cast::<P>() };
+        let first = unsafe { base.add(at + size_of::<P>()).cast::<T>() };
+        let threads = unsafe { std::slice::from_raw_parts(first, p.NumberOfThreads as usize) };
+        if !threads.is_empty()
+            && (threads.iter()).all(|t| t.ThreadState == WAITING && t.WaitReason == SUSPENDED)
+        {
+            out.insert(p.UniqueProcessId as usize as u32);
+        }
+        if p.NextEntryOffset == 0 {
+            return out;
+        }
+        at += p.NextEntryOffset as usize;
+    }
+}
+
+fn proc_of(
+    pid: u32,
+    ppid: u32,
+    groups: &HashMap<u32, (i32, u64)>,
+    stopped: &HashSet<u32>,
+) -> Option<Proc> {
     let p = query(pid)?;
     if !win::live(&p) {
         return None;
@@ -55,7 +106,7 @@ fn proc_of(pid: u32, ppid: u32, groups: &HashMap<u32, (i32, u64)>) -> Option<Pro
         pgid: groups.get(&pid).map_or(0, |g| g.0),
         sid: 0,
         start_us: win::start_us(&p)?,
-        stopped: false,
+        stopped: stopped.contains(&pid),
         zombie: false,
     })
 }
@@ -63,7 +114,7 @@ fn proc_of(pid: u32, ppid: u32, groups: &HashMap<u32, (i32, u64)>) -> Option<Pro
 pub fn info(pid: i32) -> Option<Proc> {
     let pid = u32::try_from(pid).ok().filter(|p| *p != 0)?;
     let ppid = win::parent(&query(pid)?)?;
-    proc_of(pid, ppid, &pgids())
+    proc_of(pid, ppid, &pgids(), &suspended())
 }
 
 /// A process's arguments, split as its C runtime would, and its environment.
@@ -146,11 +197,11 @@ pub fn stdio(_pid: i32) -> Option<[u64; 2]> {
 }
 
 pub fn all() -> Vec<Proc> {
-    let groups = pgids();
+    let (groups, stopped) = (pgids(), suspended());
     win::processes()
         .iter()
         .filter(|e| e.th32ProcessID != 0)
-        .filter_map(|e| proc_of(e.th32ProcessID, e.th32ParentProcessID, &groups))
+        .filter_map(|e| proc_of(e.th32ProcessID, e.th32ParentProcessID, &groups, &stopped))
         .collect()
 }
 
