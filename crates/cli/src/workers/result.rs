@@ -182,9 +182,11 @@ pub(super) fn write_ended(data: &Path, wid: &str, cut: bool) -> io::Result<bool>
                 let reason = last.and_then(|l| l["reason"].as_str().map(String::from));
                 reason.filter(|_| end.how == "stopped")
             });
-            // A cut whose renewal was called off reads as the Stop or Pause that did it.
+            // A cut whose renewal was called off reads as the Stop, Pause or lead's stop that did it.
             let by = match off.filter(|_| f.cut.as_deref() == Some(turn)) {
-                Some(l) if l["reason"] == "pause" => Some("pause".into()),
+                Some(l) if matches!(l["reason"].as_str(), Some("pause" | "lead")) => {
+                    l["reason"].as_str().map(Into::into)
+                }
                 Some(_) => Some("user".into()),
                 None => by,
             };

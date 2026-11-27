@@ -58,7 +58,14 @@ pub(super) fn ended(
 ) -> Option<&'static str> {
     let per_turn = || crate::adapters::get(&agent.1).is_some_and(|a| a.per_turn());
     Some(match item["kind"].as_str()? {
-        "stopped" if matches!(item["by"].as_str(), None | Some("" | "user" | "pause" | "lead")) => "stopped",
+        "stopped"
+            if matches!(
+                item["by"].as_str(),
+                None | Some("" | "user" | "pause" | "lead")
+            ) =>
+        {
+            "stopped"
+        }
         "stopped" => "cut",
         "exited" if item["pid"].as_i64() != agent.0 => return None,
         "exited" if per_turn() && item["code"] == 0 => "done",

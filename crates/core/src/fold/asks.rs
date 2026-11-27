@@ -240,8 +240,8 @@ impl Fold {
                     t.stop_by = c["by"].clone();
                     self.stop_from = c["from"].as_str().map(Into::into); // a graceful stop logs no `stopped` [C76]
                 }
-                // The user's Stop or Pause during a summary turn stops its renewal too (D95).
-                if matches!(c["by"].as_str(), Some("user" | "pause")) {
+                // The user's Stop or Pause, or a lead's, during a summary turn stops its renewal too (D95).
+                if matches!(c["by"].as_str(), Some("user" | "pause" | "lead")) {
                     self.renewing = None;
                 }
                 true

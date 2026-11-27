@@ -33,10 +33,8 @@ impl Thread {
             return;
         };
         let ms = ts.saturating_sub(o.started);
+        o.quiet &= self.cutting.is_none();
         let row = super::changes::stop_row(reason, ms, o);
-        if let Some(o) = self.open.as_mut().filter(|_| self.cutting.is_some()) {
-            o.quiet = false;
-        }
         self.kept_row(row);
     }
 
@@ -239,6 +237,7 @@ impl Thread {
                 self.end_children("cancelled", ts);
                 // Brigadier's own stop for a hand-off leaves a cut waiting on its carry-on.
                 self.settle_held(item["by"] != "handoff");
+                #[rustfmt::skip] // one line: the 500-line limit
                 let stops = ["user", "pause", "lead", "rebirth", "stall", "overnight", "summary"];
                 if let Some(by) = item["by"].as_str().filter(|b| stops.contains(b)) {
                     match self.open.as_mut() {
