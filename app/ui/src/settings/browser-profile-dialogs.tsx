@@ -11,8 +11,6 @@ import { errorText } from "../onboarding/api";
 import { plural } from "../panel/words";
 import { openSettings } from "./shell";
 
-const MAC = window.brigadier?.platform === "darwin";
-
 /** New profile, or (with `editing`) Rename: a name and a colour. */
 export function ProfileDialog({
   open,
@@ -70,8 +68,8 @@ function Form({ editing, onClose, onCreated }: { editing: BrowserProfile | undef
           </div>
         </div>
       </div>
-      <DialogFooter className={editing || !MAC ? undefined : "sm:justify-between"}>
-        {!editing && MAC && (
+      <DialogFooter className={editing ? undefined : "sm:justify-between"}>
+        {!editing && (
           <Button
             variant="link-blue"
             size="inline"

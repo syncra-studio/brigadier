@@ -59,10 +59,8 @@ export const SETTINGS_PAGES: readonly SettingsPageEntry[] = [
     ? [{ id: "connections", label: "Connections", icon: Plug, group: "Agents", component: ConnectionsPage, rows: Object.values(CONNECTIONS_ROWS) } as const]
     : []),
   { id: "browser", label: "Browser", icon: Globe, group: "Browser & Data", component: BrowserPage, rows: Object.values(BROWSER_ROWS) },
-  // Importing reads other browsers' macOS profiles: macOS only.
-  ...(window.brigadier?.platform === "darwin"
-    ? [{ id: "browserImport", label: "Import Browser Data", icon: Download, group: "Browser & Data", component: BrowserImportPage, rows: Object.values(BROWSER_IMPORT_ROWS) } as const]
-    : []),
+  // Importing reads other browsers' profiles, each system's own way (crates/browser-data).
+  { id: "browserImport", label: "Import Browser Data", icon: Download, group: "Browser & Data", component: BrowserImportPage, rows: Object.values(BROWSER_IMPORT_ROWS) },
   { id: "storage", label: "Storage", icon: Storage, group: "Browser & Data", component: StoragePage, rows: Object.values(STORAGE_ROWS) },
   { id: "archived", label: "Archived", icon: Archive, group: "end", component: ArchivedPage, rows: Object.values(ARCHIVED_ROWS) },
 ];

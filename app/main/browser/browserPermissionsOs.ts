@@ -18,9 +18,14 @@ const SETTINGS_PANE: Record<OsDevice, string> = {
   microphone: "Privacy_Microphone",
   location: "Privacy_LocationServices",
 };
+// Windows' Settings pages for the same.
+const WINDOWS_PAGE: Record<OsDevice, string> = { camera: "privacy-webcam", microphone: "privacy-microphone", location: "privacy-location" };
 
 /** Asks the system for what the person just allowed; what it refuses, has off, or leaves unanswered comes back by name. */
 export async function refusedByOs(asked: SiteAsk): Promise<{ refused: OsDevice[]; why?: LocationWhy }> {
+  // Windows asks nobody: its privacy switches are read, and one off refuses. Its location switch can't be read, so
+  // Chromium's own error reaches the site there. Linux has no switch to read.
+  if (process.platform === "win32") return { refused: (["camera", "microphone"] as const).filter((device) => asked[device] && systemPreferences.getMediaAccessStatus(device) === "denied") };
   if (process.platform !== "darwin") return { refused: [] };
   const refused: OsDevice[] = [];
   for (const device of ["camera", "microphone"] as const) {
@@ -34,6 +39,7 @@ export async function refusedByOs(asked: SiteAsk): Promise<{ refused: OsDevice[]
 }
 
 export function openOsSettings(device: OsDevice): void {
+  if (process.platform === "win32") void shell.openExternal(`ms-settings:${WINDOWS_PAGE[device]}`);
   if (process.platform !== "darwin") return;
   void shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${SETTINGS_PANE[device]}`);
 }

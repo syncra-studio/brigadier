@@ -9,7 +9,8 @@ import { Select } from "../components/select";
 import { FlowHeader } from "./browser-import";
 
 const DAY = 86_400_000;
-const MAC = window.brigadier?.platform === "darwin";
+const PLATFORM = window.brigadier?.platform;
+const MAC = PLATFORM === "darwin";
 
 function when(atMs: number | undefined): string {
   if (atMs === undefined) return "Not imported yet";
@@ -75,6 +76,17 @@ export function ProfileImportPick({ source, onCancel, onImport }: { source: List
       {!source.signIns && (
         <p data-slot="import-no-sign-ins" className="text-xs text-quiet-foreground">
           {source.name}'s sign-ins stay behind: they are locked with a key Brigadier doesn't touch. You'll sign in again here.
+        </p>
+      )}
+      {/* What each system lets come over of a Chromium browser's sign-ins (crates/browser-data/src/keys.rs). */}
+      {source.signIns && source.family === "chromium" && PLATFORM === "win32" && (
+        <p data-slot="import-locked-sign-ins" className="text-xs text-quiet-foreground">
+          On Windows, {source.name} locks its newer sign-ins to itself, so no other app can read them. Some sites will ask you to sign in again here.
+        </p>
+      )}
+      {source.signIns && source.family === "chromium" && PLATFORM === "linux" && (
+        <p data-slot="import-locked-sign-ins" className="text-xs text-quiet-foreground">
+          {source.name}'s sign-ins open with its key in your keyring. If no keyring answers, or it's locked, sites will ask you to sign in again here.
         </p>
       )}
       {source.emptyProfiles.length > 0 && (

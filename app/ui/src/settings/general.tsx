@@ -16,14 +16,24 @@ import { sendNotice } from "./notices";
 import { SettingsPage, SettingsSection } from "./parts";
 import { closeSettings } from "./shell";
 
+// The system's own settings app, which opens at its notifications page; Linux's desktops differ, so there the rows only say so.
+const PLATFORM = window.brigadier?.platform;
+const SETTINGS_APP = PLATFORM === "darwin" ? "System Settings" : PLATFORM === "win32" ? "Settings" : null;
+const SYSTEM_NOTICES =
+  PLATFORM === "darwin"
+    ? { label: "macOS notifications", description: "Allow, banners and Focus are set in System Settings" }
+    : PLATFORM === "win32"
+      ? { label: "Windows notifications", description: "Allow, banners and Do not disturb are set in Settings" }
+      : { label: "Desktop notifications", description: "Allow and Do Not Disturb are set in your desktop's settings" };
+
 /** The General page's rows, for the page and for Settings search (the old app's words). */
 export const GENERAL_ROWS = {
   chatLayout: { label: "Chat layout", description: "Centered with your messages in bubbles, or stacked across the panel", section: "Thread" },
   followUp: { label: "Follow-up behaviour", description: "What a message sent while an agent works does", section: "Composer" },
   notifyFinished: { label: "Notify when a session finishes", description: "A notification when a chat or session is done", section: "Notifications" },
   needsYou: { label: "When something needs you", description: "Approvals and questions waiting for your answer", section: "Notifications" },
-  sound: { label: "Play a sound", description: "macOS's notification sound with each notification", section: "Notifications" },
-  systemSettings: { label: "macOS notifications", description: "Allow, banners and Focus are set in System Settings", section: "Notifications" },
+  sound: { label: "Play a sound", description: `${PLATFORM === "darwin" ? "macOS's" : "The system's"} notification sound with each notification`, section: "Notifications" },
+  systemSettings: { ...SYSTEM_NOTICES, section: "Notifications" },
   keepAwake: { label: "Keep the computer awake", description: "Whether this computer may sleep while Brigadier is open", section: "Power" },
   lidClosed: { label: "Keep going with the lid closed", description: "Applied whenever the computer is kept awake", section: "Power" },
   tour: { label: "Take the tour", description: "A short walk through the sidebar, tabs and the rest of the app", section: "Help" },
@@ -174,10 +184,12 @@ function NotificationsSection({ settings, notices, reload }: { settings: Setting
     <SettingsSection title="Notifications">
       <SettingsCard>
         {notices === "blocked" && (
-          <SettingsRow label="Notifications are off" description="Turn them on in System Settings to use the options below" error={status.error}>
-            <Button variant="soft" size="sm" onClick={() => status.run(() => window.brigadier?.openNotificationSettings())}>
-              Open System Settings
-            </Button>
+          <SettingsRow label="Notifications are off" description={`Turn them on in ${SETTINGS_APP ?? "your desktop's settings"} to use the options below`} error={status.error}>
+            {SETTINGS_APP && (
+              <Button variant="soft" size="sm" onClick={() => status.run(() => window.brigadier?.openNotificationSettings())}>
+                Open {SETTINGS_APP}
+              </Button>
+            )}
           </SettingsRow>
         )}
         {notices === "hidden" && (
@@ -202,9 +214,11 @@ function NotificationsSection({ settings, notices, reload }: { settings: Setting
         {/* Always there but when the status line already holds the button [D2086]. */}
         {notices !== "blocked" && notices !== "hidden" && (
           <SettingsRow label={GENERAL_ROWS.systemSettings.label} description={GENERAL_ROWS.systemSettings.description} error={status.error}>
-            <Button variant="soft" size="sm" onClick={() => status.run(() => window.brigadier?.openNotificationSettings())}>
-              Notification settings…
-            </Button>
+            {SETTINGS_APP && (
+              <Button variant="soft" size="sm" onClick={() => status.run(() => window.brigadier?.openNotificationSettings())}>
+                Notification settings…
+              </Button>
+            )}
           </SettingsRow>
         )}
       </SettingsCard>

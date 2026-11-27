@@ -9,6 +9,7 @@ import { answerPermission, type BrowserAsking, closeOsRefused, type LocationWhy,
 
 const ARM_MS = 500;
 const MAC = window.brigadier?.platform === "darwin";
+const WINDOWS = window.brigadier?.platform === "win32";
 
 /** Only Esc or the card's own ×: a click on the page around it mustn't answer for the person. */
 const keepOpen = (close: () => void) => (open: boolean, { reason }: { reason: string }) => {
@@ -109,12 +110,12 @@ export function OsRefusedNotice({ id, refused, anchor }: { id: string; refused: 
         className="w-browser-site-info p-3"
       >
         <div className="flex items-start gap-2">
-          <p className="min-w-0 flex-1 pt-1 text-label break-words">{why ? LOCATION_WHY[why] : `${MAC ? `macOS isn't giving Brigadier ${names}` : `Brigadier can't get ${names} on this system yet`}, so the site can't have it.`}</p>
+          <p className="min-w-0 flex-1 pt-1 text-label break-words">{why ? LOCATION_WHY[why] : `${MAC ? `macOS isn't giving Brigadier ${names}` : WINDOWS ? `Windows' privacy settings keep ${names} from Brigadier` : `Brigadier can't get ${names} on this system yet`}, so the site can't have it.`}</p>
           <TooltipIconButton tooltip="Close" size="icon-xs" onClick={() => closeOsRefused(id)}>
             <X />
           </TooltipIconButton>
         </div>
-        {MAC && (!why || why === "off") && (
+        {(MAC || WINDOWS) && (!why || why === "off") && (
           <Button
             className="mt-3 w-full"
             size="sm"
@@ -124,7 +125,7 @@ export function OsRefusedNotice({ id, refused, anchor }: { id: string; refused: 
               closeOsRefused(id);
             }}
           >
-            Open System Settings
+            {MAC ? "Open System Settings" : "Open Settings"}
           </Button>
         )}
       </PopoverContent>

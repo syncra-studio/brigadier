@@ -10,7 +10,6 @@ import { type Tab } from "../shell/tab-store";
 import { keysOf } from "../shortcuts";
 import { ProfileDisc } from "./profile-mark";
 
-const MAC = window.brigadier?.platform === "darwin";
 import { known, switchProfile, useDefaultProfile, useProfiles, useSessionProfile } from "./profiles";
 
 /** A profile's key in the menu: ⌥⌘1 to ⌥⌘9. */
@@ -68,11 +67,9 @@ export function ProfileButton({ owner, tab }: { owner: string; tab: Tab }) {
           <DropdownMenuItem className="h-browser-menu-item" onClick={() => setCreating(true)}>
             New profile…
           </DropdownMenuItem>
-          {MAC && (
-            <DropdownMenuItem className="h-browser-menu-item" onClick={() => openSettings("browserImport")}>
-              Import Browser Data…
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem className="h-browser-menu-item" onClick={() => openSettings("browserImport")}>
+            Import Browser Data…
+          </DropdownMenuItem>
           <DropdownMenuItem className="h-browser-menu-item" onClick={() => openSettings("browser")}>
             Manage profiles
           </DropdownMenuItem>

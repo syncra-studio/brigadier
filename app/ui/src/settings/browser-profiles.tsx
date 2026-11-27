@@ -20,8 +20,6 @@ import { ProfileDeleteDialog, ProfileDialog, useSessionIds } from "./browser-pro
 import { SettingsSection } from "./parts";
 import { openSettings } from "./shell";
 
-const MAC = window.brigadier?.platform === "darwin";
-
 /** How a profile started and how many sessions are on it. */
 export const profileLine = (sessions: number, importedFrom?: string): string =>
   `${importedFrom ? `Imported from ${importedFrom}` : "Started empty"} · ${sessions === 0 ? "No sessions" : plural(sessions, "session")}`;
@@ -44,11 +42,9 @@ export function ProfilesSection() {
       description="Each profile keeps its own sign-ins."
       actions={
         <>
-          {MAC && (
-            <Button variant="ghost" size="sm" onClick={() => openSettings("browserImport")}>
-              Import…
-            </Button>
-          )}
+          <Button variant="ghost" size="sm" onClick={() => openSettings("browserImport")}>
+            Import…
+          </Button>
           <Button variant="soft" size="sm" onClick={() => setCreating(true)}>
             <Plus className="size-icon-sm" />
             New profile

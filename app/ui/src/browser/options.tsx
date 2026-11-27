@@ -7,8 +7,6 @@ import { openBrowserSettings } from "../settings/browser-parts";
 import { openSettings } from "../settings/shell";
 import { stepZoom, ZOOM_LEAST, ZOOM_MOST, zoomLabel } from "./keys";
 
-const MAC = window.brigadier?.platform === "darwin";
-
 /** The zoom stepper's buttons: faint while they can't act. */
 const STEP = "flex size-6 items-center justify-center hover:bg-fill disabled:opacity-disabled disabled:hover:bg-transparent";
 
@@ -79,11 +77,9 @@ export function BrowserOptions({
           </button>
         </div>
         <DropdownMenuSeparator className="mx-2" />
-        {MAC && (
-          <DropdownMenuItem className="h-browser-menu-item" onClick={() => openSettings("browserImport")}>
-            Import browser data
-          </DropdownMenuItem>
-        )}
+        <DropdownMenuItem className="h-browser-menu-item" onClick={() => openSettings("browserImport")}>
+          Import browser data
+        </DropdownMenuItem>
         <DropdownMenuItem className="h-browser-menu-item" onClick={() => openBrowserSettings("clear")}>
           Clear browsing data
         </DropdownMenuItem>
