@@ -1,0 +1,228 @@
+name: Release
+# Builds each package on its own system's runner [D159, D160] and, for a version tag or a dispatch with publish on,
+# puts them all on one draft release, which the owner publishes (proposed). Signing, notarizing and SignPath run
+# only where their secrets are set; a draft needs GPG-signed checksums and both Mac packages signed and
+# notarized, while Windows may be unsigned until SignPath says yes [D169].
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Put the packages on a draft release
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  mac:
+    runs-on: macos-15
+    outputs:
+      signed: ${{ steps.check.outputs.signed }}
+    env:
+      CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
+      CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+      BRIGADIER_SIGN_IDENTITY: ${{ secrets.MAC_CERTIFICATE != '' && vars.MAC_SIGN_IDENTITY || '' }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: rustup show active-toolchain || rustup toolchain install
+      # The Intel build is cross-compiled [D168].
+      - run: rustup target add x86_64-apple-darwin
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Notarization key
+        if: env.APPLE_API_KEY_ID != ''
+        run: |
+          printf '%s' "$KEY" > "$RUNNER_TEMP/notarize.p8"
+          echo "APPLE_API_KEY=$RUNNER_TEMP/notarize.p8" >> "$GITHUB_ENV"
+        env:
+          KEY: ${{ secrets.APPLE_API_KEY }}
+      - run: ARCHS="arm64 x64" scripts/package
+      - name: Contents
+        run: |
+          for arch in arm64 x64; do
+            app="out/Brigadier-darwin-$arch/Brigadier.app"
+            (cd "$app" && find . | sort) > "out/contents-mac-$arch.txt"
+            codesign --verify --deep --strict "$app"
+            # Every Mach-O is the package's own arch, but Cua's universal driver.
+            find "$app" -type f | while read -r f; do
+              file -b "$f" | grep -q Mach-O || continue
+              archs=$(lipo -archs "$f")
+              case "$f" in *"/Resources/cua-driver") continue ;; esac
+              [ "$archs" = "$([ $arch = x64 ] && echo x86_64 || echo arm64)" ] || { echo "::error::$f is $archs"; exit 1; }
+            done
+            echo "$arch: $(wc -l < "out/contents-mac-$arch.txt") files"
+          done
+      - id: check
+        name: Signed and notarized
+        run: |
+          signed=false
+          if [ -n "$BRIGADIER_SIGN_IDENTITY" ] && xcrun stapler validate out/Brigadier-darwin-arm64/Brigadier.app && xcrun stapler validate out/Brigadier-darwin-x64/Brigadier.app; then signed=true; fi
+          echo "signed=$signed" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mac
+          path: |
+            out/*.dmg
+            out/*.zip
+            out/*.blockmap
+            out/latest-mac.yml
+            out/contents-mac-*.txt
+
+  windows:
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    env:
+      SIGNPATH: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: rustup show active-toolchain || rustup toolchain install
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: scripts/package
+      - name: Contents
+        run: (cd out/win-unpacked && find . | sort) | tee out/contents-win.txt | grep -E '\.exe$|THIRD_PARTY|LICENSE|icons|app-update'
+      # SignPath, once it accepts the project [D169] (proposed): sign the app's files, build the installer from
+      # them, sign the installer, then give latest.yml the signed installer's hash.
+      - id: unpacked
+        if: env.SIGNPATH == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: win-unpacked
+          path: out/win-unpacked
+      - if: env.SIGNPATH == 'true'
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: brigadier
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: app
+          github-artifact-id: ${{ steps.unpacked.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: out/win-signed
+      - if: env.SIGNPATH == 'true'
+        run: rm out/*.exe out/*.blockmap out/latest.yml && PREPACKAGED=out/win-signed scripts/package
+      - id: installer
+        if: env.SIGNPATH == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: win-installer
+          path: out/*.exe
+      - if: env.SIGNPATH == 'true'
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: brigadier
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.installer.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: out
+      - if: env.SIGNPATH == 'true'
+        name: Re-hash latest.yml
+        run: |
+          node -e '
+            const fs = require("fs"), { createHash } = require("crypto");
+            let yml = fs.readFileSync("out/latest.yml", "utf8");
+            const exe = fs.readdirSync("out").find((f) => f.endsWith(".exe"));
+            const data = fs.readFileSync("out/" + exe);
+            const sha = createHash("sha512").update(data).digest("base64");
+            yml = yml.replace(/sha512: .*/g, "sha512: " + sha).replace(/size: \d+/, "size: " + data.length);
+            fs.writeFileSync("out/latest.yml", yml);
+            fs.rmSync("out/" + exe + ".blockmap", { force: true });'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: |
+            out/*.exe
+            out/*.blockmap
+            out/latest.yml
+            out/contents-win.txt
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # rpmbuild, for the rpm.
+      - run: sudo apt-get update && sudo apt-get install -y rpm
+      - run: rustup show active-toolchain || rustup toolchain install
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: scripts/package
+      - name: Contents
+        run: |
+          (cd out/linux-unpacked && find . | sort) > out/contents-linux.txt
+          dpkg-deb -c out/*.deb > out/contents-deb.txt
+          rpm -qlp out/*.rpm > out/contents-rpm.txt
+          wc -l out/contents-*.txt
+          grep -E 'applications|icons|resources/bin/|THIRD_PARTY' out/contents-deb.txt out/contents-rpm.txt
+          dpkg-deb --fsys-tarfile out/*.deb | tar -xO ./usr/share/applications/sh.brigadier.app.desktop
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: |
+            out/*.AppImage
+            out/*.deb
+            out/*.rpm
+            out/latest-linux.yml
+            out/contents-*.txt
+
+  publish:
+    needs: [mac, windows, linux]
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Ready to publish
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          [ "${{ needs.mac.outputs.signed }}" = true ] || { echo "::error::Both Mac packages must be Developer ID signed and notarized"; exit 1; }
+          [ -n "$GPG_KEY" ] || { echo "::error::The checksums must be GPG-signed: GPG_PRIVATE_KEY is not set"; exit 1; }
+          case "$GITHUB_REF" in refs/tags/*) [ "$GITHUB_REF_NAME" = "v$version" ] || { echo "::error::Tag $GITHUB_REF_NAME isn't v$version"; exit 1; } ;; esac
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd dist
+          rm contents-*.txt
+          sha256sum * > SHA256SUMS
+          printf '%s' "$GPG_KEY" | gpg --batch --import
+          gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --armor --detach-sign SHA256SUMS
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      - run: gh release create "v$VERSION" --draft --target "$GITHUB_SHA" --title "Brigadier $VERSION" --notes "" dist/*
+        env:
+          GH_TOKEN: ${{ github.token }}
