@@ -2,6 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
 import Link, { type Mac } from "./modules/link";
 import { close, onClosed } from "./src/link";
+import { Confirm } from "./src/act/Confirm";
 import { Lock } from "./src/Lock";
 import { Macs, type Status } from "./src/macs/Macs";
 import { Notice, PROBLEMS } from "./src/Notice";
@@ -24,7 +25,7 @@ function sampleAt(): At {
   if (sample === "finishing") return { at: "finishing", check: "042917" };
   if (sample === "connected") return { at: "connected", name: SAMPLE_MAC.name };
   if (sample?.startsWith("notice-")) return { at: "notice", problem: sample.slice(7) as Problem };
-  if (sample === "scan" || sample === "code" || sample === "macs") return { at: sample };
+  if (sample === "scan" || sample === "code" || sample === "macs" || sample === "act") return { at: sample === "act" ? "macs" : sample };
   return { at: "connect" };
 }
 
@@ -143,6 +144,15 @@ export default function App() {
             setStatus({});
             setAt(home(list));
           }}
+        />
+      )}
+      {sample === "act" && (
+        <Confirm
+          title="Run this on your Mac?"
+          body="It runs in the session's checkout with your Mac's permissions."
+          shown={'npm test -- --watch=false && rm -rf "build/tmp"'}
+          args={[]}
+          onDone={() => {}}
         />
       )}
     </>

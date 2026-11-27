@@ -30,6 +30,11 @@ declare class Link extends NativeModule<{ data: (e: { b: string; n: number }) =>
   close(): void;
   /** U's signature over this stream's handshake hash; asks for Face ID, and throws when it is cancelled. */
   sign(): Promise<string>;
+  /**
+   * U's fresh signature for one action (Face ID each time): over this stream's handshake hash, the Mac's nonce, the
+   * three names the challenge gave, and `argv`, the command's JSON exactly as it is sent.
+   */
+  act(nonce: string, session: string, request: string, action: string, argv: string): Promise<string>;
   /** Keeps the Mac this stream paired with; returns its key. */
   save(name: string, device: string, addresses: string[]): Promise<string>;
   macs(): Promise<Mac[]>;

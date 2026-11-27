@@ -24,6 +24,18 @@ enum Derive {
         return String(format: "%06u", n)
     }
 
+    /// What an action's signature covers after its label `brigadier/act/v1` (msgs/remote-wire.md, fresh signatures):
+    /// this stream's `h`, the Mac's nonce, session, request and action each as a 4-byte big-endian length then UTF-8,
+    /// then SHA-256 of the command's argv exactly as sent (compact JSON).
+    static func act(h: [UInt8], nonce: [UInt8], names: [String], argv: String) -> [UInt8] {
+        var out = h + nonce
+        for name in names {
+            let b = Array(name.utf8), n = UInt32(b.count)
+            out += [UInt8(n >> 24), UInt8(n >> 16 & 0xff), UInt8(n >> 8 & 0xff), UInt8(n & 0xff)] + b
+        }
+        return out + Array(SHA256.hash(data: Array(argv.utf8)))
+    }
+
     static func base64url(_ s: String) -> [UInt8]? {
         var t = s.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
         while t.count % 4 != 0 { t += "=" }

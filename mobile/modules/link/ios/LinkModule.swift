@@ -92,6 +92,15 @@ public class LinkModule: Module {
             return try Enclave.sign("brigadier/hello/v1", Data(channel.noise.h)).base64EncodedString()
         }
 
+        // A fresh signature for one action, after Face ID: over the Mac's nonce, the names it was asked for and the
+        // command's argv as JS sends it (its compact JSON, hashed byte for byte).
+        AsyncFunction("act") { (nonce: String, session: String, request: String, action: String, argv: String) -> String in
+            guard let channel = self.current() else { throw Exception(name: "Mac", description: "not connected") }
+            guard let n = Data(base64Encoded: nonce), n.count == 32 else { throw Exception(name: "Mac", description: "bad nonce") }
+            let signed = Derive.act(h: channel.noise.h, nonce: Array(n), names: [session, request, action], argv: argv)
+            return try Enclave.sign("brigadier/act/v1", Data(signed)).base64EncodedString()
+        }
+
         // Keeps the Mac this stream paired with: its psk from the handshake hash, and its record in the list.
         AsyncFunction("save") { (name: String, device: String, addresses: [String]) -> String in
             guard let channel = self.current() else { throw Exception(name: "Mac", description: "not connected") }
