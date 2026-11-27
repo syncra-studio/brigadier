@@ -104,7 +104,7 @@ pub fn settle(
     let Some(turn) = f.renewing.as_ref().and_then(|r| r["turn"].as_str()) else {
         return told(spec, f, call, len);
     };
-    let w = walk(&spec.dir, turn, |_, _, _, _| {})?;
+    let w = walk(&spec.dir, turn, |_, _, _, _, _| {})?;
     let reply = w.reply.as_str();
     if w.noted || !w.hit {
         return Ok(None);
@@ -137,8 +137,8 @@ pub fn settle(
             let text = reply.trim_end();
             // A second walk, each item's words looked through for the quotes and let go.
             let mut found = check::Found::new(text);
-            walk(&spec.dir, turn, |at, t, user, tool| {
-                found.see(at, t, user, tool)
+            walk(&spec.dir, turn, |at, nth, t, user, tool| {
+                found.see(at, nth, t, user, tool)
             })?;
             let mut v = check::check(text, &found, &spec.cwd, was.as_deref());
             let model = match w.model.is_empty() {
@@ -178,11 +178,20 @@ struct Walk {
 }
 
 /// Walks the archive to `turn`'s summary turn, giving `seen` each item written before it that a
-/// summary may cite: its reference, its words, and whether they're the user's own or a tool's.
-fn walk(dir: &Path, turn: &str, mut seen: impl FnMut(&str, &str, bool, bool)) -> io::Result<Walk> {
+/// summary may cite: its reference and its place among the items under it, its words, and
+/// whether they're the user's own or a tool's.
+fn walk(
+    dir: &Path,
+    turn: &str,
+    mut seen: impl FnMut(&str, usize, &str, bool, bool),
+) -> io::Result<Walk> {
     let mut w = Walk::default();
     let (mut inside, mut past) = (false, false);
+    // The item's place under its reference, counted as a fork's copy counts it.
+    let (mut prev, mut nth) = (String::new(), 0);
     crate::archive::each(dir, |item, at| {
+        nth = if at == prev { nth + 1 } else { 0 };
+        prev.clone_from(&at);
         let s = |k: &str| item[k].as_str().unwrap_or("");
         // No summary cites one: not a note, nor a summary turn, nor a hand-off that carries one.
         if item["kind"] == "note" {
@@ -247,7 +256,7 @@ fn walk(dir: &Path, turn: &str, mut seen: impl FnMut(&str, &str, bool, bool)) ->
         };
         if !text.trim().is_empty() {
             w.from.get_or_insert(at.clone());
-            seen(&at, &text, user, tool);
+            seen(&at, nth, &text, user, tool);
             w.to = Some(at);
         }
     })?;

@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 #[derive(Clone)]
 struct Cite {
     at: String,
+    /// Its place among the items under `at`, so a fork's copy, one line an item, keeps it.
+    nth: usize,
     /// The user's own words: their message or their answer.
     user: bool,
     /// A tool's input or whole output, opened by `read --raw`.
@@ -33,12 +35,14 @@ impl Found {
         )
     }
 
-    /// One item the summary may cite, oldest first: `user` the user's own words, `tool` a tool's.
-    pub fn see(&mut self, at: &str, text: &str, user: bool, tool: bool) {
+    /// One item the summary may cite, oldest first, the `nth` under `at`: `user` the user's own
+    /// words, `tool` a tool's.
+    pub fn see(&mut self, at: &str, nth: usize, text: &str, user: bool, tool: bool) {
         let text = fold(text);
         for (_, (any, theirs)) in self.0.iter_mut().filter(|(q, _)| text.contains(q.as_str())) {
             let c = Some(Cite {
                 at: at.into(),
+                nth,
                 user,
                 tool,
             });
@@ -205,11 +209,11 @@ pub fn check(text: &str, found: &Found, cwd: &str, was: Option<&str>) -> Value {
             match (claim.then(|| newest(true)).flatten()).or_else(|| newest(false)) {
                 Some(s) => {
                     bump("found");
-                    cites.push(json!({"at": at, "ref": s.at, "tool": s.tool}));
+                    cites.push(json!({"at": at, "ref": s.at, "nth": s.nth, "tool": s.tool}));
                     if s.user {
-                        by_user.get_or_insert(s.at.clone());
+                        by_user.get_or_insert(s.clone());
                     } else {
-                        by_other.get_or_insert(s.at.clone());
+                        by_other.get_or_insert(s.clone());
                     }
                 }
                 None => {
@@ -226,8 +230,10 @@ pub fn check(text: &str, found: &Found, cwd: &str, was: Option<&str>) -> Value {
         if claim {
             bump("user_claims");
             let mark = match (by_user, by_other) {
-                (Some(r), _) => json!({"at": end, "kind": "user", "ref": r}),
-                (None, Some(r)) => json!({"at": end, "kind": "not_users", "ref": r}),
+                (Some(r), _) => json!({"at": end, "kind": "user", "ref": r.at, "nth": r.nth}),
+                (None, Some(r)) => {
+                    json!({"at": end, "kind": "not_users", "ref": r.at, "nth": r.nth})
+                }
                 (None, None) => json!({"at": end, "kind": "no_user"}),
             };
             if mark["kind"] != "user" {
@@ -370,21 +376,36 @@ pub fn section(id: &str, at: &str, note: &Value, ago: usize, shown: usize) -> St
 }
 
 /// A fork's copy, `refs` each item's reference in its source: each summary note's references
-/// become the copy's own `i<line>`, a fork's of a fork's too; one past the fork point is none
-/// [rev 3 §3]. shortcut: a frame of several items maps to its first line; key cites by item if a
-/// step's call and output ever share a frame.
+/// become the copy's own `i<line>`, a fork's of a fork's too, a cite's the very item it cites in
+/// a frame of several; one past the fork point is none [rev 3 §3].
 pub fn copied(items: &mut [Value], refs: Vec<String>) {
-    let mut line = std::collections::HashMap::new();
-    for (n, r) in refs.into_iter().enumerate() {
-        line.entry(r).or_insert(format!("i{n}"));
+    // Each item by its reference and its place under it, as the summary's walk counts them; and
+    // each reference's last line, where a range under it ends.
+    let (mut line, mut last) = (HashMap::new(), HashMap::new());
+    let mut nth = 0;
+    for (n, r) in refs.iter().enumerate() {
+        nth = if n > 0 && refs[n - 1] == *r {
+            nth + 1
+        } else {
+            0
+        };
+        line.insert((r.as_str(), nth), format!("i{n}"));
+        last.insert(r.as_str(), format!("i{n}"));
     }
-    let to = |v: &Value| v.as_str().and_then(|r| line.get(r)).cloned().into();
+    let to = |v: &Value, nth: u64| {
+        let r = v.as_str().and_then(|r| line.get(&(r, nth as usize)));
+        r.cloned().into()
+    };
     for item in items.iter_mut().filter(|i| i["event"] == "summary") {
-        (item["from"], item["to"]) = (to(&item["from"]), to(&item["to"]));
+        let end = item["to"].as_str().and_then(|r| last.get(r)).cloned();
+        (item["from"], item["to"]) = (to(&item["from"], 0), end.into());
         for k in ["cites", "marks"] {
             (item[k].as_array_mut().into_iter().flatten())
                 .filter(|c| !c["ref"].is_null())
-                .for_each(|c| c["ref"] = to(&c["ref"]));
+                .for_each(|c| {
+                    c["ref"] = to(&c["ref"], c["nth"].as_u64().unwrap_or(0));
+                    c["nth"] = 0.into();
+                });
         }
     }
 }
