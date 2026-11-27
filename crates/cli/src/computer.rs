@@ -418,12 +418,16 @@ pub fn turned_off() {
     verbs::asks::forget();
 }
 
+/// The app's `computer test <pid> <window>`, with the daemon's rows: who holds the computer [D907].
+pub fn test(data: &Path, args: &[String], rows: &dyn Fn() -> Vec<Value>) -> io::Result<Value> {
+    status::test(data, args, rows)
+}
+
 /// The app's side: `computer status|on|off|grant accessibility|screenRecording|test` [D911, D912].
 pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     let arg = |i: usize| args.get(i).map_or("", String::as_str);
     match arg(1) {
         "status" => Ok(status::status(data)),
-        "test" => status::test(data, args),
         "on" | "off" => {
             let on = arg(1) == "on";
             let set: Vec<String> = ["settings", SETTING, if on { "true" } else { "false" }]

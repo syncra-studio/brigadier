@@ -344,6 +344,12 @@ pub(super) fn serve(
                         Some("archive") => {
                             store.archiving(&data, args.get(1).map_or("", |s| s), run)
                         }
+                        // Test screen access reads who holds the computer from the rows [C91].
+                        Some("computer") if args.get(1).is_some_and(|a| a == "test") => {
+                            let rows = || state.lock().unwrap().rows.values().cloned().collect();
+                            brigadier::computer::test(&data, &args, &rows)
+                                .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}))
+                        }
                         Some(cmd) if ROUTED.contains(&cmd) => run(),
                         _ => json!({"ok": false, "error": format!("not routed: {args:?}")}),
                     };

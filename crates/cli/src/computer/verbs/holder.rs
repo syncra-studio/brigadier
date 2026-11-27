@@ -15,9 +15,9 @@ pub(in crate::computer) fn testing() -> bool {
 }
 
 /// Takes the computer for the user's test, under the lock a session takes it with, or says why not.
-pub(in crate::computer) fn test_take() -> Result<(), &'static str> {
+pub(in crate::computer) fn test_take(rows: &dyn Fn() -> Vec<Value>) -> Result<(), &'static str> {
     let holder = lock(&HOLDER);
-    match holder.is_some() {
+    match (holder.as_ref()).is_some_and(|(h, _)| using(h, rows).is_some()) {
         true => Err("An agent is using the computer now. Test again after its turn."),
         false if TESTING.swap(true, Ordering::SeqCst) => {
             Err("Brigadier is testing screen access already.")
@@ -43,6 +43,12 @@ pub fn turn_ended(id: &str, finished: u64) {
     }
 }
 
+/// Holder `id`'s row while its turn uses the computer: running, and not waiting on the user.
+fn using(id: &str, rows: &dyn Fn() -> Vec<Value>) -> Option<Value> {
+    let row = rows().into_iter().find(|r| r["id"] == id);
+    row.filter(|r| r["running"] == true && r["state"] != "waiting_answer")
+}
+
 pub(in crate::computer) fn holder() -> Option<String> {
     lock(&HOLDER).as_ref().map(|(h, _)| h.clone())
 }
@@ -61,19 +67,13 @@ pub(super) fn take(me: &str, rows: &dyn Fn() -> Vec<Value>) -> Result<(), Value>
             "The user is testing screen access in Settings. Try again in a moment.",
         ));
     }
-    if let Some(id) = holder
-        .as_ref()
-        .map(|(h, _)| h.as_str())
-        .filter(|id| *id != me)
-    {
-        let row = rows().into_iter().find(|r| r["id"] == id);
-        if let Some(r) = row.filter(|r| r["running"] == true && r["state"] != "waiting_answer") {
-            return Err(refuse(&format!(
-                "Computer use is in use by {} in \"{}\" (session {id}). Try again after its turn, or do something else.",
-                r["backend"].as_str().unwrap_or("another agent"),
-                r["title"].as_str().unwrap_or(id)
-            )));
-        }
+    let other = (holder.as_ref().map(|(h, _)| h.as_str())).filter(|id| *id != me);
+    if let Some((id, r)) = other.and_then(|id| Some((id, using(id, rows)?))) {
+        return Err(refuse(&format!(
+            "Computer use is in use by {} in \"{}\" (session {id}). Try again after its turn, or do something else.",
+            r["backend"].as_str().unwrap_or("another agent"),
+            r["title"].as_str().unwrap_or(id)
+        )));
     }
     *holder = Some((me.to_string(), brigadier_frames::log::now_ms()));
     Ok(())

@@ -68,7 +68,11 @@ pub(super) fn status(data: &Path) -> Value {
 /// window they clicked in (`pid`, `window`), so macOS's capture alert comes now, while they're
 /// there, and not at an agent's first screenshot mid-task [C91, D2032, D909]. It holds the
 /// computer as a session would, so none takes it meanwhile [D907]; nothing is kept.
-pub(super) fn test(data: &Path, args: &[String]) -> io::Result<Value> {
+pub(super) fn test(
+    data: &Path,
+    args: &[String],
+    rows: &dyn Fn() -> Vec<Value>,
+) -> io::Result<Value> {
     let n = |i: usize| (args.get(i)?.parse::<i64>().ok()).filter(|v| *v > 0);
     let (Some(pid), Some(window)) = (n(2), n(3)) else {
         return Err(io::Error::other(
@@ -78,7 +82,7 @@ pub(super) fn test(data: &Path, args: &[String]) -> io::Result<Value> {
     if !on(data) {
         return Err(io::Error::other("Turn computer use on first."));
     }
-    verbs::test_take().map_err(io::Error::other)?;
+    verbs::test_take(rows).map_err(io::Error::other)?;
     let shot = json!({"pid": pid, "window_id": window, "include_accessibility_tree": false});
     let (to, answer) = mpsc::channel();
     let data = data.to_path_buf();
