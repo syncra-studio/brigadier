@@ -426,23 +426,33 @@ export function Composer({ id }: { id: string }) {
     const rest = parts.filter((part) => !isNew(part));
     if (tiles.length > 0) return setError("Remove the files to send this as a new session");
     if (isEmpty({ parts: rest, attachmentIds: [] })) return;
-    const message = plainText(rest);
+    // One string, shown on the sheet and signed as it is.
+    const message = plainText(rest).trim();
     if (message.startsWith("--")) return setError("A message can't start with --");
-    const made = { id: sessionId(), cid: newId() };
     const pulled = editing.get();
     const draft = payload(rest, []);
+    // One whose reply was lost is the same command confirmed again, its session's and message's ids kept, so Rust
+    // carries on with it rather than making a second session.
+    const key = `${id}\n${message}\n${draft ?? ""}`;
+    const made = { id: sessionId(), cid: newId() };
+    const args = mac.sides.get(key) ?? ["side", id, made.id, "--text", message, "--cid", made.cid, ...(pulled ? ["--qid", pulled.qid] : []), ...(draft ? ["--parts", draft] : [])];
     const was = words$.current;
     setPowerError(null);
     setPower({
       title: "Start as a new session?",
       body: NEW_SESSION.description,
-      shown: message.trim(),
-      args: ["side", id, made.id, "--text", message, "--cid", made.cid, ...(pulled ? ["--qid", pulled.qid] : []), ...(draft ? ["--parts", draft] : [])],
+      shown: message,
+      args,
       then: (reply) => {
+        if (lostReply(reply)) mac.sides.set(key, args);
+        else mac.sides.delete(key);
         // With `session`, Rust logged it and this thread says how it went; without, nothing was made.
         if (!reply.ok || !reply.session) return setPowerError(reply.ok ? String(reply.message ?? "Refused") : refusal(reply));
         if (pulled && editing.get()?.qid === pulled.qid) editing.set(null);
-        if (words$.current === was) setField([]);
+        // Only the message leaves the field: one given back above it while the sheet was open stays.
+        const now = words$.current;
+        if (now === was) setField([]);
+        else if (now.endsWith(`\n\n${was}`)) setField(partsOf(now.slice(0, -was.length - 2), named$.current));
       },
     });
   };

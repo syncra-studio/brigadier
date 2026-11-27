@@ -200,7 +200,9 @@ function macState(pk: string) {
   const edits = new Map<string, { qid: string; slot: number; text: string }>();
   /** Each `!` command whose reply was lost, by session and line: confirmed again, it keeps its id till the Mac takes it, so it runs once. */
   const shells = new Map<string, string>();
-  return { run, unsaved, uncertain, drafts, sends, chips: chipState(uncertain, run), files: fileState(run), models: modelState(), edits, shells };
+  /** Each /new whose reply was lost, by session and message: confirmed again, it's the same signed command, so one session is made. */
+  const sides = new Map<string, string[]>();
+  return { run, unsaved, uncertain, drafts, sends, chips: chipState(uncertain, run), files: fileState(run), models: modelState(), edits, shells, sides };
 }
 
 const macs = new Map<string, ReturnType<typeof macState>>();
