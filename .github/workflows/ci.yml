@@ -98,3 +98,7 @@ jobs:
         run: node drills/drill.mjs hang && node drills/drill.mjs catalogue
         timeout-minutes: 15
         continue-on-error: true
+      - if: runner.os == 'Windows'
+        run: node drills/drill.mjs hang
+        timeout-minutes: 10
+        continue-on-error: true

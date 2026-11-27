@@ -264,6 +264,8 @@ function swapTo(dir) {
     if (WIN) fs.renameSync(`${BIN}/${b}${EXE}`, `${BIN}/.${b}.${cid('old')}${EXE}`)
     fs.renameSync(`${BIN}/.${b}.new`, `${BIN}/${b}${EXE}`)
   }
+  // And names the new build where an installed host reads it: bin/current, beside its build's folder.
+  if (WIN) fs.writeFileSync(`${path.dirname(BIN)}/current`, cid('build'))
 }
 
 const follow = (id, n) => {
@@ -411,8 +413,9 @@ async function killloop(minutes) {
     ev.working_again_ms = back.ok ? now() - killedAt : null
     const helloAfter = await daemonHello()
     ev.daemon = { old: leave ? 'left running' : 'killed', before: [helloBefore?.pid, helloBefore?.build ?? 'legacy'], after: [helloAfter?.pid, helloAfter?.build ?? 'legacy'], replaced: leave && helloBefore?.pid !== helloAfter?.pid }
-    // Idle hosts re-exec onto the new binary: same pid, owner.json rewritten. Then they take a turn.
-    const moved = await waitFor(() => idles.every((id) => ownerJson(id).mtime > killedAt), 10000, 100)
+    // Idle hosts re-exec onto the new binary: same pid, owner.json rewritten. Windows has no exec:
+    // there an idle host on an old build exits, and its next turn starts one on the new build.
+    const moved = await waitFor(() => idles.every((id) => WIN ? !alive(idleBefore[id].pid) : ownerJson(id).mtime > killedAt), 10000, 100)
     ev.idle_moved_ms = moved.ok ? now() - killedAt : null
     ev.idle_same_pid = idles.filter((id) => ownerJson(id).pid === idleBefore[id].pid).length
     ev.idle_turns = idles.map(idleTurn)
@@ -486,12 +489,14 @@ async function killloop(minutes) {
   summary.leftovers = cleanup()
   for (const [id] of real) drop(`${ROOT}/repo-${id}`)
   drop(orig)
+  if (WIN) fs.rmSync(`${path.dirname(BIN)}/current`, { force: true })
   log(summary)
   verdict('killloop', {
     nothing_replaced: summary.agents_replaced_total === 0, no_duplicate_agents: summary.duplicate_agents_seen === 0, no_agent_restarts: restarts === 0,
     no_tool_died: deadChildren === 0, no_orphans: summary.orphans_max === 0, none_lost: lost === 0 && summary.idle_lost === 0, none_doubled: doubled === 0 && summary.idle_doubled === 0,
     status_right_within_2s: summary.correct_within_2s === events.length, same_list: summary.daemon_same_list === events.length,
-    history_same: Object.values(history).every((h) => h.mismatched === 0 && h.rehash_equal), idle_hosts_kept_their_pid: summary.idle_same_pid_min === idles.length,
+    history_same: Object.values(history).every((h) => h.mismatched === 0 && h.rehash_equal),
+    ...(WIN ? { idle_hosts_left_old_build: summary.idle_moved === events.length } : { idle_hosts_kept_their_pid: summary.idle_same_pid_min === idles.length }),
     no_leftovers: summary.leftovers.length === 0,
     ...(UNITS && { daemon_unit_env: unitEnv.length > 0 && unitEnv.every(Boolean) }),
   })
@@ -631,16 +636,19 @@ async function hang() {
   const gone5 = await waitFor(() => !ps().some(inH5), 5000, 50)
   r.killed_at_spawn = { send: g5.out.result, gone_ms: gone5.ok ? now() - k5 : null, survivors: ps().filter(inH5).length, agent_got_it: (ledger().recv[gate] ?? 0) > 0 }
   // A host that moved to a new build: same pid, a fresh watchdog, no zombie, and the new watchdog
-  // still stops the tree when the host is killed.
+  // still stops the tree when the host is killed. On Windows the idle host leaves its old build and
+  // the next send starts one on the new build, whose job ends the tree with it.
   startFake('h6')
   cli(['send', 'h6', `${cid()} exit:0`])
   await sleep(2500)
   const h6 = owner('h6')
   const dog6 = ps().find((p) => p.ppid === h6?.pid && p.cmd.includes('--watchdog'))?.pid
   fs.copyFileSync(`${BIN}/${OWNER_BIN}${EXE}`, `${BIN}/.${OWNER_BIN}.new`)
+  if (WIN) fs.renameSync(`${BIN}/${OWNER_BIN}${EXE}`, `${BIN}/.${OWNER_BIN}.${cid('old')}${EXE}`)
   fs.renameSync(`${BIN}/.${OWNER_BIN}.new`, `${BIN}/${OWNER_BIN}${EXE}`)
+  if (WIN) fs.writeFileSync(`${path.dirname(BIN)}/current`, cid('build'))
   const t6 = now()
-  const moved6 = await waitFor(() => ownerJson('h6').mtime > t6, 10000, 50)
+  const moved6 = await waitFor(() => WIN ? !alive(h6.pid) : ownerJson('h6').mtime > t6, 10000, 50)
   await sleep(300)
   const kids6 = ps().filter((p) => p.ppid === h6?.pid)
   r.moved_host = {
@@ -649,13 +657,15 @@ async function hang() {
   }
   cli(['send', 'h6', `${cid()} tree:120`])
   await sleep(1500)
+  r.moved_host.replaced = ownerJson('h6').pid !== h6?.pid
   const tree6 = ps().filter((p) => p.pgid === agentsOf('h6')[0]?.pgid).map((p) => p.pid)
-  kill(h6)
+  kill(WIN ? owner('h6') : h6)
   const k6 = now()
   const freed6 = await waitFor(() => tree6.every((p) => !alive(p)), 5000, 50)
   r.moved_host.tree = tree6.length
   r.moved_host.tree_gone_ms = freed6.ok ? now() - k6 : null
   r.leftovers = cleanup()
+  if (WIN) fs.rmSync(`${path.dirname(BIN)}/current`, { force: true })
   log({ drill: 'hang', ...r })
   verdict('hang', {
     stall_shown: r.stalled_shown_ms !== null, others_still_work: r.others_while_stalled.every((x) => x === 'working'), logs_past_a_frozen_reader: r.h3_still_logging_with_frozen_reader,
@@ -664,7 +674,8 @@ async function hang() {
     host_frozen: r.owner_frozen.state === 'unresponsive' && r.owner_frozen.owners_running === 1 && r.owner_frozen.send.ms < 10000,
     host_and_watchdog: r.host_and_watchdog_killed.swept_ms !== null && r.host_and_watchdog_killed.survivors === 0,
     killed_at_spawn: r.killed_at_spawn.gone_ms !== null && r.killed_at_spawn.survivors === 0 && !r.killed_at_spawn.agent_got_it,
-    moved_host: r.moved_host.moved_ms !== null && r.moved_host.same_pid && r.moved_host.old_watchdog_gone && r.moved_host.watchdogs === 1 && r.moved_host.zombies === 0 && r.moved_host.tree_gone_ms !== null,
+    moved_host: WIN ? r.moved_host.moved_ms !== null && r.moved_host.replaced && r.moved_host.tree > 0 && r.moved_host.tree_gone_ms !== null
+      : r.moved_host.moved_ms !== null && r.moved_host.same_pid && r.moved_host.old_watchdog_gone && r.moved_host.watchdogs === 1 && r.moved_host.zombies === 0 && r.moved_host.tree_gone_ms !== null,
     no_leftovers: r.leftovers.length === 0,
   })
 }
