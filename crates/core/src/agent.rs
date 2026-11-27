@@ -260,7 +260,7 @@ fn past_cd(mut c: &str) -> Option<&str> {
 }
 
 /// A command's words when it has no shell syntax but quotes; None when it has any.
-fn plain_words(c: &str) -> Option<Vec<String>> {
+pub(crate) fn plain_words(c: &str) -> Option<Vec<String>> {
     let (mut words, mut word, mut quote, mut open) = (vec![], String::new(), None, false);
     for ch in c.chars() {
         match (quote, ch) {

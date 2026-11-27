@@ -216,9 +216,32 @@ pub(super) fn inside(rules: &Value, dir: &str, writes: &[String], ask: &Value) -
             last(r).is_some_and(|x| {
                 text(x, "effect") == "allow"
                     || super::control::PATHS.contains(&text(x, "resource").as_str())
-                        && r.split_whitespace().all(|w| named_inside(&roots, w))
+                        && words(r).iter().all(|w| named_inside(&roots, w))
             })
         })
+}
+
+/// The words of a command the path rules judge. In a plain `brigadier` agent command (no `cd`, no
+/// shell around it), a quoted brief or message is prose, not a path: its words as the shell passes
+/// them, past the program, a multi-word one left out unless it starts as a path does.
+fn words(r: &str) -> Vec<String> {
+    let agent = crate::agent::call(r)
+        .then(|| crate::agent::plain_words(r))
+        .flatten();
+    let ours = |p: &String| p.rsplit('/').next() == Some("brigadier");
+    let pathlike = |w: &str| {
+        w.starts_with(['/', '~', '.'])
+            || w.split_whitespace()
+                .next()
+                .is_some_and(|f| f.contains('/') && f.contains('='))
+    };
+    match agent {
+        Some(w) if w.first().is_some_and(ours) => (w.into_iter().enumerate())
+            .filter(|(i, w)| *i == 0 || !w.contains(char::is_whitespace) || pathlike(w))
+            .map(|(_, w)| w)
+            .collect(),
+        _ => r.split_whitespace().map(String::from).collect(),
+    }
 }
 
 /// A command's word, if it names a path, resolved against the project: `~` is home; a redirect's
