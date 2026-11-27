@@ -94,8 +94,13 @@ export function useHanding(id: string, daemon: unknown, run: Runner): void {
   const mine = useGoingOf(id);
   useEffect(() => {
     if (!daemon) return;
-    for (const each of mine.filter((one) => (one.removing || (!one.booked && !one.peer)) && asked.get(one.cid) !== daemon)) {
+    for (const each of mine.filter((one) => (!one.booked || one.removing) && asked.get(one.cid) !== daemon)) {
       asked.set(each.cid, daemon);
+      // Another session's brief stays the app's alone: unconfirmed, with Try again under its id.
+      if (each.peer && !each.removing) {
+        if (each.stuck === undefined) markGoing(id, each.cid, { stuck: UNCONFIRMED });
+        continue;
+      }
       void (each.removing ? tellDrops(run, id) : adopt(run, id, each));
     }
   });
