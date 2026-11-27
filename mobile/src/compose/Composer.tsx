@@ -96,7 +96,7 @@ export function Composer({ id }: { id: string }) {
   const files = useSyncExternalStore(fileStore.owners.subscribe, () => fileStore.of(id));
   /** The tiles as they are now, and the ones that can go (a failed one is left out). */
   const tilesNow = () => fileStore.of(id).tiles;
-  const readyNow = () => tilesNow().filter((each) => fileStore.of(id).all.get(each)?.state !== "failed");
+  const readyNow = () => tilesNow().filter((each) => fileStore.of(id).all.get(each)?.state === "ready");
 
   // The field: its words, and the chips put in them, each shown as its label.
   const [initial] = useState(() => drafts.draftOf(id) ?? EMPTY_DRAFT);
@@ -161,6 +161,8 @@ export function Composer({ id }: { id: string }) {
   useEffect(() => {
     if (!connected) return;
     waitingChips.load(id);
+    // The files are read again: one Rust's folder lost shows failed.
+    fileStore.load(id, true);
     // A save or read refused while away goes now, stale if it missed a give-back.
     if (unsaved.delete(id)) drafts.resyncDraft(run, id);
   }, [conn]);
@@ -355,6 +357,8 @@ export function Composer({ id }: { id: string }) {
     const now = fileStore.of(id);
     const tiles = now.tiles.flatMap((each) => now.all.get(each) ?? []);
     if (tiles.some((each) => each.state === "uploading")) return "Files uploading…";
+    // Kept in the draft, not read from Rust's folder yet.
+    if (tiles.length < now.tiles.length) return "Files loading…";
     if (tiles.some((each) => each.state === "ready" && each.mime.startsWith("image/")) && !mac.models.takesImages(row?.backend, row?.model)) return "This model does not support image inputs. Try a different model";
     return undefined;
   };
@@ -404,7 +408,7 @@ export function Composer({ id }: { id: string }) {
           <ScrollView horizontal style={{ flexGrow: 0 }} contentContainerStyle={st.tiles} keyboardShouldPersistTaps="always">
             {files.tiles.map((each) => {
               const file = files.all.get(each);
-              return file ? <Tile key={each} owner={id} file={file} onRemove={() => fileStore.remove(id, each)} /> : null;
+              return <Tile key={each} owner={id} file={file ?? { id: each, name: "Loading…", mime: "", state: "uploading" }} loading={!file} onRemove={() => fileStore.remove(id, each)} />;
             })}
           </ScrollView>
         ) : null}
@@ -459,7 +463,7 @@ const tileOf = (chip: PanelChip) => {
 };
 
 /** A file over the field: an image's thumbnail once Rust has it, else its name; Uploading… or why it failed; and remove. */
-function Tile({ owner, file, onRemove }: { owner: string; file: Attachment; onRemove: () => void }) {
+function Tile({ owner, file, loading, onRemove }: { owner: string; file: Attachment; /** Not read from Rust's folder yet. */ loading: boolean; onRemove: () => void }) {
   return (
     <View style={st.file}>
       {file.state === "ready" && file.mime.startsWith("image/") ? (
@@ -469,7 +473,7 @@ function Tile({ owner, file, onRemove }: { owner: string; file: Attachment; onRe
           <Text style={file.state === "failed" ? st.error : st.fileName} numberOfLines={3}>{file.state === "failed" ? file.error : file.name}</Text>
         </View>
       )}
-      {file.state === "uploading" ? <Text style={st.uploading}>Uploading…</Text> : null}
+      {file.state === "uploading" && !loading ? <Text style={st.uploading}>Uploading…</Text> : null}
       <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${file.name}`} onPress={onRemove} hitSlop={8} style={st.remove}>
         <Text style={st.removeGlyph}>×</Text>
       </Pressable>
