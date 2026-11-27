@@ -214,9 +214,13 @@ fn shown(s: &State, offer: &Offer) -> Value {
     json!({"url": url, "code": offer.code, "svg": svg, "expires": offer.expires})
 }
 
-fn offer(s: &mut State) -> Value {
+fn offer(s: &mut State, data: &Path) -> Value {
     if s.live.is_none() {
-        return json!({"ok": false, "error": "Allow connections is off"});
+        let error = match data.join("remote/on").exists() {
+            true => "Starting. Try again in a moment.",
+            false => "Allow connections is off",
+        };
+        return json!({"ok": false, "error": error});
     }
     s.warning = None;
     if s.pending.is_none()
@@ -313,7 +317,7 @@ pub(super) fn cli(data: &Path, args: &[String]) -> Value {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),
         }),
-        (Some("offer"), None) => offer(&mut s),
+        (Some("offer"), None) => offer(&mut s, data),
         (Some("allow"), None) => answer(&mut s, true),
         (Some("deny"), None) => answer(&mut s, false),
         (Some("revoke"), Some(device)) => revoke(&mut s, data, device),

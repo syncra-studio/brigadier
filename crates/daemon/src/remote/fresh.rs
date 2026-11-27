@@ -51,6 +51,11 @@ fn need(power: Option<&'static str>, args: &[String], request: &str, action: &st
     }
 }
 
+/// A command that starts an agent or reaches past the project: the command itself, signed.
+pub(super) fn signed(args: &[String]) -> Option<Need> {
+    Some(need(None, args, "", &args[0]))
+}
+
 /// A power's command: the command itself, signed, and its switch on.
 pub(super) fn power(p: &'static str, args: &[String]) -> Option<Need> {
     Some(need(Some(p), args, "", &args[0]))

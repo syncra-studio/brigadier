@@ -15,6 +15,7 @@ mod gateway;
 mod link;
 mod pair;
 mod powers;
+mod rows;
 
 use serde_json::Value;
 use std::collections::HashMap;

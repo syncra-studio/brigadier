@@ -2,14 +2,19 @@
 //! its allowed fields only, or refused with "Not from the phone". The result is a [`Checked`],
 //! which only this file can make and which is the only thing the bridge writes to a phone's
 //! `ops::serve` [beat-competitors D51]. Rows needing a fresh Face ID signature carry what it must
-//! name (`fresh`); the rows of M3c are refused until it lands.
+//! name (`fresh`); `rows` holds those that start, fork, attach, read diffs or set a model.
 
 use super::Host;
 use super::fresh::{self, Need};
 use serde_json::{Map, Value, json};
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 pub(super) const REFUSED: &str = "Not from the phone";
+const MINUTE: Duration = Duration::from_secs(60);
+static FRESH: LazyLock<Mutex<HashMap<String, Instant>>> = LazyLock::new(Mutex::default);
 
 /// A request that passed the table, as it is sent on. Its field is private: nothing else builds one.
 pub(super) struct Checked(Value, Option<Need>);
@@ -32,7 +37,7 @@ pub(super) struct Ctx<'a> {
     pub(super) data: &'a Path,
 }
 
-type Fail = &'static str;
+pub(super) type Fail = &'static str;
 
 impl Ctx<'_> {
     /// A session the daemon lists to this device: one of its own rows, never a field's say-so.
@@ -41,38 +46,38 @@ impl Ctx<'_> {
         (self.host.row)(id).ok_or(REFUSED)
     }
 
-    fn worker_of(&self, worker: &str, lead: &str) -> Result<(), Fail> {
+    pub(super) fn worker_of(&self, worker: &str, lead: &str) -> Result<(), Fail> {
         let row = self.visible(worker)?;
         (row["worker"]["parent"] == lead)
             .then_some(())
             .ok_or(REFUSED)
     }
 
-    fn project(&self, p: &str) -> Result<(), Fail> {
+    pub(super) fn project(&self, p: &str) -> Result<(), Fail> {
         plain(p)?;
         (self.host.project)(p).then_some(()).ok_or(REFUSED)
     }
 }
 
-fn plain(id: &str) -> Result<(), Fail> {
+pub(super) fn plain(id: &str) -> Result<(), Fail> {
     brigadier_core::check_id(id).map_err(|_| REFUSED)
 }
 
 /// A command's free text. The CLI finds a flag anywhere in its arguments (`crates/cli/src/lib.rs`
 /// `flag`, `has`), so text that is one, as `queue <id> add --shell`, would pass as that flag.
-fn words(s: &str) -> Result<(), Fail> {
+pub(super) fn words(s: &str) -> Result<(), Fail> {
     (!s.starts_with("--")).then_some(()).ok_or(REFUSED)
 }
 
-fn number(s: &str) -> Result<(), Fail> {
+pub(super) fn number(s: &str) -> Result<(), Fail> {
     s.parse::<u64>().map(|_| ()).map_err(|_| REFUSED)
 }
 
-fn ids(list: &str) -> Result<(), Fail> {
+pub(super) fn ids(list: &str) -> Result<(), Fail> {
     list.split(',').try_for_each(plain)
 }
 
-fn json_of(s: &str) -> Result<Value, Fail> {
+pub(super) fn json_of(s: &str) -> Result<Value, Fail> {
     serde_json::from_str(s).map_err(|_| REFUSED)
 }
 
@@ -148,13 +153,13 @@ pub(super) fn check(cx: &Ctx, req: &Value) -> Result<Checked, Fail> {
 }
 
 /// The flags after a command's positional words: each allowed one at most once, its value checked.
-struct Flags<'a> {
+pub(super) struct Flags<'a> {
     found: Vec<(&'a str, Option<&'a str>)>,
 }
 
 impl<'a> Flags<'a> {
     /// `spec` is each allowed flag and whether it takes a value.
-    fn parse(rest: &'a [String], spec: &[(&str, bool)]) -> Result<Self, Fail> {
+    pub(super) fn parse(rest: &'a [String], spec: &[(&str, bool)]) -> Result<Self, Fail> {
         let mut found = vec![];
         let mut at = 0;
         while at < rest.len() {
@@ -175,11 +180,15 @@ impl<'a> Flags<'a> {
         Ok(Self { found })
     }
 
-    fn has(&self, name: &str) -> bool {
+    pub(super) fn found_len(&self) -> usize {
+        self.found.len()
+    }
+
+    pub(super) fn has(&self, name: &str) -> bool {
         self.found.iter().any(|(f, _)| *f == name)
     }
 
-    fn get(&self, name: &str) -> Option<&'a str> {
+    pub(super) fn get(&self, name: &str) -> Option<&'a str> {
         self.found
             .iter()
             .find(|(f, _)| *f == name)
@@ -190,7 +199,7 @@ impl<'a> Flags<'a> {
 /// `--parts` (design §4.1 "The parts rule"): plain text, mentions of a visible chat, a note, a
 /// worker of `session`, a tab or a plugin, images and pastes by attachment id, command chips.
 /// A file or folder mention carries a Mac path: refused (power (e), step 2).
-fn parts(cx: &Ctx, session: Option<&str>, raw: &str) -> Result<(), Fail> {
+pub(super) fn parts(cx: &Ctx, session: Option<&str>, raw: &str) -> Result<(), Fail> {
     let parts = json_of(raw)?;
     if parts.is_null() {
         return Ok(());
@@ -213,8 +222,16 @@ fn parts(cx: &Ctx, session: Option<&str>, raw: &str) -> Result<(), Fail> {
     Ok(())
 }
 
+/// Whether `--parts` carries files: taken from the Mac's own draft by a command with no slot.
+pub(super) fn has_files(raw: &str) -> Result<bool, Fail> {
+    let p = json_of(raw)?;
+    Ok(p["attachmentIds"].as_array().is_some_and(|a| !a.is_empty())
+        || (p["parts"].as_array().into_iter().flatten())
+            .any(|x| matches!(x["kind"].as_str(), Some("image" | "paste"))))
+}
+
 /// The draft a command names: a visible session, `@home`, or `@home:<known project>`.
-fn draft_target(cx: &Ctx, target: &str) -> Result<(), Fail> {
+pub(super) fn draft_target(cx: &Ctx, target: &str) -> Result<(), Fail> {
     match target.strip_prefix("@home") {
         Some("") => Ok(()),
         Some(rest) => cx.project(rest.strip_prefix(':').ok_or(REFUSED)?),
@@ -256,11 +273,11 @@ fn run(
                 // Messaging a worker directly: `<id>` is a worker of the visible `--from`, as a steer.
                 cx.worker_of(id, from)?;
                 // Without the slot its files would come from the Mac's own draft: none, for now.
-                let files = f.get("--parts").map(json_of).transpose()?.is_some_and(|p| {
-                    p["attachmentIds"].as_array().is_some_and(|a| !a.is_empty())
-                        || (p["parts"].as_array().into_iter().flatten())
-                            .any(|x| matches!(x["kind"].as_str(), Some("image" | "paste")))
-                });
+                let files = f
+                    .get("--parts")
+                    .map(has_files)
+                    .transpose()?
+                    .unwrap_or(false);
                 if files || !f.has("--steer") || f.has("--draft") {
                     return Err(REFUSED);
                 }
@@ -343,7 +360,17 @@ fn run(
                 &[("--session", true), ("--project", true), ("--fresh", false)],
             )?;
             match (f.get("--session"), f.get("--project")) {
-                (Some(s), None) => drop(cx.visible(s)?),
+                (Some(s), None) => {
+                    cx.visible(s)?;
+                    // Asking the agent again costs a launch: at most once a minute a device.
+                    if f.has("--fresh") {
+                        let mut last = FRESH.lock().unwrap();
+                        if last.get(cx.device).is_some_and(|t| t.elapsed() < MINUTE) {
+                            return Err(REFUSED);
+                        }
+                        last.insert(cx.device.into(), Instant::now());
+                    }
+                }
                 (None, Some(p)) if !f.has("--fresh") => cx.project(p)?,
                 (None, None) if !f.has("--fresh") => {}
                 _ => return Err(REFUSED),
@@ -382,6 +409,9 @@ fn run(
             plain(a(3)?)?;
         }
         "answer" | "level" | "overnight" => *need = fresh::row(cx, &args)?,
+        "start" | "side" | "fork" | "attach" | "source" | "set" | "command" => {
+            super::rows::row(cx, &args, need, &mut slot)?
+        }
         "jobs" => {
             cx.visible(a(1)?)?;
             match (a(2)?, n) {
