@@ -12,6 +12,7 @@ import { ask, openThread, type Row, threadSource, useDaemon, useThread } from ".
 import { store } from "../onboarding/api";
 import { type Shown, useProjects } from "../projects/projects";
 import { newId } from "../session/store";
+import { flushComment } from "../panel/chips";
 import { carryHome, CHAT, HOME, isRef, openTab, rereadTabs, selectTab, setHomeTabs, type Tab, tabsSettled, takeTabs } from "../shell/tab-store";
 import { prName, prPageHash, reviewChats } from "../pull-requests/route";
 import type { WorkIn } from "./pills";
@@ -377,7 +378,10 @@ export function discard(id: string): void {
     if (reply.ok) return put(id, null);
     put(id, { asking: false, error: reply.left ? reason(reply) : `Couldn't discard it: ${failure(reply)}`, left: reply.left === true });
   };
-  void booked(entry).then((reply) => (reply ? dropped(reply) : void ask({ op: "run", args: ["draft", entry.draft ?? HOME_DRAFT, "drop", entry.cid] }, dropped)));
+  // Its diff comment still being written goes with its draft: saved first [C80].
+  void flushComment(id)
+    .then(() => booked(entry))
+    .then((reply) => (reply ? dropped(reply) : void ask({ op: "run", args: ["draft", entry.draft ?? HOME_DRAFT, "drop", entry.cid] }, dropped)));
 }
 
 /**

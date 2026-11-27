@@ -32,14 +32,15 @@ impl Typed {
     }
 }
 
-/// Chips as the agent reads them (the app's `withChips`), then the comment being written.
+/// Chips as the agent reads them (the app's `withChips`), then the comment being written, with
+/// where each is: a commit's diff, or the lines before the change.
 fn said(chips: &[Value], writing: &Value) -> String {
     let s = |v: &Value, k: &str| v[k].as_str().unwrap_or_default().to_string();
-    let lines = |c: &Value| match (c["start"].as_u64(), c["end"].as_u64()) {
-        (Some(a), Some(b)) if a != b => format!("{a}-{b}"),
-        (a, _) => a.unwrap_or_default().to_string(),
-    };
-    let comment = |on: &str, c: &Value| {
+    let place = |on: &str, c: &Value| {
+        let lines = match (c["start"].as_u64(), c["end"].as_u64()) {
+            (Some(a), Some(b)) if a != b => format!("{a}-{b}"),
+            (a, _) => a.unwrap_or_default().to_string(),
+        };
         let mut at = vec![];
         if on != "review" {
             at.push(format!("in commit {}", on.get(..12).unwrap_or(on)));
@@ -48,17 +49,13 @@ fn said(chips: &[Value], writing: &Value) -> String {
             at.push("before the change".into());
         }
         let at = (!at.is_empty()).then(|| format!(" ({})", at.join(", ")));
-        let quote: Vec<String> = s(c, "excerpt")
-            .split('\n')
+        format!("{}:{lines}{}", s(c, "path"), at.unwrap_or_default())
+    };
+    let comment = |on: &str, c: &Value| {
+        let quote: Vec<String> = (s(c, "excerpt").split('\n'))
             .map(|l| format!("> {l}"))
             .collect();
-        let (path, text) = (s(c, "path"), s(c, "text"));
-        format!(
-            "{path}:{}{}\n{}\n\n{text}",
-            lines(c),
-            at.unwrap_or_default(),
-            quote.join("\n")
-        )
+        format!("{}\n{}\n\n{}", place(on, c), quote.join("\n"), s(c, "text"))
     };
     let mut out: Vec<String> = (chips.iter())
         .map(|c| match c["kind"].as_str() {
@@ -68,9 +65,8 @@ fn said(chips: &[Value], writing: &Value) -> String {
         .collect();
     if !s(writing, "text").is_empty() {
         out.push(format!(
-            "{}:{}\n\n{}",
-            s(writing, "path"),
-            lines(writing),
+            "{}\n\n{}",
+            place(&s(writing, "on"), writing),
             s(writing, "text")
         ));
     }
@@ -80,47 +76,47 @@ fn said(chips: &[Value], writing: &Value) -> String {
 
 /// The chat's own draft goes with its message before its session does, read again on every pass,
 /// as the chat stays editable while its session can't go: saved in the give-back, so Home's draft
-/// names its files, then its files copied whole. No session folder: nothing was typed there, none
-/// is made, and what an earlier pass carried stays [C80].
+/// names its files, then its files copied whole. Only what's still there is read again: no
+/// session folder, nothing was typed there and none is made; a delete cut short may have taken
+/// its draft or its chips, and what an earlier pass carried of them stays [C80].
 pub(super) fn carry(place: &Place, data: &Path, cid: &str, session: &str) -> io::Result<()> {
     let dir = core::session_dir(data, session);
-    let typed = if dir.is_dir() {
-        Some(typed(data, &dir, session)?)
-    } else {
-        None
+    let draft = dir.join("draft");
+    let words = match draft.is_file() {
+        true => {
+            let _lock = hold(&Place::Session(dir.clone()).lock())?;
+            Some(shown(&read(&draft), true))
+        }
+        false => None,
     };
+    let chips = match dir.join("chips.json").is_file() {
+        true => Some(crate::chips::run(data, &["chips".into(), session.into()])?),
+        false => None,
+    };
+    let waiting = |c: &Value| c["chips"].as_array().cloned().unwrap_or_default();
+    let said = chips.map(|c| said(&waiting(&c), &c["draft"]));
     change(place, |book| {
         if let Some(g) = mine(book, cid) {
-            let blank = || Typed {
+            let t = g.typed.get_or_insert_with(|| Typed {
                 session: session.into(),
                 ..Typed::default()
-            };
-            g.typed = typed.clone().or(g.typed.take()).or_else(|| Some(blank()));
+            });
+            if let Some(w) = &words {
+                t.words = w.clone();
+            }
+            if let Some(s) = &said {
+                t.said = s.clone();
+            }
         }
         Ok(())
     })?;
-    let Some(t) = typed else { return Ok(()) };
+    let Some(words) = words else { return Ok(()) };
     let (from, home) = (message::draft(&dir), message::home(data));
-    for id in message::ids(&serde_json::to_value(&t.words)?) {
+    for id in message::ids(&serde_json::to_value(&words)?) {
         if let (Some(file), None) = (message::file_in(&from, &id), message::file_in(&home, &id)) {
             crate::attach::copy_whole(&file, &home.join(&id))?;
         }
     }
     crash_at("start:typed");
     Ok(())
-}
-
-/// Session `dir`'s draft as its composer shows it, under its lock, and what waits above it.
-fn typed(data: &Path, dir: &Path, session: &str) -> io::Result<Typed> {
-    let words = {
-        let _lock = hold(&Place::Session(dir.to_path_buf()).lock())?;
-        shown(&read(&dir.join("draft")), true)
-    };
-    let chips = crate::chips::run(data, &["chips".into(), session.into()])?;
-    let waiting = chips["chips"].as_array().cloned().unwrap_or_default();
-    Ok(Typed {
-        session: session.into(),
-        words,
-        said: said(&waiting, &chips["draft"]),
-    })
 }

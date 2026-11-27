@@ -169,6 +169,13 @@ export function setCommentDraft(session: string, draft: CommentDraft | null): vo
   else save();
 }
 
+/** The comment being written on `session`'s diff, saved now: a refused new chat's Discard takes it from Rust [C80]. */
+export function flushComment(session: string): Promise<unknown> {
+  clearTimeout(saving.get(session));
+  const draft = drafts.get(session);
+  return draft?.text ? tell(session, ["draft", JSON.stringify(draft)]) : Promise.resolve();
+}
+
 /**
  * The chips as the agent reads them, after the user's own words: each comment's place (on a removed line, the old
  * file's; on a commit's diff, that commit's), the lines it's on, quoted, then what it says after a blank line, so it
