@@ -259,14 +259,25 @@ fn past_cd(mut c: &str) -> Option<&str> {
     Some(c)
 }
 
-/// A command's words when it has no shell syntax but quotes; None when it has any.
+/// A command's words when it has no shell syntax but quotes; None when it has any. Inside double
+/// quotes `\$`, `` \` ``, `\"` and `\\` are the literal character, as the shell passes them.
 pub(crate) fn plain_words(c: &str) -> Option<Vec<String>> {
     let (mut words, mut word, mut quote, mut open) = (vec![], String::new(), None, false);
+    let mut escaped = false;
     for ch in c.chars() {
+        if std::mem::take(&mut escaped) {
+            match ch {
+                '$' | '`' | '"' | '\\' => word.push(ch),
+                '\n' | '!' => return None,
+                ch => word.extend(['\\', ch]),
+            }
+            continue;
+        }
         match (quote, ch) {
             (_, '\n') => return None,
             (Some('\''), '\'') | (Some('"'), '"') => quote = None,
-            (Some('"'), '$' | '`' | '\\' | '!') => return None,
+            (Some('"'), '\\') => escaped = true,
+            (Some('"'), '$' | '`' | '!') => return None,
             (Some(_), ch) => word.push(ch),
             (None, '\'' | '"') => (quote, open) = (Some(ch), true),
             (None, ch) if ch.is_whitespace() => {
