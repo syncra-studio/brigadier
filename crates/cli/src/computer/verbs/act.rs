@@ -73,6 +73,7 @@ pub(super) fn act(
     // A background drag drops only through a macOS drag-and-drop session: without one, the file
     // it meant to drop wasn't moved, whatever the window shows [D129]. Cua 0.54 says a drop only in
     // its text (and `summary`, its copy): its structured result has no drag_session.
+    // shortcut: matches Cua 0.54.0's drag.rs wording, so a reword makes every drop "nothing dropped"; upgrade: recheck at any Cua bump.
     let dropped = ["_text", "summary"].iter().any(|k| {
         (done[*k].as_str())
             .is_some_and(|t| t.contains("held the drop point until the session ended"))
