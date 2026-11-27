@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "Brigadier",
+    "slug": "brigadier",
+    "version": "1.0.0",
+    "platforms": ["ios"],
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#181818",
+    "ios": {
+      "bundleIdentifier": "sh.brigadier.mobile",
+      "appleTeamId": "7JQSPMWT79",
+      "buildNumber": "1",
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "Face ID keeps Brigadier locked and confirms what you ask your Mac to do.",
+        "NSLocalNetworkUsageDescription": "Brigadier finds and connects to your Mac on this Wi-Fi.",
+        "NSBonjourServices": ["_brigadier._tcp"]
+      }
+    }
+  }
+}
