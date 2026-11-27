@@ -74,8 +74,8 @@ export function closeThread() {
 function watch(id: string, held: Session | null) {
   threadN = undefined;
   olderRe = 0;
-  // Reaching back to the rows it already holds, so a page loaded further up stays.
-  const reach = held?.before ? { from: held.before } : {};
+  // Reaching back to the rows it already holds (from the first once its whole history is in), so pages stay.
+  const reach = held ? { from: held.before ?? 1 } : {};
   const re = send({ op: "thread", session: id, ...reach }, (reply) => {
     if (re !== threadRe || thread.get()?.id !== id) return;
     if (!reply.ok) return thread.set({ id, status: reply.error === "not_found" ? "missing" : "error", session: held, error: reply.error });

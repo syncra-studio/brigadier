@@ -71,8 +71,11 @@ export async function connect(...args: Parameters<typeof Link.connect>) {
 export function close() {
   attempt++;
   closes++;
+  const was = live;
   Link.close();
   lost();
+  // Its native `closed` event is dropped now (the stream's number is gone), so the open stream's end is told here.
+  if (was) for (const f of closed) f();
 }
 
 /** A frame with no reply id (pairing's `sig`; the Mac ignores the id the client adds). */
