@@ -97,34 +97,40 @@ export function OvernightStrip({ id, row, connected }: Props) {
     const timer = setInterval(() => setTick(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [night !== null]);
-  // Off now (maybe from the Mac meanwhile): a sheet already open and its refusal stay.
-  if (!now) return <>{error ? <Text style={st.error}>{error}</Text> : null}{sheet}</>;
+  // The sheet stays in one place whatever the strip shows: turned off meanwhile (maybe from the Mac), a signature under
+  // way goes on, and its refusal shows.
   return (
-    <View style={st.strip} accessibilityLabel="Overnight">
-      {night ? (
-        <View style={st.line}>
-          <Text style={st.words} numberOfLines={1}>
-            ☾ {night.since ? `${duration(tick - night.since)} in` : "Overnight"}
-            <Text style={st.muted}>
-              {night.total ? ` · ${night.done ?? 0} of ${night.total} parts done` : ""}
-              {night.decided ? ` · ${night.decided} decided for you` : ""}
-            </Text>
-          </Text>
-          <Small title="I’m back" disabled={!connected} onPress={() => ask("off", true)} />
+    <>
+      {now ? (
+        <View style={st.strip} accessibilityLabel="Overnight">
+          {night ? (
+            <View style={st.line}>
+              <Text style={st.words} numberOfLines={1}>
+                ☾ {night.since ? `${duration(tick - night.since)} in` : "Overnight"}
+                <Text style={st.muted}>
+                  {night.total ? ` · ${night.done ?? 0} of ${night.total} parts done` : ""}
+                  {night.decided ? ` · ${night.decided} decided for you` : ""}
+                </Text>
+              </Text>
+              <Small title="I’m back" disabled={!connected} onPress={() => ask("off", true)} />
+            </View>
+          ) : (
+            <>
+              {now.state === "ready" ? <Text style={st.words}>That’s all I need</Text> : null}
+              {now.state === "ready" && now.words ? <Text style={st.muted}>{now.words}</Text> : null}
+              <View style={st.line}>
+                <Text style={[st.muted, { flex: 1 }]}>{now.state === "ready" ? "This Mac stays awake" : "Or start now: it picks what you skip and tells you in the morning"}</Text>
+                <Small title="Start night" disabled={!connected} onPress={() => ask("start", false)} />
+              </View>
+            </>
+          )}
+          {error ? <Text style={st.error}>{error}</Text> : null}
         </View>
-      ) : (
-        <>
-          {now.state === "ready" ? <Text style={st.words}>That’s all I need</Text> : null}
-          {now.state === "ready" && now.words ? <Text style={st.muted}>{now.words}</Text> : null}
-          <View style={st.line}>
-            <Text style={[st.muted, { flex: 1 }]}>{now.state === "ready" ? "This Mac stays awake" : "Or start now: it picks what you skip and tells you in the morning"}</Text>
-            <Small title="Start night" disabled={!connected} onPress={() => ask("start", false)} />
-          </View>
-        </>
-      )}
-      {error ? <Text style={st.error}>{error}</Text> : null}
+      ) : error ? (
+        <Text style={st.error}>{error}</Text>
+      ) : null}
       {sheet}
-    </View>
+    </>
   );
 }
 

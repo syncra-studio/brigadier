@@ -27,10 +27,8 @@ export function LevelPill({ id, row, connected }: { id: string; row: LevelRow | 
   const [error, setError] = useState<string | null>(null);
   if (pending && row?.level_op === pending.op) setPending(null);
   const levels = models.levelsOf(row?.levels ?? [], row?.backend, row?.model);
-  // An agent with no levels runs as its CLI always has: no pill.
-  if (levels.length === 0) return null;
   const held = row?.held === true;
-  const value = held ? "ask" : (pending?.level ?? row?.level ?? levels[0]!);
+  const value = held ? "ask" : (pending?.level ?? row?.level ?? levels[0] ?? "ask");
   const shown = LEVELS.find((each) => each.level === value)!;
   const offered = LEVELS.filter((each) => levels.includes(each.level));
   const open = () =>
@@ -52,9 +50,12 @@ export function LevelPill({ id, row, connected }: { id: string; row: LevelRow | 
   const sheet = asking && LEVELS.find((each) => each.level === asking.level)!;
   return (
     <>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Permission level: ${shown.label}`} disabled={!connected} onPress={open} style={({ pressed }) => [st.pill, (pressed || !connected) && { opacity: 0.6 }]}>
-        <Text style={[st.pillText, value === "full" && { color: color.warning }]} numberOfLines={1}>{shown.label}</Text>
-      </Pressable>
+      {/* An agent with no levels runs as its CLI always has: no pill, though a sheet already open stays. */}
+      {levels.length > 0 ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={`Permission level: ${shown.label}`} disabled={!connected} onPress={open} style={({ pressed }) => [st.pill, (pressed || !connected) && { opacity: 0.6 }]}>
+          <Text style={[st.pillText, value === "full" && { color: color.warning }]} numberOfLines={1}>{shown.label}</Text>
+        </Pressable>
+      ) : null}
       {(error ?? row?.level_refused) ? <Text style={st.error} numberOfLines={2}>{error ?? row?.level_refused}</Text> : null}
       {asking && sheet ? (
         <Confirm

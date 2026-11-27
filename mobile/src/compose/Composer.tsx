@@ -130,6 +130,8 @@ export function Composer({ id }: { id: string }) {
   const [stopping, setStopping] = useState(false);
   /** The Face ID sheet for a `!` command or Run in background, and what its reply does. */
   const [power, setPower] = useState<(Power & { then: (reply: Frame) => void }) | null>(null);
+  /** A power's refusal, shown on its own line: the queue's errors don't hide it. */
+  const [powerError, setPowerError] = useState<string | null>(null);
   /** A `!` command whose reply was lost keeps its id when confirmed again: the Mac runs or queues an id once. */
   const lostShell = useRef<{ line: string; qid: string } | null>(null);
   const editing = { get: () => edits.get(id) ?? null, set: (pulled: Pulled) => void (pulled ? edits.set(id, pulled) : edits.delete(id)) };
@@ -298,7 +300,8 @@ export function Composer({ id }: { id: string }) {
     const line = row?.worker ? null : shellOf(parts);
     if (line !== null) {
       if (!line) return;
-      if (line.startsWith("--")) return setError("A command can't start with --");
+      if (line.startsWith("--")) return setPowerError("A command can't start with --");
+      setPowerError(null);
       const pulled = editing.get();
       const qid = pulled?.qid ?? (lostShell.current?.line === line ? lostShell.current.qid : `c-${newId()}`);
       const typed = words$.current;
@@ -306,7 +309,7 @@ export function Composer({ id }: { id: string }) {
         ...shellPower(id, line, qid, pulled?.slot),
         then: (reply) => {
           lostShell.current = reply.error === "closed" ? { line, qid } : null;
-          if (!reply.ok) return setError(refusal(reply));
+          if (!reply.ok) return setPowerError(refusal(reply));
           if (editing.get()?.qid === qid) editing.set(null);
           // Only the command leaves the field: a message given back above it while the sheet was open stays.
           const now = words$.current;
@@ -427,7 +430,7 @@ export function Composer({ id }: { id: string }) {
           canEdit={empty}
           error={(stuck ? `Not sent: ${stuck.error}. Edit or delete it to go on.` : null) ?? (items.length > 0 ? error : null)}
           onResume={resume}
-          onBackground={(command) => setPower({ ...backgroundPower(id, command.id, command.line), then: (reply) => setError(reply.ok ? null : refusal(reply)) })}
+          onBackground={(command) => setPower({ ...backgroundPower(id, command.id, command.line), then: (reply) => setPowerError(reply.ok ? null : refusal(reply)) })}
           onSteer={steerQueued}
           onRemove={(qid) => (lost(qid) ? sending.discard(run, id, lost(qid)!) : act({ kind: "remove", qid }, ["remove", qid]))}
           onEdit={edit}
@@ -498,6 +501,7 @@ export function Composer({ id }: { id: string }) {
           />
         ) : null}
         {waits && !blank ? <Text style={st.muted}>{waits}</Text> : error && items.length === 0 ? <Text style={st.error}>{error}</Text> : null}
+        {powerError ? <Text style={st.error}>{powerError}</Text> : null}
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
