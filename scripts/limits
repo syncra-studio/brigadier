@@ -131,6 +131,11 @@ found="$(git log --format='%h %B' | grep -iE '(co-authored-by|generated[- ]with)
   fail "commit with an attribution line"
   echo "$found"
 }
+# Commit messages say the behaviour too, as the files do [D6, D23, D269].
+found="$(git log --format='%h %B' | grep -E '[Cc][Hh][Aa][Tt][ _-]?[Gg][Pp][Tt]|(^|[^a-zA-Z_])([I]ntent|[D]ia|[R]EA)([^a-zA-Z_]|$)|[T]3 ?[Cc]ode|[t]3code|(^|[^a-zA-Z0-9_])[T]3([^a-zA-Z0-9_:"]|$)')" && {
+  fail "a commit message names a product or another app: say what the behaviour or look is"
+  echo "$found"
+}
 found="$(files | grep -iE '\.md$' | grep -vxE 'README\.md|SECURITY\.md|CODE_OF_CONDUCT\.md|AGENTS\.md|CLAUDE\.md|CONTRIBUTING\.md|ARCHITECTURE\.md|THIRD_PARTY_NOTICES\.md')" && {
   fail ".md file not on the allowed list"
   echo "$found"
