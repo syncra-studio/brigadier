@@ -38,6 +38,10 @@ window.addEventListener("hashchange", (event) => {
 
 const MOUSE_BACK = 3;
 const MOUSE_FORWARD = 4;
+// Windows may send a mouse's side button twice, as the press and as an app command (which a keyboard's Back and Forward
+// keys send too, as on Linux): the other kind in the same direction within this long is the same press, dropped once.
+const TWIN_MS = 300;
+let lastPress: { from: "mouse" | "app"; side: -1 | 1; at: number } | null = null;
 // An empty listbox is no menu: a note's editor keeps one, Lexical's typeahead anchor, while its / menu is shut [D291].
 export const blocked = () => document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]:not(:empty)') !== null;
 
@@ -99,6 +103,11 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
   const step = (delta: -1 | 1) => {
     if (!blocked()) (delta === -1 ? stepBack : stepForward)();
   };
+  const press = (from: "mouse" | "app", side: -1 | 1) => {
+    const twin = lastPress && lastPress.from !== from && lastPress.side === side && performance.now() - lastPress.at < TWIN_MS;
+    lastPress = twin ? null : { from, side, at: performance.now() };
+    if (!twin) step(side);
+  };
   // Swiping's chip at the window's edge: it follows the fingers in and brightens once armed; nowhere to go, none [D3110].
   const [chip, setChip] = useState<{ side: -1 | 1; travel: number; gone?: "went" | "short" } | null>(null);
   const gone = chip?.gone;
@@ -117,12 +126,14 @@ export function TitlebarNav({ hash, rows }: { hash: string; rows: SessionRow[] |
     const onMouse = (event: MouseEvent) => {
       if (event.button !== MOUSE_BACK && event.button !== MOUSE_FORWARD) return;
       event.preventDefault();
-      if (event.type === "mouseup") step(event.button === MOUSE_BACK ? -1 : 1);
+      if (event.type === "mouseup") press("mouse", event.button === MOUSE_BACK ? -1 : 1);
     };
     const offMenu = window.brigadier?.onMenu((command) => {
       if (command === "toggle-sidebar") toggleSidebar();
       if (command === "back") step(-1);
       if (command === "forward") step(1);
+      if (command === "browser-backward") press("app", -1);
+      if (command === "browser-forward") press("app", 1);
     });
     // Back with the fingers moving right, Forward moving left, as in browsers: the app's or Settings' own step, as the arrows' [D3110 D926 D927],
     // or over a tab's page that page's history. The chip shows only where there's somewhere to go.

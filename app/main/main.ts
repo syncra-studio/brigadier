@@ -302,6 +302,8 @@ function openWindow(): void {
     console.error("The page's renderer is gone:", new Date().toISOString(), details);
     if (!window.isDestroyed()) window.webContents.reload();
   });
+  // Windows' and Linux's Back and Forward commands, from a mouse's side buttons or a keyboard's keys (shell/titlebar.tsx).
+  window.on("app-command", (_event, command) => (command === "browser-backward" || command === "browser-forward") && window.webContents.send("menu", command));
   // The traffic lights go in full screen, so the titlebar's buttons move to its start (theme.css).
   const tellFullScreen = (): void => window.webContents.send("full-screen", window.isFullScreen());
   window.on("enter-full-screen", tellFullScreen);
