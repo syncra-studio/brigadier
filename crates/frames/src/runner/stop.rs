@@ -41,7 +41,12 @@ impl Runner {
         let mut slot = self.child.lock().unwrap();
         if let Some(c) = slot.as_mut().filter(|c| !c.exited) {
             match c.pty {
-                true => drop(c.input.as_mut().map(|i| i.write_all(b"\x03"))),
+                // On a thread of its own: a backed-up input never keeps the stop from its kill.
+                true => {
+                    if let Some(mut i) = c.input.as_ref().and_then(|i| i.try_clone().ok()) {
+                        thread::spawn(move || i.write_all(b"\x03"));
+                    }
+                }
                 false => drop(c.input.take()),
             }
         }
