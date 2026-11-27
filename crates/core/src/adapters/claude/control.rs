@@ -117,14 +117,17 @@ pub fn naked(argv: &mut Vec<String>, servers: Map<String, Value>) {
     argv.extend(flags.into_iter().chain(more).map(String::from));
 }
 
-/// The tag on every `claude` Brigadier starts, unless the user's login shell sets its own: untagged,
-/// it calls itself sdk-cli and its 5-hour limit drains about twice as fast [beat-competitors D28, D53].
+/// Claude's tag for its caller. Untagged, `-p` is sdk-cli, whose 5-hour limit drains about twice as
+/// fast; tagged `brigadier`, Claude 2.1.332 also loads its Artifact tools on every request (about
+/// 15k tokens) and turns MCP Tasks off, so it waits for the owner [beat-competitors D28, D53].
 pub const ENTRYPOINT: &str = "CLAUDE_CODE_ENTRYPOINT";
+/// Set in the login shell, or the daemon's env that shell inherits, it turns the tag on.
+pub const SWITCH: &str = "BRIGADIER_ENTRYPOINT";
 
-/// A `claude` process's environment: the one every agent gets, tagged as Brigadier's.
+/// A `claude` process's env, tagged when the switch is on; an inherited tag (`cli`) never passes.
 pub fn env(spec: &Spec, exe: &Path) -> Vec<(String, String)> {
-    let mut env = super::super::base_env(spec, exe, &[ENTRYPOINT.into()]);
-    if !env.iter().any(|(k, _)| k == ENTRYPOINT) {
+    let mut env = super::super::base_env(spec, exe, &[]);
+    if super::super::setup::login().vars.contains_key(SWITCH) {
         env.push((ENTRYPOINT.into(), "brigadier".into()));
     }
     env

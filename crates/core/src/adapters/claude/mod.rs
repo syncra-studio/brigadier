@@ -34,9 +34,9 @@ impl Adapter for Claude {
         "Claude Code"
     }
 
-    /// Read from the login shell, so a user's own tag stands.
+    /// The tag's switch, read from the login shell.
     fn keys(&self) -> Vec<String> {
-        vec![control::ENTRYPOINT.into()]
+        vec![control::SWITCH.into()]
     }
 
     fn short_label(&self) -> &'static str {
