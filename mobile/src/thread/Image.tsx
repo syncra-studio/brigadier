@@ -1,7 +1,9 @@
 // An image the thread names, read from the Mac with `attachment` in 256 KiB pieces (msgs/remote-wire.md, M4): a
 // session's sent and viewed images, and this phone's own unsent files. A grey square until it is in.
+import { File, Paths } from "expo-file-system";
+import * as MediaLibrary from "expo-media-library/legacy";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Image as Native, type ImageStyle, type StyleProp, View } from "react-native";
+import { ActionSheetIOS, Alert, Image as Native, type ImageStyle, Pressable, type StyleProp, View } from "react-native";
 import { ask, macNow } from "../link";
 import { lists, thread } from "../mac/mac";
 import { color } from "../theme";
@@ -44,6 +46,34 @@ export function imageUri(owner: string, attachment: string, mime = "image/png"):
   return going;
 }
 
+/** An image this phone sent the Mac (a picked photo), drawn from its own bytes rather than read back. */
+export const keepImage = (owner: string, attachment: string, uri: string) => void read.set(`${macNow()}\n${owner}\n${attachment}`, Promise.resolve(uri));
+
+/** Saves a data URI's image to Photos (add only), through a file in the app's cache that goes whatever happens. */
+async function saveToPhotos(uri: string) {
+  const ext = /^data:image\/([a-z0-9.+-]+);/i.exec(uri)?.[1]?.replace("jpeg", "jpg").replace(/[^a-z0-9]/gi, "") || "png";
+  const file = new File(Paths.cache, `save-${Date.now()}.${ext}`);
+  try {
+    const { granted } = await MediaLibrary.requestPermissionsAsync(true);
+    if (!granted) return Alert.alert("Couldn't save to Photos", "Brigadier may not add to your photos. Allow it in Settings › Brigadier › Photos.");
+    file.create();
+    await file.write(uri.slice(uri.indexOf(",") + 1), { encoding: "base64" });
+    await MediaLibrary.saveToLibraryAsync(file.uri);
+    Alert.alert("Saved to Photos");
+  } catch (e: any) {
+    Alert.alert("Couldn't save to Photos", String(e?.message ?? e));
+  } finally {
+    try {
+      if (file.exists) file.delete();
+    } catch {
+      // Gone already.
+    }
+  }
+}
+
+const offerSave = (uri: string) =>
+  ActionSheetIOS.showActionSheetWithOptions({ options: ["Save to Photos", "Cancel"], cancelButtonIndex: 1 }, (at) => at === 0 && void saveToPhotos(uri));
+
 /** An image of the open thread's session (or `owner`'s), drawn once its bytes are in. */
 export function ThreadImage({ attachment, owner, mime, label, style }: { attachment: string; owner?: string | null; mime?: string; label: string; style: StyleProp<ImageStyle> }) {
   const open = useSyncExternalStore(thread.subscribe, () => thread.get()?.id);
@@ -62,5 +92,10 @@ export function ThreadImage({ attachment, owner, mime, label, style }: { attachm
     };
   }, [key, mime, ready, uri]);
   if (!uri) return <View accessibilityRole="image" accessibilityLabel={label} style={[style as object, { backgroundColor: color.fill }]} />;
-  return <Native accessibilityLabel={label} source={{ uri }} style={style} resizeMode="cover" />;
+  return (
+    // The box is the Pressable's, so a width in percent still has its parent's to go by.
+    <Pressable accessibilityHint="Hold to save it to Photos" onLongPress={() => offerSave(uri)} style={[style as object, { overflow: "hidden" }]}>
+      <Native accessibilityLabel={label} source={{ uri }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+    </Pressable>
+  );
 }

@@ -1,5 +1,6 @@
 // The composer's state, one per paired Mac [D58], from the shared session logic wired as the desktop's
 // app/ui/src/session/{draft,uncertain,sent}.ts and panel/chips.ts wire it.
+import { File, Paths } from "expo-file-system";
 import { uuid } from "expo-modules-core";
 import type { Chip as PanelChip } from "../../vendor/brigadier-shared/chips";
 import { draftState } from "../../vendor/brigadier-shared/session/draft";
@@ -9,6 +10,7 @@ import { sendState } from "../../vendor/brigadier-shared/session/sent";
 import { uncertainState } from "../../vendor/brigadier-shared/session/uncertain";
 import { store } from "../../vendor/brigadier-shared/store";
 import { macNow, request, streamNow } from "../link";
+import { keepImage } from "../thread/Image";
 
 // What the shared logic takes from a browser: an id maker and a store for messages on their way.
 const g = globalThis as any;
@@ -70,6 +72,87 @@ function chipState(uncertain: ReturnType<typeof uncertainState>, run: Runner) {
   return { chips, of, load, leave };
 }
 
+/** A file of the composer's: stored by Rust under its session's folder, settled by its id, failed with why [D127, D487]. */
+export type Attachment = { id: string; name: string; mime: string; state: "uploading" | "ready" | "failed"; error?: string };
+type Files = { all: ReadonlyMap<string, Attachment>; tiles: readonly string[] };
+const NO_FILES: Files = { all: new Map(), tiles: [] };
+/** A file picked on this phone, as a copy in the app's cache. */
+export type Picked = { uri: string; name: string; mime?: string | null; size?: number | null };
+/** Rust's `MAX_BYTES` (crates/core/src/message.rs), in the CLI's words when a file is over it. */
+const MAX_BYTES = 10 * 1024 * 1024;
+const TOO_LARGE = "File is too large to upload (maximum 10 MB)";
+
+/**
+ * Each session's files, as the desktop's session/files.tsx keeps them: every one there (`all`) and the tiles over the
+ * field, which go with the next message as its `attachmentIds`. Kept while the app runs, so leaving the thread keeps them.
+ */
+function fileState(run: Runner) {
+  const owners = store<ReadonlyMap<string, Files>>(new Map());
+  const of = (owner: string) => owners.get().get(owner) ?? NO_FILES;
+  const change = (owner: string, next: (files: Files) => Files) => owners.set(new Map(owners.get()).set(owner, next(of(owner))));
+  const set = (owner: string, file: Attachment) => change(owner, (files) => ({ ...files, all: new Map(files.all).set(file.id, file) }));
+  const listed = new Set<string>();
+  /** After a restart, a draft's files' names come back from Rust's folder, by their ids. */
+  function load(owner: string) {
+    if (listed.has(owner)) return;
+    listed.add(owner);
+    void run(["attach", owner, "list"]).then((reply) => {
+      if (!reply.ok) return void listed.delete(owner);
+      for (const each of reply.files ?? []) if (!of(owner).all.has(each.id)) set(owner, { id: each.id, name: each.name, mime: each.mime, state: "ready" });
+    });
+  }
+  // One store at a time, so each counts the files before it (`--in`), as Rust holds a message to 20.
+  let storing: Promise<void> = Promise.resolve();
+  /** Shows `picked` at once and hands it to Rust; its copy in the cache goes once it has been read and sent. */
+  function attach(owner: string, picked: Picked, backend: string | undefined) {
+    const id = newId();
+    // Rust keeps it by a name with no folder in it, not hidden, never read as a flag.
+    const name = picked.name.replace(/\//g, "_").replace(/^[.-]+/, "") || "File";
+    const mime = picked.mime || "application/octet-stream";
+    const fail = (error: string) => set(owner, { id, name, mime, state: "failed", error });
+    set(owner, { id, name, mime, state: "uploading" });
+    change(owner, (files) => ({ ...files, tiles: [...files.tiles, id] }));
+    const file = new File(picked.uri);
+    storing = storing.then(async () => {
+      try {
+        // Taken out before its turn: not stored.
+        if (!of(owner).tiles.includes(id)) return;
+        if ((picked.size ?? file.size) > MAX_BYTES) return fail(TOO_LARGE);
+        const data = await file.base64();
+        const others = of(owner).tiles.filter((each) => each !== id && of(owner).all.get(each)?.state === "ready");
+        const reply = await run(["attach", owner, "add", id, name, ...(backend ? ["--backend", backend] : []), ...(others.length > 0 ? ["--in", others.join(",")] : []), "--data", data]);
+        if (!reply.ok) return fail(String(reply.message ?? reply.error ?? "Couldn't attach this file"));
+        if (mime.startsWith("image/")) keepImage(owner, id, `data:${mime};base64,${data}`);
+        set(owner, { id, name, mime, state: "ready" });
+      } catch {
+        fail("Couldn't read this file");
+      } finally {
+        try {
+          if (file.uri.startsWith(Paths.cache.uri) && file.exists) file.delete();
+        } catch {
+          // Gone already; the system clears the cache in time.
+        }
+      }
+    });
+  }
+  const remove = (owner: string, id: string) => {
+    change(owner, (files) => ({ ...files, tiles: files.tiles.filter((each) => each !== id) }));
+    void run(["attach", owner, "remove", id]);
+  };
+  /** Tiles back (a draft read, a message given back), anything added meanwhile kept; ones not listed yet are read. */
+  const restore = (owner: string, tiles: readonly string[]) => {
+    if (tiles.length === 0) return;
+    change(owner, (files) => ({ ...files, tiles: [...new Set([...tiles, ...files.tiles])] }));
+    if (tiles.some((id) => !of(owner).all.has(id))) {
+      listed.delete(owner);
+      load(owner);
+    }
+  };
+  /** The tiles leave with a message: its files are the session's now. */
+  const sent = (owner: string) => change(owner, (files) => ({ ...files, tiles: [] }));
+  return { owners, of, load, attach, remove, restore, sent };
+}
+
 function macState(pk: string) {
   /** The sessions whose draft couldn't be saved or read here: their composer does it again once this Mac is connected. */
   const unsaved = new Set<string>();
@@ -84,7 +167,7 @@ function macState(pk: string) {
   const sends = sendState(uncertain, drafts, { connection: streamNow, sendFailed: () => {} });
   /** The queued message this phone pulled back to edit, by session: Rust's one `editing` may be another device's. */
   const edits = new Map<string, { qid: string; slot: number; text: string }>();
-  return { run, unsaved, uncertain, drafts, sends, chips: chipState(uncertain, run), models: modelState(), edits };
+  return { run, unsaved, uncertain, drafts, sends, chips: chipState(uncertain, run), files: fileState(run), models: modelState(), edits };
 }
 
 const macs = new Map<string, ReturnType<typeof macState>>();

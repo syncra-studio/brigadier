@@ -2,7 +2,9 @@
 // while a turn runs Queue (hold Send to Steer, where the agent can); Stop and Resume; the queue card; messages on their
 // way with Try again and Discard, nothing sent again by itself; this phone's own draft kept on the Mac; `/` and `@`.
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Alert, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
+import { ActionSheetIOS, Alert, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import type { Chip as PanelChip } from "../../vendor/brigadier-shared/chips";
@@ -17,7 +19,8 @@ import { lists, thread } from "../mac/mac";
 import { color, text } from "../theme";
 import { ModelPill } from "./Model";
 import { QueueCard } from "./Queue";
-import { forMac, newId, withChips } from "./state";
+import { ThreadImage } from "../thread/Image";
+import { type Attachment, forMac, newId, type Picked, withChips } from "./state";
 
 /** A session's row with what the composer needs from Rust, as the desktop's ComposerRow. */
 type ComposerRow = ModelRow & {
@@ -62,10 +65,11 @@ function partsOf(words: string, chips: readonly Named[]): Draft["parts"] {
   return parts;
 }
 
-/** The draft for Rust, which builds the agent's words from its parts; none for words alone (the desktop's files.tsx `payload`). */
-const payload = (parts: Draft["parts"]) => (parts.some((part) => typeof part !== "string") ? JSON.stringify({ parts, attachmentIds: [] }) : undefined);
-/** The message's parts with the chips' words after them, as in the text. */
-const body = (parts: Draft["parts"], sent: readonly PanelChip[]) => payload(sent.length === 0 ? parts : [...parts, `${isEmpty({ parts, attachmentIds: [] }) ? "" : "\n\n"}${withChips("", sent)}`]);
+/** The draft for Rust, which builds the agent's words from its parts and files; none for words alone (the desktop's files.tsx `payload`). */
+const payload = (parts: Draft["parts"], tiles: readonly string[]) => (parts.some((part) => typeof part !== "string") || tiles.length > 0 ? JSON.stringify({ parts, attachmentIds: tiles }) : undefined);
+/** The message's parts with the chips' words after them, as in the text, and its files. */
+const body = (parts: Draft["parts"], sent: readonly PanelChip[], tiles: readonly string[]) =>
+  payload(sent.length === 0 ? parts : [...parts, `${isEmpty({ parts, attachmentIds: [] }) ? "" : "\n\n"}${withChips("", sent)}`], tiles);
 
 /** A `/` list row: the agent's command, or Brigadier's own tool, as the desktop's commands.tsx and tools.tsx list them. */
 type Command = { id: string; kind: "command" | "tool" | "skill" | "mcp" | "prompt"; label: string; description?: string; instant: boolean };
@@ -82,13 +86,17 @@ type Mention = { id: string; type: string; label: string; name?: string; detail?
 export function Composer({ id }: { id: string }) {
   const mac = forMac();
   const header = useHeaderHeight();
-  const { run, unsaved, drafts, sends: sending, uncertain, chips: waitingChips, edits } = mac;
+  const { run, unsaved, drafts, sends: sending, uncertain, chips: waitingChips, edits, files: fileStore } = mac;
   const row = useSyncExternalStore(lists.subscribe, () => lists.get().rows.find((each) => each.id === id)) as ComposerRow | undefined;
   const conn = useSyncExternalStore(lists.subscribe, () => (lists.get().ready ? streamNow() : -1));
   const connected = conn >= 0;
   const session = useSyncExternalStore(thread.subscribe, () => (thread.get()?.id === id ? thread.get()?.session : null) ?? null);
   const going = useSyncExternalStore(uncertain.subscribe, () => uncertain.goingOf(id));
   const panel = useSyncExternalStore(waitingChips.chips.subscribe, () => waitingChips.of(id));
+  const files = useSyncExternalStore(fileStore.owners.subscribe, () => fileStore.of(id));
+  /** The tiles as they are now, and the ones that can go (a failed one is left out). */
+  const tilesNow = () => fileStore.of(id).tiles;
+  const readyNow = () => tilesNow().filter((each) => fileStore.of(id).all.get(each)?.state !== "failed");
 
   // The field: its words, and the chips put in them, each shown as its label.
   const [initial] = useState(() => drafts.draftOf(id) ?? EMPTY_DRAFT);
@@ -98,7 +106,9 @@ export function Composer({ id }: { id: string }) {
   const cursor = useRef(words.length);
   const [menu, setMenu] = useState<{ kind: "/" | "@"; query: string; from: number } | null>(null);
   const partsNow = () => partsOf(words$.current, named$.current);
-  const empty = isEmpty({ parts: partsOf(words, named$.current), attachmentIds: [] });
+  const empty = isEmpty({ parts: partsOf(words, named$.current), attachmentIds: files.tiles.filter((each) => files.all.get(each)?.state !== "failed") });
+  /** Keeps what the field holds, its files' ids too, as this phone's draft on the Mac. */
+  const keep = (parts: Draft["parts"]) => drafts.keepDraft(run, id, { parts, attachmentIds: [...tilesNow()] });
   /** Puts `parts` in the field; `save`, kept as the draft too, as a change typed is. */
   const setField = (parts: Draft["parts"], save = true) => {
     words$.current = plainText(parts);
@@ -106,7 +116,7 @@ export function Composer({ id }: { id: string }) {
     cursor.current = words$.current.length;
     setWords(words$.current);
     setMenu(null);
-    if (save) drafts.keepDraft(run, id, { parts, attachmentIds: [] });
+    if (save) keep(parts);
   };
 
   const [ops, setOps] = useState<Op[]>([]);
@@ -118,21 +128,33 @@ export function Composer({ id }: { id: string }) {
   // is never claimed: the queue card offers Put back instead.
   const kept = row?.queue?.editing;
   const foreign = kept && edits.get(id)?.qid !== kept.id ? kept : null;
-  // After a restart the draft is Rust's alone: it comes back unless something was typed first.
+  // After a restart the draft is Rust's alone: it comes back unless something was typed first. One given back while
+  // the session was closed brings its tiles; its files' names are read from Rust's folder.
   useEffect(() => {
+    fileStore.restore(id, initial.attachmentIds);
+    fileStore.load(id);
     void drafts.loadDraft(run, id).then((saved) => {
       if (!saved || !isEmpty({ parts: partsNow(), attachmentIds: [] })) return;
       setField(saved.parts, false);
+      fileStore.restore(id, saved.attachmentIds);
     });
   }, []);
+  // The tiles changed: the draft keeps them.
+  const shownTiles = useRef(files.tiles);
+  useEffect(() => {
+    if (shownTiles.current === files.tiles) return;
+    shownTiles.current = files.tiles;
+    keep(partsNow());
+  }, [files.tiles]);
   // A message Rust gave back goes above what's typed since, never over it [D363].
   useEffect(() =>
     drafts.onGiven(id, (back) => {
       const typed = partsNow();
       const parts = isEmpty({ parts: typed, attachmentIds: [] }) ? back.parts : [...back.parts, "\n\n", ...typed];
       setField(parts, false);
+      fileStore.restore(id, back.attachmentIds);
       if (back.error) setError(back.error);
-      return { parts, attachmentIds: [] };
+      return { parts, attachmentIds: [...new Set([...back.attachmentIds, ...tilesNow()])] };
     }),
   );
   // Each connection: what waits above the field, read again; messages Rust may not hold handed to it, a Delete told instead (the desktop's sent.tsx `useHanding`).
@@ -221,8 +243,9 @@ export function Composer({ id }: { id: string }) {
   };
   /** The field and the chips leave at once, the message kept first, so nothing is lost [D30, D363]. */
   const goes = (parts: Draft["parts"], sent: readonly PanelChip[], send: (pulled: Pulled, sub: Sub) => void) => {
-    const sub: Sub = { draft: { parts, attachmentIds: [] }, rev: drafts.revOf(id), chips: sent };
+    const sub: Sub = { draft: { parts, attachmentIds: readyNow() }, rev: drafts.revOf(id), chips: sent };
     send(editing.get(), sub);
+    fileStore.sent(id);
     take();
     waitingChips.leave(id, sent);
   };
@@ -253,7 +276,9 @@ export function Composer({ id }: { id: string }) {
     if (!connected) return;
     const parts = partsNow();
     const sent = waitingChips.of(id);
-    if (isEmpty({ parts, attachmentIds: [] }) && sent.length === 0) {
+    const tiles = readyNow();
+    if (waitsFor()) return;
+    if (isEmpty({ parts, attachmentIds: tiles }) && sent.length === 0) {
       // Held with nothing typed, it steers the first queued message [D183].
       if (other && running && canSteer && items[0]?.state === "queued" && !items[0].shell) steerQueued(items[0].id);
       return;
@@ -262,7 +287,7 @@ export function Composer({ id }: { id: string }) {
     const message = withChips(plainText(parts), sent);
     // The Mac reads words that start with `--` as a flag, so it refuses them.
     if (message.startsWith("--")) return setError("A message can't start with --");
-    const draft = body(parts, sent);
+    const draft = body(parts, sent, tiles);
     // Queue or Steer is the Mac's setting; the phone takes its default, Queue [D188].
     const mode = chosen ?? sendMode(running || commands, "queue", other, canSteer && running);
     if (!chosen && mode === "now" && paused && items.length > 0) {
@@ -295,7 +320,7 @@ export function Composer({ id }: { id: string }) {
     setWords(next);
     const parts = partsNow();
     named$.current = parts.filter(named);
-    drafts.keepDraft(run, id, { parts, attachmentIds: [] });
+    keep(parts);
     const pulled = editing.get();
     if (pulled && isEmpty({ parts, attachmentIds: [] })) {
       editing.set(null);
@@ -318,14 +343,30 @@ export function Composer({ id }: { id: string }) {
     cursor.current = menu.from + put.length;
     setWords(next);
     setMenu(null);
-    drafts.keepDraft(run, id, { parts: partsNow(), attachmentIds: [] });
+    keep(partsNow());
   };
   const runCommand = (command: Command) => {
     replace("");
     void run(["command", id, command.label.slice(1)]).then((reply) => !reply.ok && setError(String(reply.error ?? `Couldn't run ${command.label}`)));
   };
 
-  // Nothing to send: no words, and nothing waiting above the field.
+  /** Why Send waits now, in the desktop's words; none when it can go. */
+  const waitsFor = () => {
+    const now = fileStore.of(id);
+    const tiles = now.tiles.flatMap((each) => now.all.get(each) ?? []);
+    if (tiles.some((each) => each.state === "uploading")) return "Files uploading…";
+    if (tiles.some((each) => each.state === "ready" && each.mime.startsWith("image/")) && !mac.models.takesImages(row?.backend, row?.model)) return "This model does not support image inputs. Try a different model";
+    return undefined;
+  };
+  const waits = waitsFor();
+  const add = (picked: Picked[]) => picked.forEach((each) => fileStore.attach(id, each, row?.backend));
+  const pick = () =>
+    ActionSheetIOS.showActionSheetWithOptions({ options: ["Photo Library", "Files", "Cancel"], cancelButtonIndex: 2 }, (at) => {
+      if (at === 0) void ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsMultipleSelection: true }).then((got) => !got.canceled && add(got.assets.map((each) => ({ uri: each.uri, name: each.fileName || `Image.${each.mimeType?.split("/")[1] ?? "jpg"}`, mime: each.mimeType, size: each.fileSize }))), () => setError("Couldn't open your photos"));
+      if (at === 1) void DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true }).then((got) => !got.canceled && add(got.assets.map((each) => ({ uri: each.uri, name: each.name, mime: each.mimeType, size: each.size }))), () => setError("Couldn't open Files"));
+    });
+
+  // Nothing to send: no words, no files, and nothing waiting above the field.
   const blank = empty && panel.length === 0;
   const state = busy && connected && blank ? "stop" : !running && blank && resumable ? "resume" : "send";
   const press = () => (state === "stop" ? stop() : state === "resume" ? resume() : submit(false));
@@ -355,9 +396,17 @@ export function Composer({ id }: { id: string }) {
         {menu?.kind === "/" ? <Commands id={id} query={menu.query} fresh={running} onPick={(command) => (command.instant ? runCommand(command) : replace(`${command.label} `, { kind: "command", id: command.id, type: command.kind, label: command.label }))} /> : null}
         {menu?.kind === "@" ? <Mentions id={id} query={menu.query} onPick={(item) => replace(`${item.label} `, { kind: "mention", id: item.id, type: item.type as Extract<Named, { kind: "mention" }>["type"], label: item.label })} /> : null}
         {panel.length > 0 ? (
-          <View style={st.tiles}>
+          <View style={st.waiting}>
             {panel.map((chip) => <Text key={chip.id} style={st.tile} numberOfLines={1}>{tileOf(chip)}</Text>)}
           </View>
+        ) : null}
+        {files.tiles.length > 0 ? (
+          <ScrollView horizontal style={{ flexGrow: 0 }} contentContainerStyle={st.tiles} keyboardShouldPersistTaps="always">
+            {files.tiles.map((each) => {
+              const file = files.all.get(each);
+              return file ? <Tile key={each} owner={id} file={file} onRemove={() => fileStore.remove(id, each)} /> : null;
+            })}
+          </ScrollView>
         ) : null}
         <View style={st.field}>
           <TextInput
@@ -372,21 +421,24 @@ export function Composer({ id }: { id: string }) {
             {segments(words, named$.current).map(([part, chip], at) => <Text key={at} style={chip ? st.chip : undefined}>{part}</Text>)}
           </TextInput>
           <View style={st.bar}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Add photos or files" disabled={!connected} onPress={pick} hitSlop={8} style={({ pressed }) => [st.plus, (pressed || !connected) && { opacity: 0.5 }]}>
+              <Text style={st.plusGlyph}>+</Text>
+            </Pressable>
             <ModelPill id={id} row={row} connected={connected} />
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={state === "stop" ? "Stop" : state === "resume" ? "Resume" : verb}
               accessibilityHint={state === "send" && running && canSteer ? "Hold to steer it into the running turn" : undefined}
-              disabled={!connected || (state === "send" && blank) || (state === "stop" && stopping) || (state === "resume" && resuming)}
+              disabled={!connected || (state === "send" && (blank || waits !== undefined)) || (state === "stop" && stopping) || (state === "resume" && resuming)}
               onPress={press}
               onLongPress={hold}
-              style={({ pressed }) => [st.send, (pressed || !connected || (state === "send" && blank)) && { opacity: 0.4 }]}
+              style={({ pressed }) => [st.send, (pressed || !connected || (state === "send" && (blank || waits !== undefined))) && { opacity: 0.4 }]}
             >
               <Text style={st.sendGlyph}>{state === "stop" ? "■" : state === "resume" ? "▶" : "↑"}</Text>
             </Pressable>
           </View>
         </View>
-        {error && items.length === 0 ? <Text style={st.error}>{error}</Text> : null}
+        {waits && !blank ? <Text style={st.muted}>{waits}</Text> : error && items.length === 0 ? <Text style={st.error}>{error}</Text> : null}
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
@@ -405,6 +457,25 @@ const tileOf = (chip: PanelChip) => {
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
   return chip.chip.kind === "resolve" ? `Resolve ${plural(chip.chip.conflicts, "conflict")}` : `Fix ${chip.chip.run}`;
 };
+
+/** A file over the field: an image's thumbnail once Rust has it, else its name; Uploading… or why it failed; and remove. */
+function Tile({ owner, file, onRemove }: { owner: string; file: Attachment; onRemove: () => void }) {
+  return (
+    <View style={st.file}>
+      {file.state === "ready" && file.mime.startsWith("image/") ? (
+        <ThreadImage owner={owner} attachment={file.id} mime={file.mime} label={file.name} style={st.thumb} />
+      ) : (
+        <View style={[st.thumb, st.named]}>
+          <Text style={file.state === "failed" ? st.error : st.fileName} numberOfLines={3}>{file.state === "failed" ? file.error : file.name}</Text>
+        </View>
+      )}
+      {file.state === "uploading" ? <Text style={st.uploading}>Uploading…</Text> : null}
+      <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${file.name}`} onPress={onRemove} hitSlop={8} style={st.remove}>
+        <Text style={st.removeGlyph}>×</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 /** A message on its way, as the desktop's sent.tsx bubbles: sending, or why not with Try again, Discard and Edit. */
 function OnItsWay({ id, entry }: { id: string; entry: Going }) {
@@ -506,7 +577,17 @@ const st = StyleSheet.create({
   bar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   send: { marginLeft: "auto", width: 32, height: 32, borderRadius: 16, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
   sendGlyph: { fontSize: 16, fontWeight: "700", color: color.primaryFg },
-  tiles: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  waiting: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  tiles: { flexDirection: "row", gap: 8, paddingTop: 6, paddingRight: 6 },
+  file: { width: 72 },
+  thumb: { width: 72, height: 72, borderRadius: 12 },
+  named: { backgroundColor: color.muted, padding: 6, justifyContent: "center" },
+  fileName: { fontSize: 12, lineHeight: 16, color: color.foreground },
+  uploading: { fontSize: 11, color: color.mutedForeground, paddingTop: 2 },
+  remove: { position: "absolute", top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
+  removeGlyph: { fontSize: 15, lineHeight: 18, fontWeight: "700", color: color.primaryFg },
+  plus: { width: 32, height: 32, borderRadius: 16, backgroundColor: color.fill, alignItems: "center", justifyContent: "center" },
+  plusGlyph: { fontSize: 20, lineHeight: 22, color: color.foreground },
   tile: { ...text.sm, color: color.foreground, backgroundColor: color.muted, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, maxWidth: 220 },
   going: { alignSelf: "flex-end", maxWidth: "85%", gap: 4, borderRadius: 16, backgroundColor: color.bubble, padding: 12 },
   goingText: { ...text.base, color: color.chat },
