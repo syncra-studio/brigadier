@@ -62,6 +62,30 @@ fn hash(w: &str) -> bool {
         && w.chars().any(|c| c.is_ascii_alphabetic())
 }
 
+/// The file a backticked word names: a path with a `/`, or a bare name such as `Cargo.toml` or
+/// `.env`; a `:12` or `:12:5` line after it is no part of it.
+fn named(p: &str) -> Option<&str> {
+    let mut p = p;
+    for _ in 0..2 {
+        let line = p
+            .rsplit_once(':')
+            .filter(|(_, n)| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+        p = line.map_or(p, |(head, _)| head);
+    }
+    if p.contains(char::is_whitespace) || p.contains("://") {
+        return None;
+    }
+    let ext = p.rsplit_once('.').is_some_and(|(_, e)| {
+        e.len() <= 10
+            && e.bytes().any(|b| b.is_ascii_alphabetic())
+            && e.bytes().all(|b| b.is_ascii_alphanumeric())
+    });
+    let bare = ext
+        && p.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b));
+    (p.contains('/') || bare).then_some(p)
+}
+
 fn commit(cwd: &str, h: &str) -> bool {
     let out = Command::new("git")
         .args(["-c", "credential.helper=", "-C", cwd, "cat-file", "-e"])
@@ -149,12 +173,11 @@ pub fn check(text: &str, sources: &[Source], cwd: &str, was: Option<&str>) -> Va
         let mut ticks = body.split('`');
         let mut off = base + ticks.next().map_or(0, str::len) + 1;
         while let (Some(p), Some(after)) = (ticks.next(), ticks.next()) {
-            let path = (p.contains('/') && !p.contains(char::is_whitespace) && !p.contains("://"))
-                .then(|| match (was, p.starts_with('/')) {
-                    (Some(w), true) if p.starts_with(w) => format!("{cwd}{}", &p[w.len()..]),
-                    (_, true) => p.to_string(),
-                    _ => format!("{cwd}/{p}"),
-                });
+            let path = named(p).map(|p| match (was, p.starts_with('/')) {
+                (Some(w), true) if p.starts_with(w) => format!("{cwd}{}", &p[w.len()..]),
+                (_, true) => p.to_string(),
+                _ => format!("{cwd}/{p}"),
+            });
             if path.is_some_and(|p| !Path::new(&p).exists()) {
                 bump("paths_missing");
                 marks.push(json!({"at": off + p.len() + 1, "kind": "path"}));
