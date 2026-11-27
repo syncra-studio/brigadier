@@ -42,6 +42,9 @@ pub(crate) fn run_named(data: &Path, args: &[String], name: Option<&str>) -> io:
     s.src.rules = Some(crate::routing::launch);
     // A fork cut short, this one's earlier try too, finishes or rolls back first [D54].
     rewind::settled(data, &s.src)?;
+    // A night's decision still waiting for the next pass is logged first, so the copy has it in
+    // place; one that can't be yet stays waiting, as it would without the fork [§8].
+    let _ = crate::overnight::settle(data, &s.src.id);
     if fork::record(&core::session_dir(data, new)).is_some() {
         return Ok(json!({"ok": true, "session": new}));
     }

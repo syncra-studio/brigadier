@@ -220,7 +220,7 @@ fn end(o: &mut Overnight, user: bool, why: Option<&str>) {
 
 /// What a night still owes: its Full access, its agent and workers stopped, its level given back, its thread told.
 /// Each is marked done only once it is, so whatever cut it short, the next pass goes on.
-fn settle(data: &Path, id: &str) -> io::Result<()> {
+pub(crate) fn settle(data: &Path, id: &str) -> io::Result<()> {
     let spec = core::load(data, id)?;
     let o = load(&spec.dir);
     if o.full && o.night() {
