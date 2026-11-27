@@ -157,9 +157,7 @@ fn place(
     open: bool,
     record: Record,
 ) -> io::Result<Value> {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or_else(|| io::Error::other("No home folder"))?;
+    let home = home()?;
     let source = reader::sources(&home).into_iter().find(|s| s.key == key);
     let dir = source
         .as_ref()
@@ -206,12 +204,6 @@ fn place(
 /// `imports sources | origins | read <browser> <profile> | place <browser> <profile> <record> [--open]`.
 pub(super) fn run(data: &Path, profile: &str, args: &[String]) -> io::Result<Value> {
     let get = |i| crate::arg(args, i);
-    // A hidden instance's throwaway HOME is where it looks, so it never reads the user's browsers.
-    let home = || {
-        std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .ok_or_else(|| io::Error::other("No home folder"))
-    };
     match get(0)? {
         "sources" => {
             let saved = read_saved(data);
@@ -250,4 +242,12 @@ pub(super) fn run(data: &Path, profile: &str, args: &[String]) -> io::Result<Val
         ),
         _ => Err(io::Error::other("Unknown browser imports operation")),
     }
+}
+
+/// HOME first: a hidden instance's throwaway one is where it looks, so it never reads the user's
+/// browsers. Else the profile folder, as on Windows.
+fn home() -> io::Result<PathBuf> {
+    (std::env::var_os("HOME").map(PathBuf::from))
+        .or_else(std::env::home_dir)
+        .ok_or_else(|| io::Error::other("No home folder"))
 }
