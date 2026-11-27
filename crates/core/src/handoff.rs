@@ -95,6 +95,10 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
         if item["kind"] == "input" && c.is_null() {
             summary = item["origin"] == "summary";
         }
+        // An Overnight decision is noted whenever its night settles, inside a summary turn too.
+        if let Some(d) = records::decided(item, &at) {
+            p.answers.push(d);
+        }
         if summary {
             return;
         }
@@ -159,7 +163,6 @@ fn past(spec: &Spec, tails: bool) -> io::Result<Past> {
                     }
                 }
             }
-            _ if let Some(d) = records::decided(item, &at) => p.answers.push(d),
             _ => {}
         }
         let before = p.entries.len();
