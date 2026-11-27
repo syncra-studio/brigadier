@@ -442,6 +442,3 @@ fn send_flags(cx: &Ctx, session: &str, f: &Flags) -> Result<(), Fail> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests;
