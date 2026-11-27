@@ -2,8 +2,8 @@
 // session's sent and viewed images, and this phone's own unsent files. A grey square until it is in.
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Image as Native, type ImageStyle, type StyleProp, View } from "react-native";
-import { ask } from "../link";
-import { thread } from "../mac/mac";
+import { ask, macNow } from "../link";
+import { lists, thread } from "../mac/mac";
 import { color } from "../theme";
 
 const fromBase64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
@@ -18,7 +18,8 @@ const read = new Map<string, Promise<string | null>>();
 
 /** The image's bytes as a data URI, or null when the Mac hasn't it (or the stream ended: tried again next time). */
 export function imageUri(owner: string, attachment: string, mime = "image/png"): Promise<string | null> {
-  const key = `${owner}\n${attachment}`;
+  // Ids are each Mac's own: one Mac's image never stands in for another's.
+  const key = `${macNow()}\n${owner}\n${attachment}`;
   const had = read.get(key);
   if (had) return had;
   const going = (async () => {
@@ -46,16 +47,18 @@ export function imageUri(owner: string, attachment: string, mime = "image/png"):
 /** An image of the open thread's session (or `owner`'s), drawn once its bytes are in. */
 export function ThreadImage({ attachment, owner, mime, label, style }: { attachment: string; owner?: string | null; mime?: string; label: string; style: StyleProp<ImageStyle> }) {
   const open = useSyncExternalStore(thread.subscribe, () => thread.get()?.id);
+  // Signed in again: a read that failed meanwhile is tried again.
+  const ready = useSyncExternalStore(lists.subscribe, () => lists.get().ready);
   const from = owner ?? open;
   const [uri, setUri] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
     setUri(null);
-    if (from) void imageUri(from, attachment, mime).then((got) => live && setUri(got));
+    if (from && ready) void imageUri(from, attachment, mime).then((got) => live && setUri(got));
     return () => {
       live = false;
     };
-  }, [from, attachment, mime]);
+  }, [from, attachment, mime, ready]);
   if (!uri) return <View accessibilityRole="image" accessibilityLabel={label} style={[style as object, { backgroundColor: color.fill }]} />;
   return <Native accessibilityLabel={label} source={{ uri }} style={style} resizeMode="cover" />;
 }
