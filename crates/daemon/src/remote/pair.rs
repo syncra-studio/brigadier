@@ -25,6 +25,8 @@ const AGAIN: Duration = Duration::from_secs(10);
 pub(super) struct Offer {
     pub(super) n: u64,
     pub(super) secret: [u8; 32],
+    /// The typed code: 16 Crockford base32 characters (80 bits), its psk taken from their ASCII.
+    pub(super) code: String,
     made: Instant,
     expires: u64,
     used: bool,
@@ -47,7 +49,7 @@ pub(super) struct Pending {
     at: Instant,
 }
 
-/// The psk a secret gives for one kind of pairing: `qr`, and `code` from M2b.
+/// The psk a secret gives for one kind of pairing: `qr` or `code`.
 pub(super) fn psk(secret: &[u8], kind: &str) -> Vec<u8> {
     let mut out = [0; 32];
     let info = format!("brigadier/pair/{kind}/v1");
@@ -185,6 +187,16 @@ fn addresses(port: u16) -> Vec<String> {
     found
 }
 
+/// 10 bytes as 16 Crockford base32 characters, 5 bits each.
+fn crockford(bytes: &[u8; 10]) -> String {
+    const ABC: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    let n = bytes.iter().fold(0u128, |n, b| n << 8 | u128::from(*b));
+    (0..16)
+        .rev()
+        .map(|i| ABC[(n >> (5 * i)) as usize & 31] as char)
+        .collect()
+}
+
 fn shown(s: &State, offer: &Offer) -> Value {
     let port = s.live.as_ref().map_or(0, |l| l.0);
     let url = format!(
@@ -199,7 +211,7 @@ fn shown(s: &State, offer: &Offer) -> Value {
             .min_dimensions(240, 240)
             .build()
     });
-    json!({"url": url, "code": null, "svg": svg, "expires": offer.expires})
+    json!({"url": url, "code": offer.code, "svg": svg, "expires": offer.expires})
 }
 
 fn offer(s: &mut State) -> Value {
@@ -213,14 +225,15 @@ fn offer(s: &mut State) -> Value {
             .as_ref()
             .is_some_and(|o| o.open() && o.made.elapsed() < AGAIN)
     {
-        let mut secret = [0; 32];
-        if let Err(e) = getrandom::fill(&mut secret) {
+        let (mut secret, mut code) = ([0; 32], [0; 10]);
+        if let Err(e) = getrandom::fill(&mut secret).and_then(|()| getrandom::fill(&mut code)) {
             return json!({"ok": false, "error": e.to_string()});
         }
         s.made += 1;
         s.offer = Some(Offer {
             n: s.made,
             secret,
+            code: crockford(&code),
             made: Instant::now(),
             expires: now_ms() + LIFE.as_millis() as u64,
             used: false,

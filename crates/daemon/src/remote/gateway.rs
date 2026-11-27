@@ -29,7 +29,9 @@ pub(super) struct Gateway {
     child: Child,
     pub(super) port: u16,
     pub(super) out: Arc<Mutex<UnixStream>>,
-    _bonjour: bonjour::Registration,
+    pub(super) bonjour: bonjour::Registration,
+    /// Whether the TXT record says an offer is open.
+    pub(super) open: bool,
 }
 
 impl Gateway {
@@ -49,7 +51,7 @@ impl Drop for Gateway {
     }
 }
 
-pub(super) fn start(data: &Path) -> io::Result<Gateway> {
+pub(super) fn start(data: &Path, public: &[u8]) -> io::Result<Gateway> {
     // Seatbelt matches the real path, so the program is named by it.
     let program = fs::canonicalize(std::env::current_exe()?.with_file_name("brigadier-remote"))?;
     let saved = data.join("remote/port");
@@ -90,7 +92,7 @@ pub(super) fn start(data: &Path) -> io::Result<Gateway> {
         })
     };
     let child = command.spawn()?;
-    let bonjour = bonjour::register(port)?;
+    let bonjour = bonjour::register(port, &bonjour::txt(public, false))?;
     let out = ours.try_clone()?;
     out.set_write_timeout(Some(STUCK))?;
     let out = Arc::new(Mutex::new(out));
@@ -99,7 +101,8 @@ pub(super) fn start(data: &Path) -> io::Result<Gateway> {
         child,
         port,
         out,
-        _bonjour: bonjour,
+        bonjour,
+        open: false,
     })
 }
 

@@ -71,15 +71,21 @@ impl Remote {
             (s.live, s.out, s.offer, s.pending) = (None, None, None, None);
             s.streams.clear();
         }
-        if self.gateway.is_some() {
-            link::tick(&mut STATE.lock().unwrap());
+        if let Some(running) = &mut self.gateway {
+            let mut s = STATE.lock().unwrap();
+            link::tick(&mut s);
+            let open = s.offer.as_ref().is_some_and(pair::Offer::open);
+            if open != running.open {
+                running.bonjour.update(&bonjour::txt(&s.public, open));
+                running.open = open;
+            }
         }
         if !want || self.gateway.is_some() || self.tried.is_some_and(|t| t.elapsed() < RETRY) {
             return;
         }
         self.tried = Some(Instant::now());
         let started = devices::mac_key(data).and_then(|(key, public)| {
-            let started = gateway::start(data)?;
+            let started = gateway::start(data, &public)?;
             let mut s = STATE.lock().unwrap();
             (s.data, s.key, s.public) = (data.to_path_buf(), key, public);
             (s.live, s.out) = (Some((started.port, name())), Some(started.out.clone()));

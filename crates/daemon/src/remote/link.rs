@@ -1,6 +1,6 @@
 //! Each stream the gateway carries, as remote design §4 runs it. Message 1 of
 //! `Noise_IKpsk2_25519_ChaChaPoly_SHA256` names its mode: `qr` mixes in the open offer's secret,
-//! `device` the psk its pairing left. Message 1 proves nothing and is answered and kept 10 s; the
+//! `code` its typed code, `device` the psk its pairing left. Message 1 proves nothing and is answered and kept 10 s; the
 //! first transport message, the first under keys with the psk, proves it, and then a Face ID
 //! signature over the handshake hash (`Sig_U("brigadier/hello/v1" ‖ h)`) pairs a phone (the
 //! Mac's Allow follows) or signs one in. After that every message is a JSON frame (4-byte length,
@@ -145,14 +145,19 @@ fn first(s: &mut State, id: u32, bytes: &[u8]) -> Result<(), Fail> {
     let info: Value = serde_json::from_slice(&payload[..n])?;
     let rs = hs.get_remote_static().ok_or("no static key")?.to_vec();
     let (psk, device, offer) = match info["mode"].as_str() {
-        Some("qr") => {
+        Some(kind @ ("qr" | "code")) => {
             let offer = s
                 .offer
                 .as_ref()
                 .filter(|o| o.live())
                 .ok_or("no open offer")?;
             key_of(&info)?;
-            (pair::psk(&offer.secret, "qr"), String::new(), offer.n)
+            let secret = if kind == "qr" {
+                &offer.secret[..]
+            } else {
+                offer.code.as_bytes()
+            };
+            (pair::psk(secret, kind), String::new(), offer.n)
         }
         Some("device") => {
             let device = devices::id_of(&rs);
@@ -190,7 +195,7 @@ fn signed(u: &VerifyingKey, h: &[u8], sig: &Value) -> bool {
 fn request(s: &mut State, id: u32, req: &Value) -> Result<(), Fail> {
     let stream = s.streams.get_mut(&id).ok_or("gone")?;
     match stream.step {
-        Step::Signing if stream.info["mode"] == "qr" => {
+        Step::Signing if stream.info["mode"] != "device" => {
             if !signed(&key_of(&stream.info)?, &stream.h, &req["sig"]) {
                 return Err("bad signature".into());
             }
