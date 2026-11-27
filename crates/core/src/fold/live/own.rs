@@ -65,7 +65,12 @@ pub(super) fn runs(argv: &[String], line: &[String]) -> bool {
     };
     let at = (argv.len().checked_sub(args.len())).filter(|n| (1..=3).contains(n));
     let direct = at.is_some_and(|n| argv[n..] == *args && same(&argv[n - 1]));
-    let package = args.iter().skip_while(|a| a.starts_with('-'));
-    let title = std::iter::once("npm exec").chain(package.map(String::as_str));
+    // Its options go, `-p <package>`'s value too (npm's `bin/npx-cli.js`).
+    let at = (args.iter().enumerate())
+        .find(|&(i, a)| {
+            !a.starts_with('-') && (i == 0 || !["-p", "--package"].contains(&&*args[i - 1]))
+        })
+        .map_or(args.len(), |(i, _)| i);
+    let title = std::iter::once("npm exec").chain(args[at..].iter().map(String::as_str));
     direct || (base(program) == "npx" && argv[..] == [title.collect::<Vec<_>>().join(" ")])
 }
