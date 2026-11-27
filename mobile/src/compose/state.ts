@@ -145,6 +145,8 @@ function fileState(run: Runner) {
         const reply = await run(["attach", owner, "add", id, name, ...(backend ? ["--backend", backend] : []), ...(others.length > 0 ? ["--in", others.join(",")] : []), "--data", data]);
         if (!reply.ok) return fail(String(reply.message ?? reply.error ?? "Couldn't attach this file"));
         if (mime.startsWith("image/")) keepImage(owner, id, `data:${mime};base64,${data}`);
+        // A list asked before this add went through can't speak for it.
+        began.set(id, ++tick);
         set(owner, { id, name, mime, state: "ready" });
       } catch {
         fail("Couldn't read this file");
