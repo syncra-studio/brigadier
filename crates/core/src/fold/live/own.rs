@@ -9,14 +9,16 @@ use std::path::Path;
 /// a tool or an MCP server gets its own.
 pub(super) fn server(all: &[procs::Proc], child: i32) -> BTreeSet<i32> {
     let argv = procs::args(child).map(|a| a.0).unwrap_or_default();
-    let helper =
-        matches!(&argv[..], [exe, word, ..] if exe.ends_with("/brigadier") && word == "helper");
+    let helper = matches!(&argv[..], [exe, word, ..] if exe.contains(['/', '\\']) && procs::program_name(exe) == "brigadier" && word == "helper");
     let mut found = BTreeSet::new();
     for p in all.iter().filter(|p| helper && p.ppid == child) {
         found.insert(p.pid);
-        if let Some(pipes) = procs::stdio(p.pid) {
-            let below = procs::descendants(all, p.pid).into_iter().map(|p| p.pid);
-            found.extend(below.filter(|&b| procs::stdio(b) == Some(pipes)));
+        let below = procs::descendants(all, p.pid).into_iter().map(|p| p.pid);
+        match procs::stdio(p.pid) {
+            Some(pipes) => found.extend(below.filter(|&b| procs::stdio(b) == Some(pipes))),
+            // Unprovable here: the helper starts nothing else, so all below its child is the CLI's.
+            None if !procs::STDIO_KNOWN => found.extend(below),
+            None => {}
         }
     }
     found
@@ -58,7 +60,7 @@ pub(super) fn runs(argv: &[String], line: &[String]) -> bool {
     let Some((program, args)) = line.split_first() else {
         return false;
     };
-    let base = |a: &str| a.rsplit('/').next().unwrap_or(a).to_string();
+    let base = |a: &str| procs::program_name(a).to_string();
     let same = |a: &str| match program.contains('/') {
         true => a == program,
         false => base(a) == *program,

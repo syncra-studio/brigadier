@@ -8,7 +8,6 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fs::{self, File, TryLockError};
 use std::io;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -194,10 +193,16 @@ pub(crate) fn read(dir: &Path, args: &[&str], stop: &AtomicBool) -> io::Result<V
     Ok(out.stdout)
 }
 
-/// The checkout's lock [D1060]: an flock on its own git folder, so it makes no file of its own.
-/// Reads take it shared and writes exclusive. It waits in steps, so `stop` ends the wait.
+/// The checkout's lock [D1060]: an flock on its own git folder, so it makes no file of its own;
+/// on Windows, which locks no folder, a file in it git never reads. Reads take it shared and
+/// writes exclusive. It waits in steps, so `stop` ends the wait.
 pub fn lock(checkout: &Checkout, exclusive: bool, stop: &AtomicBool) -> io::Result<File> {
+    #[cfg(unix)]
     let file = File::open(&checkout.git_dir)?;
+    #[cfg(windows)]
+    let file = (fs::OpenOptions::new().read(true).write(true).create(true))
+        .truncate(false)
+        .open(checkout.git_dir.join("brigadier.lock"))?;
     loop {
         let got = match exclusive {
             true => file.try_lock(),
@@ -395,9 +400,7 @@ fn parse(root: &Path, bytes: &[u8]) -> io::Result<Status> {
 /// to a file already changed, or staging more of it, shows here though its status doesn't, so a
 /// viewer or diff knows to read it again [D30]. Opaque to the UI: it's only compared.
 fn stamp(path: &Path, index: &str) -> String {
-    let file = fs::symlink_metadata(path).map_or("-".into(), |m| {
-        format!("{}.{:09}:{}", m.mtime(), m.mtime_nsec(), m.size())
-    });
+    let file = fs::symlink_metadata(path).map_or("-".into(), |m| crate::os::stamp(&m));
     format!("{file} {index}").trim_end().to_string()
 }
 

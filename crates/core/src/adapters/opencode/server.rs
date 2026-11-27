@@ -71,7 +71,7 @@ pub(super) fn start(
 ) -> Result<(Arc<Server>, Shared, Option<process::ChildStdin>), String> {
     std::fs::create_dir_all(super::super::home_path(".local/share/opencode"))
         .map_err(|e| e.to_string())?;
-    let mut child = super::models::serve(&mut Command::new(exe), password)?;
+    let mut child = super::models::serve(&mut Command::new(exe), password, false)?;
     let lease = child.stdin.take();
     let (mut out, server) = super::models::dial(child.stdout.take(), password)?;
     thread::spawn(move || io::copy(&mut out, &mut io::stderr()));

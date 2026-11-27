@@ -22,7 +22,11 @@ pub(super) fn include(repo: &Path, to: &Path, picks: &[String]) -> io::Result<()
         fs::create_dir_all(parent)?;
         let kind = fs::symlink_metadata(&src)?.file_type();
         if kind.is_symlink() {
+            #[cfg(unix)]
             std::os::unix::fs::symlink(fs::read_link(&src)?, &dst)?;
+            // As git does with no symlinks: a file holding the link's text.
+            #[cfg(windows)]
+            fs::write(&dst, fs::read_link(&src)?.as_os_str().as_encoded_bytes())?;
         } else if kind.is_file() {
             fs::copy(&src, &dst)?;
         } else {

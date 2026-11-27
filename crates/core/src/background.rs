@@ -22,7 +22,6 @@ use brigadier_frames::procs::{self, Proc};
 use std::collections::HashMap;
 use std::fs;
 use std::io;
-use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -222,8 +221,9 @@ pub fn end(
         tree = mine;
     }
     first();
-    signal(&tree, libc::SIGTERM);
-    wait(&tree, GRACE);
+    signal(&tree, false);
+    // Windows has no TERM: nothing to wait for.
+    wait(&tree, if cfg!(windows) { Duration::ZERO } else { GRACE });
     // What they started meanwhile goes too. With the agent gone (no `roots`), also what one that
     // ended left in its place; else that can't be told from what the agent just started.
     for _ in 0..ROUNDS {
@@ -246,7 +246,7 @@ pub fn end(
         if alive(&tree).is_empty() {
             break;
         }
-        signal(&tree, libc::SIGKILL);
+        signal(&tree, true);
         wait(&tree, Duration::from_secs(1));
         if roots.is_some() {
             break;
@@ -270,12 +270,12 @@ fn alive(tree: &[Proc]) -> Vec<Proc> {
         .collect()
 }
 
-fn signal(tree: &[Proc], sig: i32) {
+/// TERM (a stopped one also goes on, to act on it), or KILL; each to a process still the one it was.
+fn signal(tree: &[Proc], kill: bool) {
     for p in alive(tree) {
-        unsafe { libc::kill(p.pid, sig) };
-        // A stopped one acts on a TERM only once it goes on.
-        if sig == libc::SIGTERM && p.stopped {
-            unsafe { libc::kill(p.pid, libc::SIGCONT) };
+        match kill {
+            true => procs::kill_checked(p.pid, p.start_us),
+            false => procs::term_checked(p.pid, p.start_us),
         }
     }
 }
@@ -305,8 +305,15 @@ fn link(dir: &Path) -> PathBuf {
     roof().join(format!("{name}.{hash:016x}"))
 }
 
+#[cfg(unix)]
 fn roof() -> PathBuf {
     PathBuf::from(format!("/tmp/brigadier-{}", unsafe { libc::getuid() }))
+}
+
+/// Never made: see `short`.
+#[cfg(windows)]
+fn roof() -> PathBuf {
+    std::env::temp_dir().join("brigadier")
 }
 
 /// Makes `tmp` and the link to it, for an agent's TMPDIR; `tmp` itself where the links' folder isn't
@@ -314,6 +321,19 @@ fn roof() -> PathBuf {
 pub fn temp(dir: &Path) -> PathBuf {
     let tmp = tmp(dir);
     let _ = fs::create_dir_all(&tmp);
+    short(dir, tmp)
+}
+
+/// shortcut: Windows' agents get `tmp` itself, with no short link to it; upgrade with a junction
+/// if a build there breaks on the folder's path.
+#[cfg(windows)]
+fn short(_dir: &Path, tmp: PathBuf) -> PathBuf {
+    tmp
+}
+
+#[cfg(unix)]
+fn short(dir: &Path, tmp: PathBuf) -> PathBuf {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt};
     let (roof, link) = (roof(), link(dir));
     let _ = fs::DirBuilder::new().mode(0o700).create(&roof);
     let mine = fs::symlink_metadata(&roof)

@@ -18,9 +18,14 @@ pub mod images;
 pub mod keeps;
 mod kept;
 pub mod library;
+#[cfg(not(windows))]
+pub mod lid;
+#[cfg(windows)]
+#[path = "lid/hidden.rs"]
 pub mod lid;
 pub mod message;
 pub mod norm;
+pub mod os;
 pub mod overnight;
 pub mod projects;
 pub mod rebirth;
@@ -49,7 +54,6 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
-use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 pub use account::{account_home, as_run, data_of, gone, leaving, marked, taken};
@@ -276,11 +280,18 @@ pub fn create(data: &Path, spec: &Spec) -> io::Result<Spec> {
             "That id still holds a folder another session uses.",
         ));
     }
-    fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(&dir)?;
-    fs::set_permissions(data, fs::Permissions::from_mode(0o700))?;
+    // Windows: the profile's own ACL keeps the data folder the user's.
+    #[cfg(windows)]
+    fs::create_dir_all(&dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&dir)?;
+        fs::set_permissions(data, fs::Permissions::from_mode(0o700))?;
+    }
     write_atomic(
         &dir.join("session.json"),
         serde_json::to_string_pretty(spec)?.as_bytes(),

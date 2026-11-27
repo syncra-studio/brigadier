@@ -5,7 +5,6 @@
 use super::{dir, err};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -99,9 +98,16 @@ fn copy(data: &Path, id: &str, from: &Path) -> io::Result<String> {
         return err(format!("{} isn't a plain file.", from.display()));
     }
     let mut bytes = Vec::new();
-    OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW)
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NOFOLLOW);
+    #[cfg(windows)]
+    std::os::windows::fs::OpenOptionsExt::custom_flags(
+        &mut options,
+        windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT,
+    );
+    options
         .open(from)?
         .take(IMAGE_BYTES + 1)
         .read_to_end(&mut bytes)?;

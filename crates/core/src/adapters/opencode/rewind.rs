@@ -96,9 +96,9 @@ fn oneshot<T>(
     cwd: &str,
     job: impl FnOnce(&Server) -> T,
 ) -> Result<T, String> {
-    use std::os::unix::process::CommandExt;
     let password = super::super::uuid();
-    let mut child = Command::new(exe)
+    let mut command = Command::new(exe);
+    command
         .args(["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"])
         .env_clear()
         .envs(env)
@@ -106,9 +106,8 @@ fn oneshot<T>(
         .current_dir(cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
+        .stderr(Stdio::null());
+    let mut child = brigadier_frames::spawn::grouped(&mut command)
         .map_err(|e| format!("OpenCode didn't start: {e}"))?;
     let stdout = child.stdout.take().ok_or("no stdout")?;
     let (tx, rx) = std::sync::mpsc::channel();
@@ -130,7 +129,7 @@ fn oneshot<T>(
         };
         Ok(job(&server))
     });
-    unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
+    brigadier_frames::spawn::kill_tree(child.id());
     let _ = child.wait();
     out
 }

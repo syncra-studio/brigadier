@@ -132,7 +132,7 @@ fn left_running(
         .map_or(&[][..], |a| a.helpers());
     let own = |p: &procs::Proc| {
         let argv = procs::args(p.pid).map(|a| a.0).unwrap_or_default();
-        let name = argv.first().and_then(|a| a.rsplit('/').next());
+        let name = argv.first().map(|a| procs::program_name(a));
         name.is_some_and(|n| helpers.contains(&n))
     };
     let server = child.map(|c| server(all, c)).unwrap_or_default();
@@ -142,11 +142,13 @@ fn left_running(
     let lines = std::cell::OnceCell::new();
     let started = |p: &procs::Proc| {
         own(p)
-            || (cli.contains(&p.ppid) && procs::stdio(p.pid).is_some() && {
-                let argv = procs::args(p.pid).map(|a| a.0).unwrap_or_default();
-                let lines = lines.get_or_init(|| mcp_lines(dir, fold, backend));
-                lines.iter().any(|l: &Vec<String>| runs(&argv, l))
-            })
+            || (cli.contains(&p.ppid)
+                && (procs::stdio(p.pid).is_some() || !procs::STDIO_KNOWN)
+                && {
+                    let argv = procs::args(p.pid).map(|a| a.0).unwrap_or_default();
+                    let lines = lines.get_or_init(|| mcp_lines(dir, fold, backend));
+                    lines.iter().any(|l: &Vec<String>| runs(&argv, l))
+                })
     };
     // One of those, or what it handed its own pipes to, as a launcher does to the program it runs.
     // shortcut: a job an MCP server starts on its very stdin and stdout passes too, as nothing seen
@@ -157,7 +159,10 @@ fn left_running(
         let mut at = *p;
         loop {
             if started(&at) {
-                return at.pid == p.pid || (pipes.is_some() && procs::stdio(at.pid) == pipes);
+                // Where pipes can't be told apart, what an MCP server started stays [D114].
+                return at.pid == p.pid
+                    || !procs::STDIO_KNOWN
+                    || (pipes.is_some() && procs::stdio(at.pid) == pipes);
             }
             match all.iter().find(|q| q.pid == at.ppid) {
                 Some(q) if !cli.contains(&q.pid) => at = *q,
@@ -229,13 +234,7 @@ fn left_running(
 fn label(all: &[procs::Proc], mut pid: i32) -> String {
     loop {
         let argv = procs::args(pid).map(|a| a.0).unwrap_or_default();
-        let name = |a: &String| {
-            a.rsplit('/')
-                .next()
-                .unwrap_or(a)
-                .trim_start_matches('-')
-                .to_string()
-        };
+        let name = |a: &String| procs::program_name(a).trim_start_matches('-').to_string();
         let shell = argv
             .first()
             .is_some_and(|a| SHELLS.contains(&name(a).as_str()));
@@ -272,21 +271,18 @@ fn said_by(fold: &Fold, start_us: u64) -> impl Iterator<Item = &(u64, String)> {
 /// Ends these processes, each only while it's still that one: a TERM, then a KILL for whatever
 /// outlives the grace.
 pub fn end(tree: &[(i32, u64)], grace: Duration) {
-    let signal = |sig| {
-        let left: Vec<_> = (tree.iter())
-            .filter(|&&(p, s)| procs::same(p, s).is_some_and(|p| !p.zombie))
-            .collect();
-        left.iter().for_each(|&&(p, _)| unsafe {
-            libc::kill(p, sig);
-        });
-        !left.is_empty()
+    let left = || {
+        (tree.iter())
+            .filter(|&&(p, s)| procs::same(p, s).is_some())
+            .collect::<Vec<_>>()
     };
-    signal(libc::SIGTERM);
-    let until = Instant::now() + grace;
-    while Instant::now() < until && signal(0) {
+    left().iter().for_each(|&&(p, s)| procs::term_checked(p, s));
+    // Windows has no TERM: nothing to wait for.
+    let until = Instant::now() + if cfg!(windows) { Duration::ZERO } else { grace };
+    while Instant::now() < until && !left().is_empty() {
         std::thread::sleep(Duration::from_millis(25));
     }
-    signal(libc::SIGKILL);
+    left().iter().for_each(|&&(p, s)| procs::kill_checked(p, s));
 }
 
 /// `dir`: the session's own folder.
@@ -319,23 +315,9 @@ pub fn live(fold: &Fold, owner: Owner, dir: &Path, all: &[procs::Proc]) -> Live 
         left,
         mine,
         orphans,
-        disk_full: free_bytes(dir) < (2 << 20),
+        disk_full: crate::os::free_bytes(dir).unwrap_or(u64::MAX) < (2 << 20),
         now: log::now_ms(),
     }
-}
-
-// f_bavail is 32 bits on macOS, 64 on Linux.
-#[allow(clippy::unnecessary_cast)]
-fn free_bytes(path: &std::path::Path) -> u64 {
-    let Ok(c) = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()) else {
-        return u64::MAX;
-    };
-    let mut s = std::mem::MaybeUninit::<libc::statvfs>::zeroed();
-    if unsafe { libc::statvfs(c.as_ptr(), s.as_mut_ptr()) } != 0 {
-        return u64::MAX;
-    }
-    let s = unsafe { s.assume_init() };
-    s.f_bavail as u64 * s.f_frsize
 }
 
 /// The session's background history (`background`, JSON lines) [D200]: each job's start as it's

@@ -5,14 +5,12 @@ use super::snap::{CHUNK, Store, done, split};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
-use std::os::unix::fs::{DirEntryExt, MetadataExt};
 use std::path::Path;
 
 impl Store {
     /// Which file is at `path`, whatever its name's spelling.
     pub(super) fn file(&self, path: &str) -> Option<(u64, u64)> {
-        let m = fs::symlink_metadata(self.cwd().join(path)).ok()?;
-        Some((m.dev(), m.ino()))
+        crate::os::file_id(&self.cwd().join(path))
     }
 
     /// Whether the disk takes two letter cases for one, as a name in the folder tells, read only:
@@ -40,7 +38,7 @@ impl Store {
     pub(super) fn spelled(&self, path: &str) -> Option<String> {
         let (mut at, mut out) = (self.cwd().to_path_buf(), vec![]);
         for part in path.split('/') {
-            let there = fs::symlink_metadata(at.join(part)).ok()?;
+            let there = crate::os::file_id(&at.join(part))?;
             let (mut name, lower) = (part.to_string(), part.to_lowercase());
             for e in fs::read_dir(&at).into_iter().flatten().flatten() {
                 let entry = e.file_name().to_string_lossy().into_owned();
@@ -48,7 +46,7 @@ impl Store {
                     name = entry;
                     break;
                 }
-                if e.ino() == there.ino() && entry.to_lowercase() == lower {
+                if entry.to_lowercase() == lower && crate::os::file_id(&e.path()) == Some(there) {
                     name = entry;
                 }
             }

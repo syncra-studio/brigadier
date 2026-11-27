@@ -257,7 +257,7 @@ pub fn kit(spec: &Spec, skip: &[String]) -> Option<Kit> {
     for k in all.iter().filter(|i| i["kind"] == "skill") {
         let name = plain_str(&k["name"]);
         if !skip.iter().any(|s| s == name)
-            && std::os::unix::fs::symlink(plain_str(&k["path"]), skills.join(name)).is_ok()
+            && link_dir(Path::new(plain_str(&k["path"])), &skills.join(name)).is_ok()
         {
             names.push(name.to_string());
         }
@@ -302,4 +302,12 @@ pub fn unreached(spec: &Spec) -> Vec<String> {
     (fs::read(spec.dir.join("plugins").join("unreached.json")).ok())
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default()
+}
+
+/// A link to a folder: a junction on Windows, which needs no Developer Mode.
+fn link_dir(target: &Path, link: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    return std::os::unix::fs::symlink(target, link);
+    #[cfg(windows)]
+    return crate::os::junction(target, link);
 }

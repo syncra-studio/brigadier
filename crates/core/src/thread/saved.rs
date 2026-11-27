@@ -10,6 +10,7 @@
 
 use super::Thread;
 use crate::norm::{self, Norm};
+use crate::os::{read_exact_at, write_all_at};
 use crate::rewind::Active;
 use crate::write_atomic;
 use brigadier_frames::log::Reader;
@@ -20,7 +21,6 @@ use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::ops::{Index, IndexMut, Range};
-use std::os::unix::fs::{FileExt, MetadataExt};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -119,7 +119,7 @@ impl Rows {
             return;
         };
         let mut all = vec![0; end as usize];
-        if file.read_exact_at(&mut all, 0).is_err() {
+        if read_exact_at(file, &mut all, 0).is_err() {
             return self.broken.set(true);
         }
         for s in (self.slots.iter()).filter(|s| s.at != MEMORY && s.row.get().is_none()) {
@@ -147,7 +147,7 @@ impl Rows {
     fn read(&self, s: &Slot) -> Value {
         let row = self.file.as_ref().and_then(|file| {
             let mut bytes = vec![0; s.len as usize];
-            file.read_exact_at(&mut bytes, s.at).ok()?;
+            read_exact_at(file, &mut bytes, s.at).ok()?;
             decode(&bytes, s.crc)
         });
         self.decode(row)
@@ -245,7 +245,7 @@ impl Saved {
         let (rows, idx) = (open("rows").ok()?, open("rows.idx").ok()?);
         let holds = |file: &File, len| file.metadata().is_ok_and(|m| m.len() >= len);
         let fits = s.v == version()
-            && s.inode == log.ino()
+            && Some(s.inode) == crate::os::file_id(&dir.join("log")).map(|i| i.1)
             && s.pos <= log.len()
             && s.idx_len.is_multiple_of(RECORD as u64)
             && holds(&rows, s.rows_len)
@@ -257,7 +257,7 @@ impl Saved {
         rows.set_len(s.rows_len).ok()?;
         idx.set_len(s.idx_len).ok()?;
         let mut records = vec![0; s.idx_len as usize];
-        idx.read_exact_at(&mut records, 0).ok()?;
+        read_exact_at(&idx, &mut records, 0).ok()?;
         let mut slots: Vec<Option<Slot>> = vec![None; s.count];
         for r in records.as_chunks::<RECORD>().0 {
             let at = u64::from_le_bytes(r[..8].try_into().ok()?);
@@ -286,13 +286,14 @@ impl Saved {
             return Ok(());
         };
         let cut = self.active.more(dir)?;
-        if self.pos > 0 && (cut || meta.ino() != self.inode || meta.len() < self.pos) {
+        let inode = crate::os::file_id(&log).map_or(0, |i| i.1);
+        if self.pos > 0 && (cut || inode != self.inode || meta.len() < self.pos) {
             self.rewound = true;
         }
         if self.rewound {
             return Ok(());
         }
-        self.inode = meta.ino();
+        self.inode = inode;
         // The account it starts on, as the status fold takes it, so its limit row names that one [D2082].
         if self.thread.fold.cids.is_empty() {
             crate::starts_on(dir, &mut self.thread.fold);
@@ -351,7 +352,7 @@ impl Saved {
             (&idx, self.idx_len, &records),
         ] {
             file.set_len(len)?;
-            file.write_all_at(bytes, len)?;
+            write_all_at(file, bytes, len)?;
             file.sync_data()?;
         }
         self.rows_len += lines.len() as u64;

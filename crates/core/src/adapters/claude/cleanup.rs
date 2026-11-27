@@ -48,13 +48,23 @@ fn temp_roots(spec: &Spec) -> BTreeSet<(PathBuf, PathBuf)> {
 
 /// Its per-folder scratch folders under `claude-<uid>`.
 pub fn scratch(spec: &Spec) -> Vec<PathBuf> {
-    temp_roots(spec)
-        .into_iter()
-        .map(|(temp, cwd)| {
-            temp.join(format!("claude-{}", unsafe { libc::getuid() }))
-                .join(project_slug(&cwd))
-        })
-        .collect()
+    // shortcut: its scratch folder on Windows isn't known, so none is cleaned there; upgrade once
+    // seen on a Windows machine.
+    #[cfg(not(unix))]
+    {
+        let _ = spec;
+        vec![]
+    }
+    #[cfg(unix)]
+    {
+        temp_roots(spec)
+            .into_iter()
+            .map(|(temp, cwd)| {
+                temp.join(format!("claude-{}", unsafe { libc::getuid() }))
+                    .join(project_slug(&cwd))
+            })
+            .collect()
+    }
 }
 
 /// One conversation's scratch folders.
@@ -127,7 +137,7 @@ fn unclosed(spec: &Spec, resume: &str) -> Vec<PathBuf> {
             continue;
         };
         // A run still going keeps its own.
-        if s(&v, &["sessionId"]) != resume || unsafe { libc::kill(pid, 0) } == 0 {
+        if s(&v, &["sessionId"]) != resume || brigadier_frames::procs::alive(pid) {
             continue;
         }
         let socket = PathBuf::from(s(&v, &["messagingSocketPath"]));

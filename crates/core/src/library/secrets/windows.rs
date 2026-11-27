@@ -42,19 +42,18 @@ fn dpapi(bytes: &[u8], seal: bool) -> io::Result<Vec<u8>> {
         cbData: 0,
         pbData: std::ptr::null_mut(),
     };
-    let (null, flags) = (std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN);
+    let flags = CRYPTPROTECT_UI_FORBIDDEN;
+    let (none, reserved, prompt) = (std::ptr::null(), std::ptr::null(), std::ptr::null());
     let ok = unsafe {
         match seal {
-            true => CryptProtectData(&input, null, null, null, null, flags, &mut out),
-            false => CryptUnprotectData(
-                &input,
-                std::ptr::null_mut(),
-                null,
-                null,
-                null,
-                flags,
-                &mut out,
-            ),
+            true => {
+                let name = std::ptr::null();
+                CryptProtectData(&input, name, none, reserved, prompt, flags, &mut out)
+            }
+            false => {
+                let name = std::ptr::null_mut();
+                CryptUnprotectData(&input, name, none, reserved, prompt, flags, &mut out)
+            }
         }
     };
     if ok == 0 {

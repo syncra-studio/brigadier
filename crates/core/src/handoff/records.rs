@@ -116,9 +116,7 @@ pub(super) fn upto(s: &str, max: usize) -> Option<&str> {
 
 /// "26 Nov 14:02", local time.
 fn when(ms: u64) -> String {
-    let secs = (ms / 1000) as libc::time_t;
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    unsafe { libc::localtime_r(&secs, &mut tm) };
+    let tm = crate::os::local_time((ms / 1000) as i64);
     let months = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ];

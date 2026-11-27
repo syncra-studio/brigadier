@@ -5,7 +5,6 @@ use crate::{Folded, fold_from, write_atomic};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -24,7 +23,7 @@ static KEPT: Mutex<BTreeMap<PathBuf, Kept>> = Mutex::new(BTreeMap::new());
 
 /// Keeps a clean fold made elsewhere (the index's), unless one as far is kept.
 pub fn keep(dir: &Path, fold: &Folded) {
-    let Ok(log) = fs::metadata(dir.join("log")).map(|m| m.ino()) else {
+    let Some((_, log)) = crate::os::file_id(&dir.join("log")) else {
         return;
     };
     let mut kept = KEPT.lock().unwrap();
@@ -43,7 +42,8 @@ pub fn fold(dir: &Path, use_checkpoint: bool) -> io::Result<Folded> {
         return fold_from(dir, Folded::default(), |_| {});
     }
     let ckpt = dir.join("fold.json");
-    let (log, len) = fs::metadata(dir.join("log")).map_or((0, 0), |m| (m.ino(), m.len()));
+    let len = fs::metadata(dir.join("log")).map_or(0, |m| m.len());
+    let log = crate::os::file_id(&dir.join("log")).map_or(0, |i| i.1);
     let kept = (KEPT.lock().unwrap().get(dir))
         .filter(|k| k.log == log && k.fold.pos <= len)
         .map(|k| (k.saved, k.fold.clone()));

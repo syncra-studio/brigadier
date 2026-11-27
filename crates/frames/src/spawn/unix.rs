@@ -104,3 +104,15 @@ pub fn grouped(command: &mut Command) -> io::Result<Child> {
 pub fn kill_tree(pid: u32) {
     unsafe { libc::killpg(pid as i32, libc::SIGKILL) };
 }
+
+/// Starts `command` in a session of its own: no terminal, and no signal to whoever started it
+/// reaches it.
+pub fn detached(command: &mut Command) -> io::Result<std::process::Child> {
+    unsafe {
+        command.pre_exec(|| match libc::setsid() < 0 {
+            true => Err(io::Error::last_os_error()),
+            false => Ok(()),
+        })
+    };
+    command.spawn()
+}

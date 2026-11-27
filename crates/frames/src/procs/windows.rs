@@ -191,6 +191,40 @@ pub fn term_group(pgid: i32, not_before_us: u64) -> usize {
         .map_or(0, |job| win::members(&job).len())
 }
 
+/// Starts a child this process waits on itself, with no console window of its own.
+pub fn spawn(command: &mut std::process::Command) -> io::Result<std::process::Child> {
+    use std::os::windows::process::CommandExt;
+    command
+        .creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW)
+        .spawn()
+}
+
+/// Whether a process with this pid is running now, whoever's it is.
+pub fn alive(pid: i32) -> bool {
+    u32::try_from(pid)
+        .ok()
+        .and_then(query)
+        .is_some_and(|p| win::live(&p))
+}
+
+/// Windows has no TERM for one process: a selected one is only ever ended outright.
+pub fn term_checked(_pid: i32, _start_us: u64) {}
+
+/// Ends the process if it's still the one that started at `start_us`, through the one handle that
+/// was checked, so a pid reused in between is never hit [D97 D100].
+pub fn kill_checked(pid: i32, start_us: u64) {
+    use windows_sys::Win32::System::Threading::{PROCESS_TERMINATE, TerminateProcess};
+    let Some(p) = u32::try_from(pid)
+        .ok()
+        .and_then(|pid| win::open(pid, PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE))
+    else {
+        return;
+    };
+    if win::live(&p) && win::start_us(&p) == Some(start_us) {
+        unsafe { TerminateProcess(p.0, 1) };
+    }
+}
+
 /// Private bytes, the figure Task Manager shows as Memory.
 pub fn footprint(pid: i32) -> Option<u64> {
     let p = query(u32::try_from(pid).ok()?)?;

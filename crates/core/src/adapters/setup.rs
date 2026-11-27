@@ -3,7 +3,6 @@
 
 use std::collections::BTreeMap;
 use std::io::Read;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::Mutex;
@@ -84,9 +83,20 @@ pub fn find(bin: &str, folders: &[&str]) -> Option<PathBuf> {
     folders
         .iter()
         .map(|f| home.join(f))
-        .chain(path.split(':').map(PathBuf::from))
-        .map(|d| d.join(bin))
-        .find(|p| is_exe(p))
+        .chain(std::env::split_paths(&path))
+        .find_map(|d| exe_in(&d, bin))
+}
+
+#[cfg(unix)]
+fn exe_in(dir: &Path, bin: &str) -> Option<PathBuf> {
+    let p = dir.join(bin);
+    is_exe(&p).then_some(p)
+}
+
+/// `bin` in `dir`, as given or with one of PATHEXT's extensions.
+#[cfg(windows)]
+fn exe_in(dir: &Path, bin: &str) -> Option<PathBuf> {
+    brigadier_frames::procs::find(bin, Some(dir.to_str()?), "")
 }
 
 /// The CLI the user chose for agent `name` in Settings › Providers (`agent_paths` in the settings),
@@ -131,6 +141,12 @@ pub fn runs(exe: &Path, cwd: &Path) -> bool {
     }
 }
 
+#[cfg(windows)]
+fn is_exe(p: &Path) -> bool {
+    p.is_file()
+}
+
+#[cfg(unix)]
 fn is_exe(p: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     p.metadata()
@@ -159,13 +175,11 @@ pub fn run_fed(
         Some(_) => Stdio::piped(),
         None => Stdio::null(),
     };
-    let mut child = command
+    let child = command
         .stdin(stdin)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .process_group(0)
-        .spawn()
-        .map_err(|e| e.to_string())?;
+        .stderr(Stdio::piped());
+    let mut child = brigadier_frames::spawn::grouped(child).map_err(|e| e.to_string())?;
     if let (Some(text), Some(mut w)) = (input.map(String::from), child.stdin.take()) {
         std::thread::spawn(move || {
             use std::io::Write;
@@ -193,7 +207,7 @@ pub fn run_fed(
                 std::thread::sleep(Duration::from_millis(20))
             }
             _ => {
-                unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
+                brigadier_frames::spawn::kill_tree(child.id());
                 let _ = child.wait();
                 if stop.load(Ordering::SeqCst) {
                     return Err("stopped".into());
@@ -203,7 +217,7 @@ pub fn run_fed(
         }
     };
     // A child it left in its group may hold the pipes open: end it, and never wait past the deadline.
-    unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
+    brigadier_frames::spawn::kill_tree(child.id());
     let drain = |rx: std::sync::mpsc::Receiver<Vec<u8>>| {
         rx.recv_timeout(deadline.saturating_duration_since(Instant::now()))
             .unwrap_or_default()

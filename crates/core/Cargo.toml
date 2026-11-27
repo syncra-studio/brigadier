@@ -21,7 +21,7 @@ core-foundation = "=0.10.1"
 security-framework = "=3.7.0"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true, features = ["Win32_Security_Cryptography"] }
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Cryptography", "Win32_Storage_FileSystem", "Win32_System_IO"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 secret-service = { version = "=6.0.0", features = ["crypto-rust"] }

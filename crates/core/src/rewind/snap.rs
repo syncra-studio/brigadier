@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io;
+#[cfg(unix)]
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -235,7 +236,10 @@ impl Store {
                 continue;
             };
             if m.is_file() && m.len() > MAX_FILE && !path.contains('\n') {
+                #[cfg(unix)]
                 let stamp = format!("{}:{}.{}", m.len(), m.mtime(), m.mtime_nsec());
+                #[cfg(windows)]
+                let stamp = crate::os::stamp(&m);
                 out.insert(path, stamp);
             }
         }
@@ -370,8 +374,14 @@ impl Store {
             "120000" if disk.is_symlink() => {
                 fs::read_link(self.cwd.join(path)).map(|l| l.into_os_string().into_encoded_bytes())
             }
+            // Git on Windows with no symlinks checks a link out as a file of its text.
+            "120000" if cfg!(windows) && disk.is_file() => fs::read(self.cwd.join(path)),
             "100644" | "100755" if disk.is_file() => {
+                // Windows keeps no modes: the file is as its entry says.
+                #[cfg(unix)]
                 let now = disk.mode() & 0o777;
+                #[cfg(windows)]
+                let now = plain(mode).unwrap_or(0o644);
                 if !plain(mode).is_some_and(|plain| same(modes, path, plain, now, cut)) {
                     return false;
                 }

@@ -45,6 +45,29 @@ pub fn term_group(pgid: i32, not_before_us: u64) -> usize {
     n
 }
 
+/// Whether a process with this pid is running now, whoever's it is.
+pub fn alive(pid: i32) -> bool {
+    unsafe { libc::kill(pid, 0) == 0 }
+}
+
+/// TERM for the process if it's still the one that started at `start_us`, and CONT if it's
+/// stopped, so it can act on it.
+pub fn term_checked(pid: i32, start_us: u64) {
+    if let Some(p) = super::same(pid, start_us) {
+        unsafe { libc::kill(pid, libc::SIGTERM) };
+        if p.stopped {
+            unsafe { libc::kill(pid, libc::SIGCONT) };
+        }
+    }
+}
+
+/// KILL for the process if it's still the one that started at `start_us`.
+pub fn kill_checked(pid: i32, start_us: u64) {
+    if super::same(pid, start_us).is_some() {
+        unsafe { libc::kill(pid, libc::SIGKILL) };
+    }
+}
+
 /// Signals every checked member of the group, one by one. Returns how many were signalled.
 pub fn signal_group(pgid: i32, not_before_us: u64, sig: i32) -> usize {
     let members = group(&all(), pgid, not_before_us);

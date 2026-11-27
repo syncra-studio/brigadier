@@ -3,9 +3,13 @@
 
 use super::snap::{CHUNK, Shot, Store, done, fed, split};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{self, DirBuilder, Permissions};
+#[cfg(unix)]
+use std::fs::Permissions;
+use std::fs::{self, DirBuilder};
 use std::io;
+#[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 
@@ -22,13 +26,31 @@ pub(super) fn plain(entry: &str) -> Option<u32> {
     }
 }
 
-/// The permissions of the file, or with `dir` the folder, that's at `path`.
+/// The permissions of the file, or with `dir` the folder, that's at `path`. None on Windows, which
+/// has none to keep, as git there keeps none.
+#[cfg(windows)]
+fn of(_path: &Path, _dir: bool) -> Option<u32> {
+    None
+}
+
+#[cfg(windows)]
+fn set(_path: &Path, _mode: u32) -> io::Result<()> {
+    Ok(())
+}
+
+#[cfg(windows)]
+pub(super) fn made(_index: &Path) -> io::Result<u32> {
+    Ok(0o644)
+}
+
+#[cfg(unix)]
 fn of(path: &Path, dir: bool) -> Option<u32> {
     let m = fs::symlink_metadata(path).ok()?;
     let kind = if dir { m.is_dir() } else { m.is_file() };
     kind.then_some(m.mode() & 0o777)
 }
 
+#[cfg(unix)]
 fn set(path: &Path, mode: u32) -> io::Result<()> {
     let now = fs::symlink_metadata(path)?.mode();
     match now & 0o777 == mode {
@@ -38,6 +60,7 @@ fn set(path: &Path, mode: u32) -> io::Result<()> {
 }
 
 /// What a new file gets: git makes the index as it makes any.
+#[cfg(unix)]
 pub(super) fn made(index: &Path) -> io::Result<u32> {
     Ok(fs::metadata(index)?.mode() & 0o666)
 }
@@ -310,19 +333,23 @@ impl Store {
             .filter_map(|(dir, mode)| Some((dir, (*mode)?)))
             .filter(|(dir, _)| fs::symlink_metadata(dir).is_err())
             .collect();
-        for (dir, mode) in &new {
-            DirBuilder::new().mode(mode | 0o700).create(dir)?;
+        for (dir, _mode) in &new {
+            #[cfg(unix)]
+            DirBuilder::new().mode(_mode | 0o700).create(dir)?;
+            #[cfg(windows)]
+            DirBuilder::new().create(dir)?;
         }
         let private = |(path, plain): &&(&String, Option<u32>)| {
             let made = plain.map(|p| run(back.made, p));
             back.files.get(*path).is_some_and(|m| Some(*m) != made)
         };
         let (own, usual): (Vec<_>, Vec<_>) = files.iter().partition(private);
-        for (files, private) in [(usual, false), (own, true)] {
+        for (files, _private) in [(usual, false), (own, true)] {
             for chunk in files.chunks(CHUNK) {
                 let mut command = self.store(index, &["checkout-index", "-f", "--"]);
                 command.args(chunk.iter().map(|(path, _)| path));
-                if private {
+                #[cfg(unix)]
+                if _private {
                     // SAFETY: umask only sets the new process's own.
                     unsafe {
                         command.pre_exec(|| {

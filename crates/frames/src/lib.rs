@@ -42,6 +42,15 @@ pub fn lock_held(path: &Path) -> bool {
     }
 }
 
+/// The system's own curl: /usr/bin's, or Windows' in System32 (Windows 10 1803 on).
+pub fn curl() -> std::path::PathBuf {
+    #[cfg(windows)]
+    return Path::new(&std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into()))
+        .join(r"System32\curl.exe");
+    #[cfg(unix)]
+    return "/usr/bin/curl".into();
+}
+
 /// Standard base64 with padding.
 pub fn base64(bytes: &[u8]) -> String {
     const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

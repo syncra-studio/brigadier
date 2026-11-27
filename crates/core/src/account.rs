@@ -55,7 +55,7 @@ fn store(data: &Path) -> Value {
 /// Whether added account entry `e` (accounts.json) is being removed: its mark names the live
 /// process removing it, so one a crash left counts no more [C40].
 pub fn marked(e: &Value) -> bool {
-    (e["removing"].as_i64()).is_some_and(|pid| unsafe { libc::kill(pid as i32, 0) } == 0)
+    (e["removing"].as_i64()).is_some_and(|pid| brigadier_frames::procs::alive(pid as i32))
 }
 
 /// Whether Remove is taking away an account session folder `dir` ran on: no turn starts on it,

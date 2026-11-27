@@ -31,6 +31,16 @@ pub struct Proc {
     pub zombie: bool,
 }
 
+/// A program's name from its path, as `ps` shows it; on Windows without its `.exe`.
+pub fn program_name(path: &str) -> &str {
+    let seps: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
+    let name = path.rsplit(seps).next().unwrap_or(path);
+    match cfg!(windows) && name.to_ascii_lowercase().ends_with(".exe") {
+        true => &name[..name.len() - 4],
+        false => name,
+    }
+}
+
 /// The process, if `pid` is still the one that started at `start_us`.
 pub fn same(pid: i32, start_us: u64) -> Option<Proc> {
     info(pid).filter(|p| p.start_us == start_us && !p.zombie)

@@ -414,24 +414,25 @@ fn read(file: &Path) -> io::Result<Option<String>> {
 
 /// `text` in a new file beside `file`, synced, with `file`'s mode (a new one: the user's only).
 fn temp(file: &Path, text: &str) -> io::Result<PathBuf> {
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let dir = file.parent().unwrap_or(Path::new("/"));
     let at = |e: io::Error| io::Error::other(format!("{}: {e}", dir.display()));
     fs::create_dir_all(dir).map_err(at)?;
     let name = file.file_name().unwrap_or_default().to_string_lossy();
     let temp = dir.join(format!(".{name}.brigadier-{}.tmp", std::process::id()));
-    let mode = fs::metadata(file).map_or(0o600, |m| m.permissions().mode() & 0o7777);
-    let mut out = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(mode)
-        .open(&temp)
-        .map_err(at)?;
-    let done = out
-        .write_all(text.as_bytes())
-        .and_then(|()| out.set_permissions(fs::Permissions::from_mode(mode)))
-        .and_then(|()| out.sync_all());
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    let mode = {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let mode = fs::metadata(file).map_or(0o600, |m| m.permissions().mode() & 0o7777);
+        options.mode(mode);
+        fs::Permissions::from_mode(mode)
+    };
+    let mut out = options.open(&temp).map_err(at)?;
+    let done = out.write_all(text.as_bytes());
+    #[cfg(unix)]
+    let done = done.and_then(|()| out.set_permissions(mode));
+    let done = done.and_then(|()| out.sync_all());
     done.inspect_err(|_| drop(fs::remove_file(&temp)))
         .map_err(|e| io::Error::other(format!("{}: {e}", temp.display())))?;
     Ok(temp)

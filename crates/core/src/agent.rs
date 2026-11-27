@@ -7,7 +7,6 @@ use serde_json::Value;
 use std::fs::OpenOptions;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{Read, Seek, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 /// The session folder and the grant, in the agent's environment.
@@ -106,14 +105,11 @@ pub fn grant(spec: &Spec) -> Option<String> {
         serde_json::from_slice(&std::fs::read(spec.dir.join("owner.json")).unwrap_or_default())
             .unwrap_or_default();
     let generation = format!("{}.{}", owner["pid"], owner["start_us"]);
-    let mut file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .open(spec.dir.join("grant"))
-        .ok()?;
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut file = options.open(spec.dir.join("grant")).ok()?;
     file.lock().ok()?;
     let mut held = String::new();
     file.read_to_string(&mut held).ok()?;
@@ -327,6 +323,7 @@ pub(crate) fn env(spec: &Spec) -> Option<(String, Vec<(String, String)>)> {
 /// every adapter: a local page opens in a tab of Brigadier's browser with the session's grant;
 /// the daemon refuses when the user's local links open elsewhere, and any refusal or failure
 /// goes to the default browser. Ported from the old app's AGENT_BROWSER_SHIM [D507, D516].
+#[cfg(unix)]
 const BROWSER_SHIM: &str = r#"#!/bin/sh
 case "$1" in
   http://localhost*|https://localhost*|http://127.*|https://127.*|http://0.0.0.0*|https://0.0.0.0*|http://\[::1\]*|https://\[::1\]*|http://*.localhost*|https://*.localhost*)
@@ -339,6 +336,7 @@ exec xdg-open "$1"
 /// The shim's path, the same for every launch and written only when it differs; in the temp
 /// folder, since a path with a space breaks some openers. A shell without it still works, so a
 /// failure isn't reported.
+#[cfg(unix)]
 fn browser_shim() -> Option<String> {
     let folder = std::env::temp_dir().join("brigadier-open");
     let shim = folder.join("agent-browser");
@@ -349,4 +347,11 @@ fn browser_shim() -> Option<String> {
         std::fs::set_permissions(&shim, mode).ok()?;
     }
     Some(shim.display().to_string())
+}
+
+/// shortcut: the shim is a shell script, so Windows' agents open pages their own way; upgrade with
+/// a .cmd of it if one is asked for.
+#[cfg(windows)]
+fn browser_shim() -> Option<String> {
+    None
 }

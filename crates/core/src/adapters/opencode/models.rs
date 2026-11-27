@@ -6,7 +6,6 @@ use super::{control, http, image};
 use brigadier_frames::base64;
 use serde_json::Value;
 use std::io::{BufRead, BufReader};
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdout, Command, Stdio};
 use std::sync::mpsc::RecvTimeoutError;
@@ -17,15 +16,19 @@ use std::time::{Duration, Instant};
 /// How long its server has to fill its catalogue.
 const FILL: Duration = Duration::from_secs(15);
 
-/// `opencode serve`, which runs for as long as its stdin is held open.
-pub(super) fn serve(command: &mut Command, password: &str) -> Result<Child, String> {
+/// `opencode serve`, which runs for as long as its stdin is held open; `grouped`, in a group of
+/// its own that `kill_tree` ends.
+pub(super) fn serve(command: &mut Command, password: &str, grouped: bool) -> Result<Child, String> {
     command
         .args(["serve", "--stdio", "--hostname", "127.0.0.1", "--port", "0"])
         .env("OPENCODE_PASSWORD", password)
         .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("OpenCode didn't start: {e}"))
+        .stdout(Stdio::piped());
+    match grouped {
+        true => brigadier_frames::spawn::grouped(command),
+        false => command.spawn(),
+    }
+    .map_err(|e| format!("OpenCode didn't start: {e}"))
 }
 
 /// The server it says it runs, and the rest of what it prints.
@@ -106,10 +109,9 @@ fn catalogue(exe: &Path, cwd: &Path, keys: &[String], ids: &[String]) -> Result<
         .env_clear()
         .envs(super::base_env(&crate::Spec::default(), exe, keys))
         .current_dir(cwd)
-        .stderr(Stdio::null())
-        .process_group(0);
+        .stderr(Stdio::null());
     let password = uuid();
-    let mut child = serve(&mut command, &password)?;
+    let mut child = serve(&mut command, &password, true)?;
     let (_lease, out) = (child.stdin.take(), child.stdout.take());
     // A hung one is ended by the clock, whatever it's waited on for.
     let child = Arc::new(Mutex::new(child));
@@ -135,7 +137,7 @@ fn catalogue(exe: &Path, cwd: &Path, keys: &[String], ids: &[String]) -> Result<
 fn end(child: &Mutex<Child>) {
     let mut child = child.lock().unwrap();
     if let Ok(None) = child.try_wait() {
-        unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
+        brigadier_frames::spawn::kill_tree(child.id());
     }
 }
 

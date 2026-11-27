@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -215,16 +214,16 @@ pub fn write(
         .argv
         .split_first()
         .ok_or_else(|| fail("no command"))?;
-    let mut child = Command::new(exe)
+    let mut command = Command::new(exe);
+    command
         .args(args)
         .env_clear()
         .envs(launch.env)
         .current_dir(&run.cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .process_group(0)
-        .spawn()
+        .stderr(Stdio::piped());
+    let mut child = brigadier_frames::spawn::grouped(&mut command)
         .map_err(|e| fail(format!("{} didn't start: {e}", a.label())))?;
     let mut stdin = child.stdin.take();
     if let (Some(input), Some(pipe)) = (&launch.input, stdin.as_mut()) {
@@ -321,7 +320,7 @@ pub fn write(
         }
     };
     drop(stdin);
-    unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
+    brigadier_frames::spawn::kill_tree(child.id());
     let _ = child.wait();
     // Its conversation goes now; one that won't stays in the record for the session's delete.
     if let Some(id) = &id {
