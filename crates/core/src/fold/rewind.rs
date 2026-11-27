@@ -19,6 +19,9 @@ pub struct Boundary {
     pub whole: bool,
     pub start: Option<String>,
     pub end: Option<String>,
+    /// A worker's brief: its lead's words, a place to rewind to and try again as a user's (O72).
+    #[serde(default)]
+    pub brief: bool,
 }
 
 impl Fold {
@@ -37,6 +40,7 @@ impl Fold {
             whole: !t.mid && t.switch.is_null(),
             start: t.start.clone(),
             end: t.end.clone(),
+            brief: t.parts["brief"] == true,
         });
     }
 
@@ -126,6 +130,7 @@ impl Fold {
             whole: false,
             start: None,
             end: item["end"].as_str().map(String::from),
+            brief: false,
         });
     }
 
@@ -187,7 +192,9 @@ impl Fold {
         (mine.iter().enumerate())
             .filter(|(i, b)| {
                 let kept = i.checked_sub(1).map(|p| mine[p]);
-                b.origin == "user" && b.whole && adapter.can_cut(&Cut { kept, dropped: b })
+                (b.origin == "user" || b.brief)
+                    && b.whole
+                    && adapter.can_cut(&Cut { kept, dropped: b })
             })
             .map(|(_, b)| b.cid.clone())
             .collect()

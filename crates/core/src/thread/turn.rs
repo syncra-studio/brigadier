@@ -397,7 +397,7 @@ impl Thread {
         }
         // A message sent again in place of a failed attempt says so before it [D487, D492].
         let replaced = (t.retry_of.as_ref()).is_some_and(|cid| !self.cids.contains(cid));
-        if replaced && t.origin == "user" {
+        if replaced && (t.origin == "user" || t.parts["brief"] == true) {
             self.add(json!({"kind": "line", "reason": "retried"}));
         }
         // A worker's result is its wake's input: the agent's work on it folds under it [D151].
