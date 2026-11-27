@@ -283,7 +283,7 @@ fn revoke(s: &mut State, data: &Path, device: &str) -> Value {
     };
     let before = all.len();
     all.retain(|d| d["id"] != device);
-    if all.len() == before {
+    if all.len() == before && !s.forgetting.contains_key(device) {
         return json!({"ok": false, "error": "No such device."});
     }
     if let Err(e) = devices::save(data, &all) {
@@ -297,7 +297,30 @@ fn revoke(s: &mut State, data: &Path, device: &str) -> Value {
     for id in streams {
         link::close(s, id);
     }
-    json!({"ok": true})
+    // Its drafts and unsent files too (lane D's `forget_device`), and again for a while after.
+    let now = Instant::now();
+    s.forgetting.insert(device.to_string(), (now, now));
+    match brigadier::forget_device(data, device) {
+        Ok(()) => json!({"ok": true}),
+        Err(e) => json!({"ok": false, "error": e.to_string()}),
+    }
+}
+
+/// A revoked device's files, removed again every 10 s for 2 minutes, and after that until it
+/// works: a command it sent just before the revoke may still write its slot, and a removal that
+/// failed is tried again.
+// shortcut: a Mac restart drops the retries; a failed removal's leftovers then wait for a revoke of the same id.
+pub(super) fn forget_again(s: &mut State, data: &Path) {
+    s.forgetting.retain(|device, (since, last)| {
+        if last.elapsed() < Duration::from_secs(10) {
+            return true;
+        }
+        *last = Instant::now();
+        let done = brigadier::forget_device(data, device)
+            .inspect_err(|e| eprintln!("brigadierd: a revoked phone's files: {e}"))
+            .is_ok();
+        !done || since.elapsed() < Duration::from_secs(2 * 60)
+    });
 }
 
 /// `remote status | on | off | offer | allow | deny | revoke <device>`.

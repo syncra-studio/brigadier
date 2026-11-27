@@ -10,6 +10,7 @@ mod allow;
 mod bonjour;
 mod bridge;
 mod devices;
+mod files;
 mod fresh;
 mod gateway;
 mod link;
@@ -48,6 +49,8 @@ struct State {
     pending: Option<pair::Pending>,
     warning: Option<&'static str>,
     sessions: HashMap<String, devices::Session>,
+    /// Revoked devices whose files are removed again for a while: when revoked, last tried.
+    forgetting: HashMap<String, (Instant, Instant)>,
 }
 
 static STATE: LazyLock<Mutex<State>> = LazyLock::new(Mutex::default);
@@ -84,6 +87,7 @@ pub(super) struct Remote {
 
 impl Remote {
     pub(super) fn pass(&mut self, data: &Path) {
+        pair::forget_again(&mut STATE.lock().unwrap(), data);
         let want = enabled() && data.join("remote/on").exists();
         if let Some(running) = &mut self.gateway
             && (!want || !running.alive())

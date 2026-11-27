@@ -116,6 +116,11 @@ pub(super) fn request(
         host,
         data: &data,
     };
+    if req["op"] == "attachment" {
+        let mut answer = super::files::attachment(&cx, req);
+        answer["re"] = req["id"].as_u64().into();
+        return link::reply(s, id, &answer).map_err(|e| e.to_string());
+    }
     let checked = match allow::check(&cx, req) {
         Ok(checked) => checked,
         Err(why) => {
