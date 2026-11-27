@@ -127,14 +127,15 @@ fn server(all: &[procs::Proc], child: i32) -> BTreeSet<i32> {
 }
 
 /// Each topmost process proven the session's and born in one of its ended turns' tool windows, still
-/// alive, whatever became of its agent. The agent's own helpers (MCP servers) start with it, before
-/// any tool, so none count; its CLI's server and the helpers it starts later, which it names, are
-/// never a job, though what runs under one can be.
+/// alive, whatever became of its agent. Its CLI's server, the helpers it names and the MCP servers
+/// its config gives it, whenever each started, are never a job, nor what runs them on their own
+/// pipes; what runs under one can be.
 fn left_running(
     fold: &Fold,
     all: &[procs::Proc],
     child: Option<i32>,
     mine: &[procs::Proc],
+    dir: &Path,
 ) -> Vec<Job> {
     let below: BTreeSet<i32> = (child.map(|c| procs::descendants(all, c)))
         .into_iter()
@@ -150,6 +151,32 @@ fn left_running(
         name.is_some_and(|n| helpers.contains(&n))
     };
     let server = child.map(|c| server(all, c)).unwrap_or_default();
+    // The CLI itself, which starts its MCP servers on its own pipes to them.
+    let cli: BTreeSet<i32> = child.into_iter().chain(server.iter().copied()).collect();
+    let backend = fold.child.as_ref().map_or("", |c| c.backend.as_str());
+    let lines = std::cell::OnceCell::new();
+    let started = |p: &procs::Proc| {
+        own(p)
+            || (cli.contains(&p.ppid) && procs::stdio(p.pid).is_some() && {
+                let argv = procs::args(p.pid).map(|a| a.0).unwrap_or_default();
+                let lines = lines.get_or_init(|| mcp_lines(dir, backend));
+                lines.iter().any(|l: &Vec<String>| runs(&argv, l))
+            })
+    };
+    // One of those, or what it handed its own pipes to, as a launcher does to the program it runs.
+    let kept = |p: &procs::Proc| {
+        let pipes = procs::stdio(p.pid);
+        let mut at = *p;
+        loop {
+            if started(&at) {
+                return at.pid == p.pid || (pipes.is_some() && procs::stdio(at.pid) == pipes);
+            }
+            match all.iter().find(|q| q.pid == at.ppid) {
+                Some(q) if !cli.contains(&q.pid) => at = *q,
+                _ => return false,
+            }
+        }
+    };
     // In the running turn, one its CLI said it sent to the background counts at once, not at its end;
     // a turn whose agent is gone is over.
     let since = child.map_or(0, |_| fold.child.as_ref().map_or(0, |c| c.start_us / 1000));
@@ -176,7 +203,7 @@ fn left_running(
                             && (a.saturating_sub(SLACK_MS) * 1000..=(b + SLACK_MS) * 1000)
                                 .contains(&p.start_us)
                     }) || (after(p) && said_by(fold, p.start_us).next().is_some()))))
-            && !own(p)
+            && !kept(p)
     };
     let found: Vec<&procs::Proc> = mine.iter().filter(|p| born(p)).collect();
     let pids: BTreeSet<i32> = found.iter().map(|p| p.pid).collect();
@@ -208,6 +235,52 @@ fn left_running(
         });
     }
     left
+}
+
+/// The command lines, a program then its args, the session's agent may start an MCP server with: its
+/// config's, the library's and Brigadier's own.
+fn mcp_lines(dir: &Path, backend: &str) -> Vec<Vec<String>> {
+    let spec = std::fs::read(dir.join("session.json")).ok();
+    let Some(mut spec) = spec.and_then(|b| serde_json::from_slice::<crate::Spec>(&b).ok()) else {
+        return vec![];
+    };
+    spec.dir = dir.into();
+    let mut servers = crate::adapters::get(backend).map_or(vec![], |a| a.launched_servers(&spec));
+    servers.extend(crate::library::on_for(
+        &crate::data_of(&spec),
+        spec.project.as_deref(),
+    ));
+    let line = |s: &serde_json::Value| {
+        let args = s["args"].as_array().into_iter().flatten();
+        let args = args.filter_map(|a| a.as_str().map(String::from));
+        Some(
+            std::iter::once(s["command"].as_str()?.to_string())
+                .chain(args)
+                .collect(),
+        )
+    };
+    let mut all: Vec<Vec<String>> = servers.iter().filter_map(line).collect();
+    all.push(vec!["brigadier".into(), "mcp-server".into()]);
+    all
+}
+
+/// Whether `argv` runs `line`, a program then its args: as it is, through the interpreter its script
+/// names, or under the title it gave itself in their place, ending with them from the first that
+/// isn't a flag (npm's `npm exec <package> <args>`, for `npx -y <package> <args>`).
+fn runs(argv: &[String], line: &[String]) -> bool {
+    let Some((program, args)) = line.split_first() else {
+        return false;
+    };
+    let base = |a: &str| a.rsplit('/').next().unwrap_or(a).to_string();
+    let at = (argv.len().checked_sub(args.len())).filter(|n| (1..=3).contains(n));
+    let direct = at.is_some_and(|n| argv[n..] == *args && base(&argv[n - 1]) == base(program));
+    let tail: Vec<&str> = (args.iter())
+        .skip_while(|a| a.starts_with('-'))
+        .map(String::as_str)
+        .collect();
+    let title =
+        (argv.first().filter(|t| t.contains(' '))).map(|t| t.split(' ').collect::<Vec<_>>());
+    direct || title.is_some_and(|t| !tail.is_empty() && t.len() > tail.len() && t.ends_with(&tail))
 }
 
 /// A job's command: a shell's own child when it has one, else the shell's script.
@@ -292,7 +365,7 @@ pub fn live(fold: &Fold, owner: Owner, dir: &Path, all: &[procs::Proc]) -> Live 
         .map(|&&(g, s, _)| procs::group(all, g, s).len())
         .sum();
     let mine = crate::background::proven(dir, fold, all);
-    let left = left_running(fold, all, child.map(|c| c.pid), &mine);
+    let left = left_running(fold, all, child.map(|c| c.pid), &mine, dir);
     let jobs = members.saturating_sub(child.is_some() as usize + running_below)
         + left.iter().filter(|j| j.under).count();
     let orphans = if owner == Owner::Dead { members } else { 0 };

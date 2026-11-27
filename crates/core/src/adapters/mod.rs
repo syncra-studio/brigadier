@@ -268,6 +268,11 @@ pub trait Adapter: Sync {
     fn mcp_servers(&self, _folder: &Path) -> Vec<Value> {
         vec![]
     }
+    /// Every server of its own config its launch of `spec` may start, those only its CLI runs too:
+    /// none of them is work left running [D105, D114].
+    fn launched_servers(&self, spec: &Spec) -> Vec<Value> {
+        self.mcp_servers(Path::new(&spec.cwd))
+    }
     /// Fills in the file of each listed skill or command its list didn't name [D146, D2098].
     fn locate(&self, _run: &Spec, _list: &mut [Value]) {}
     /// Whether its user's own skill of a library skill's name stays, as no flag turns off only

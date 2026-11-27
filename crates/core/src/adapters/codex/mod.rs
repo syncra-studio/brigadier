@@ -217,6 +217,10 @@ impl Adapter for Codex {
         control::shared(&home_path(".codex"), folder)
     }
 
+    fn launched_servers(&self, spec: &Spec) -> Vec<Value> {
+        control::servers(&cli_home(spec, ".codex", ""), Path::new(&spec.cwd))
+    }
+
     /// Its compact, then the skills its folders hold: the repo's `.agents`, its home's, the user's
     /// `.agents` (ext/skills host_roots.rs).
     fn fixed_commands(&self, cwd: Option<&Path>, run: Option<&Spec>) -> Vec<Value> {
