@@ -9,6 +9,8 @@ export function run(args: string[]): Promise<Record<string, any>> {
   );
 }
 
+export type AppUpdate = { current: string; version: string; waiting: boolean } | null;
+
 declare global {
   interface Window {
     /** What main does for the page beyond supervising (preload.ts): the folder picker and the intro's staging. */
@@ -41,6 +43,10 @@ declare global {
       running(sessions: { id: string; title: string }[]): void;
       usingComputer(using: { id: string; chat: string; title: string } | null): void;
       onComputerStop(heard: (id: string) => void): () => void;
+      /** Brigadier's own update, downloaded and ready; `waiting` while an agent uses the computer, which the restart waits for (app/main/update.ts). */
+      appUpdate(): Promise<AppUpdate>;
+      onAppUpdate(listener: (update: AppUpdate) => void): () => void;
+      restartToUpdate(): void;
       /** A click on a notice, with its session. */
       onNoticeClick(listener: (session: string) => void): () => void;
       /** What macOS lets notices do now: not asked yet, off, allowed but on neither the desktop nor in Notification Center, or on; null where it can't be asked. */

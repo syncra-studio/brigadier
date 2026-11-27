@@ -14,6 +14,7 @@ import { type LocationAddon, useLocationAddon } from "./browser/browserPermissio
 import { serveNotices } from "./notices";
 import { type ScrollAddon, useScrollAddon, watchScrolls } from "./scrolls";
 import { keepOnClose, serveTray } from "./tray";
+import { serveUpdates } from "./update";
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, net, protocol, shell, utilityProcess, type UtilityProcess } from "electron";
 
@@ -490,6 +491,7 @@ void app.whenReady().then(() => {
   serveNotices(panel);
   useLocationAddon(panel);
   serveTray();
+  serveUpdates();
   startDaemon();
   serveUi();
   installBrowserHost(ORIGIN);

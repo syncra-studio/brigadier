@@ -58,6 +58,14 @@ contextBridge.exposeInMainWorld("brigadier", {
     ipcRenderer.on("notice-click", heard);
     return () => void ipcRenderer.off("notice-click", heard);
   },
+  /** The app's own update, once downloaded (update.ts) [D2003]. */
+  appUpdate: () => ipcRenderer.invoke("app-update"),
+  onAppUpdate: (listener: (update: unknown) => void) => {
+    const heard = (_event: unknown, update: unknown) => listener(update);
+    ipcRenderer.on("app-update", heard);
+    return () => void ipcRenderer.off("app-update", heard);
+  },
+  restartToUpdate: () => ipcRenderer.send("restart-to-update"),
   notificationState: () => ipcRenderer.invoke("notification-state"),
   openNotificationSettings: () => ipcRenderer.send("open-notification-settings"),
   openPrivacySettings: (pane: "accessibility" | "screenRecording") => ipcRenderer.send("open-privacy-settings", pane),

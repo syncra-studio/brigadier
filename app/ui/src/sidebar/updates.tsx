@@ -9,7 +9,7 @@ import { TooltipIconButton } from "../components/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { ArrowRotateCw, Check, DownloadSimple, Spinner, X } from "../icons";
 import { BrigadierMark } from "../onboarding/mark";
-import { type Agent, checkAll, store, useAgents } from "../onboarding/api";
+import { type Agent, type AppUpdate, checkAll, store, useAgents } from "../onboarding/api";
 import { runFailure, useAgentSetup } from "../onboarding/agents";
 import { versionText } from "../accounts/parts";
 import { useDaemon } from "../daemon";
@@ -18,8 +18,8 @@ import { useFootPlacement } from "./foot";
 /*
  * The update pill at the foot, after Usage in the row and above it in the strip [D57]: one, whatever kinds of update
  * there are, and what to update is chosen in its list [D41]. It holds the agents whose own updater has a newer version, as Rust found it: checked a minute
- * after launch and every six hours, as the old app did; Update runs the agent's own, as its page's does.
- * shortcut: no Brigadier release check yet, so the app's own update never shows; wire it when releases exist.
+ * after launch and every six hours, as the old app did; Update runs the agent's own, as its page's does. Brigadier's own
+ * shows once main has downloaded it, as "Restart to update", which waits while an agent uses the computer (app/main/update.ts) [D2003].
  */
 
 type UpdateItem = {
@@ -30,7 +30,7 @@ type UpdateItem = {
   mark: string | null;
   current: string;
   latest: string;
-  action: { type: "run" } | { type: "download" } | { type: "restart" } | { type: "manual"; command: string };
+  action: { type: "run" } | { type: "download" } | { type: "restart"; waiting: boolean } | { type: "manual"; command: string };
   progress: { type: "available" } | { type: "updating" } | { type: "updated" } | { type: "failed"; error: string };
 };
 
@@ -48,6 +48,21 @@ function readSkipped(): string[] {
   }
 }
 const skippedVersions = store(readSkipped());
+
+/** Brigadier's own update, as main has it: told on each change, and asked once in case it came first. */
+const appUpdate = store<AppUpdate>(null);
+let heardApp = false;
+window.brigadier?.onAppUpdate((update) => {
+  heardApp = true;
+  appUpdate.set(update);
+});
+void window.brigadier?.appUpdate().then((update) => heardApp || appUpdate.set(update));
+
+/** Brigadier's update as a row, unless that version was skipped. */
+function appItem(update: AppUpdate, skipped: readonly string[]): UpdateItem | null {
+  if (!update || skipped.includes(`app@${update.version}`)) return null;
+  return { target: "app", name: "Brigadier", mark: null, current: `v${update.current}`, latest: `v${update.version}`, action: { type: "restart", waiting: update.waiting }, progress: { type: "available" } };
+}
 
 /** How long an update that went through shows its check before it leaves. */
 const UPDATED_MS = 2000;
@@ -114,7 +129,7 @@ function rowLabel(items: readonly UpdateItem[]) {
   const updating = items.filter((item) => item.progress.type === "updating");
   if (updating.length) return `Updating ${join(updating)}`;
   if (items.every((item) => item.progress.type === "updated")) return `${names} updated`;
-  if (items.every((item) => item.action.type === "restart")) return "Restart to update";
+  if (items.every((item) => item.action.type === "restart")) return items.some((item) => item.action.type === "restart" && item.action.waiting) ? "Restart to update once computer use ends" : "Restart to update";
   return `${names} ${items.length > 1 ? "updates" : "update"} available`;
 }
 
@@ -153,7 +168,7 @@ function UpdateRow({ item, onUpdate, onSkip }: { item: UpdateItem; onUpdate: () 
         ) : (
           <>
             {action.type !== "manual" && (
-              <Button size="sm" variant="outline" onClick={onUpdate}>
+              <Button size="sm" variant="outline" disabled={action.type === "restart" && action.waiting} onClick={onUpdate}>
                 {action.type === "restart" ? "Restart" : action.type === "download" ? "Download" : progress.type === "failed" ? "Try again" : "Update"}
               </Button>
             )}
@@ -172,6 +187,7 @@ function UpdateRow({ item, onUpdate, onSkip }: { item: UpdateItem; onUpdate: () 
           </div>
         </div>
       )}
+      {action.type === "restart" && action.waiting && <span className="ps-7 text-xs text-muted-foreground">Waits until no agent is using your computer.</span>}
       {progress.type === "failed" && (
         <div role="alert" className="ps-7">
           <ErrorLine error={progress.error} />
@@ -188,6 +204,7 @@ export function UpdatesRow() {
   const setup = useAgentSetup(list, online);
   const { row, ...placement } = useFootPlacement();
   const skipped = skippedVersions.use();
+  const app = appItem(appUpdate.use(), skipped);
   useEffect(() => {
     if (!online) return;
     let every: number | undefined;
@@ -201,7 +218,7 @@ export function UpdatesRow() {
     };
   }, [online]);
   const [updated, setUpdated] = useState<readonly string[]>([]);
-  const items = (list ?? []).flatMap((agent) => itemOf(agent, skipped, setup.failed[agent.name], setup.starting[agent.name] === "update", updated.includes(agent.name)) ?? []);
+  const items = [...(app ? [app] : []), ...(list ?? []).flatMap((agent) => itemOf(agent, skipped, setup.failed[agent.name], setup.starting[agent.name] === "update", updated.includes(agent.name)) ?? [])];
   // One that was updating and is now neither there nor outdated went through. Before paint, so the pill never starts to leave first.
   const updating = items.filter((item) => item.progress.type === "updating").map((item) => item.target).join(" ");
   const before = useRef(updating);
@@ -214,16 +231,24 @@ export function UpdatesRow() {
     // updating changes when a run starts or ends.
   }, [updating]);
   const update = (item: UpdateItem): Promise<boolean> => {
+    if (item.target === "app") {
+      window.brigadier?.restartToUpdate();
+      return Promise.resolve(true);
+    }
     const agent = list?.find((each) => each.name === item.target);
     return agent ? setup.begin(agent, "update") : Promise.resolve(false);
   };
   // What a click on the pill does: when all there is is one agent's update it runs itself, it starts at once;
   // anything else (several, a download, a command to copy, a failure to read) opens the list [D199].
-  const direct = items.length === 1 && items[0].action.type === "run" && items[0].progress.type === "available" ? items[0] : null;
+  const direct = items.length === 1 && (items[0].action.type === "run" || (items[0].action.type === "restart" && !items[0].action.waiting)) && items[0].progress.type === "available" ? items[0] : null;
   const skip = (item: UpdateItem) => {
     const agent = list?.find((each) => each.name === item.target);
     // A failed run is closed; an available version is hidden until a newer one comes out.
-    if (item.progress.type === "failed") void setup.close(item.target);
+    if (item.target === "app") {
+      const next = [...skippedVersions.get(), `app@${item.latest.slice(1)}`];
+      localStorage.setItem(SKIPPED, JSON.stringify(next));
+      skippedVersions.set(next);
+    } else if (item.progress.type === "failed") void setup.close(item.target);
     else if (agent) {
       const next = [...skippedVersions.get(), `${agent.name}@${agent.latest}`];
       localStorage.setItem(SKIPPED, JSON.stringify(next));
@@ -246,7 +271,7 @@ export function UpdatesRow() {
     return () => clearTimeout(timer);
   }, [empty, open]);
   // Every row an "Update" button could run right now, for "Update all" [D199].
-  const runnable = shown.filter((item) => item.action.type !== "manual" && (item.progress.type === "available" || item.progress.type === "failed"));
+  const runnable = shown.filter((item) => item.target !== "app" && item.action.type !== "manual" && (item.progress.type === "available" || item.progress.type === "failed"));
   return (
     <BarItem show={!empty || open} axis={row ? "x" : "y"}>
       {/* A direct click never opens the list, but one left open on its last update still closes. */}
@@ -256,7 +281,7 @@ export function UpdatesRow() {
             <TooltipIconButton
               look="chip"
               side={placement.side}
-              tooltip={direct ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)}
+              tooltip={direct?.action.type === "run" ? `Update ${direct.name} to ${direct.latest}` : rowLabel(shown)}
               className={row ? "h-7.5 px-2 foot-narrow:gap-1" : "mb-1 w-8 flex-col py-2"}
             />
           }
@@ -280,6 +305,9 @@ export function UpdatesRow() {
           ))}
           <BarItem axis="y" show={items.some((item) => item.target !== "app" && item.progress.type !== "available")}>
             <p className="px-1.5 pt-1 pb-1 text-xs text-muted-foreground">Sessions already running keep the version they started with.</p>
+          </BarItem>
+          <BarItem axis="y" show={items.some((item) => item.target === "app")}>
+            <p className="px-1.5 pt-1 pb-1 text-xs text-muted-foreground">Your sessions keep working while Brigadier restarts.</p>
           </BarItem>
         </PopoverContent>
       </Popover>

@@ -104,6 +104,9 @@ export function serveTray(): void {
   }
 }
 
+/** Lets the windows close and the app quit, for the update's restart, which closes them before `before-quit` (update.ts). */
+export const allowQuit = () => void (quitting = true);
+
 /** Closing the app's window hides it, and the Dock icon with it, while the item can bring it back. */
 export function keepOnClose(window: BrowserWindow): void {
   main = window;
