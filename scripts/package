@@ -212,9 +212,12 @@ await build({
         CFBundleDocumentTypes: [{ CFBundleTypeName: "Folder", CFBundleTypeRole: "Viewer", LSHandlerRank: "Alternate", LSItemContentTypes: ["public.folder"] }],
       },
     },
-    win: { target: "nsis", icon: "app/main/icons/icon.ico" },
+    // Not Brigadier.exe: the installer's fallback stops the running app with `taskkill /IM <exe>`, which also matches
+    // the brigadier.exe CLI an agent may be running, since Windows ignores case [D2003].
+    win: { target: "nsis", icon: "app/main/icons/icon.ico", executableName: "Brigadier App" },
     // Per user, no admin: %LOCALAPPDATA%\Programs\Brigadier, its shortcut's AppUserModelID the appId [D2] (proposed).
-    nsis: { oneClick: true, perMachine: false },
+    // No spaces: the release keeps the name latest.yml gives the updater, where GitHub would turn spaces into dots.
+    nsis: { oneClick: true, perMachine: false, artifactName: "${productName}-Setup-${version}.${ext}" },
     linux: {
       target: ["AppImage", "deb", "rpm"],
       icon: "app/main/icons/icon.png",
