@@ -39,13 +39,25 @@ function useSeen(id: string | undefined) {
   });
   const conn = useSyncExternalStore(lists.subscribe, () => (lists.get().ready ? streamNow() : -1));
   useEffect(() => {
-    if (!id || finished < 0 || conn < 0) return;
-    try {
-      request({ op: "run", args: ["seen", id, String(finished)] }, () => {});
-    } catch {
-      // Not connected: sent again once signed in.
-    }
+    if (id && finished >= 0 && conn >= 0) seen(id, finished);
   }, [id, finished, conn]);
+}
+
+/** Per chat: the `seen` on its way, and the latest end asked for meanwhile, so an older one never lands last. */
+const seenGoing = new Map<string, number | null>();
+function seen(id: string, finished: number) {
+  if (seenGoing.has(id)) return void seenGoing.set(id, finished);
+  seenGoing.set(id, null);
+  try {
+    request({ op: "run", args: ["seen", id, String(finished)] }, () => {
+      const next = seenGoing.get(id);
+      seenGoing.delete(id);
+      if (next != null && next !== finished) seen(id, next);
+    });
+  } catch {
+    // Not connected: sent again once signed in.
+    seenGoing.delete(id);
+  }
 }
 
 /** Rows of a session, newest at the bottom; scrolling up past the first loads the page before it. */
