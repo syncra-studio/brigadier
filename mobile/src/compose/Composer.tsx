@@ -301,10 +301,13 @@ export function Composer({ id }: { id: string }) {
       if (!line) return;
       if (line.startsWith("--")) return setPowerError("A command can't start with --");
       setPowerError(null);
-      const pulled = editing.get();
       // One whose reply was lost keeps its id when confirmed again: the Mac runs or queues an id once.
       const shellKey = `${id}\n${line}`;
-      const qid = pulled?.qid ?? mac.shells.get(shellKey) ?? `c-${newId()}`;
+      // An edit's id went with another line already (its reply lost): this line is a new command, not that edit.
+      const spent = (qid: string) => [...mac.shells].some(([key, kept]) => kept === qid && key !== shellKey);
+      if (editing.get() && spent(editing.get()!.qid)) editing.set(null);
+      const pulled = editing.get();
+      const qid = mac.shells.get(shellKey) ?? pulled?.qid ?? `c-${newId()}`;
       const typed = words$.current;
       return setPower({
         ...shellPower(id, line, qid, pulled?.slot),
