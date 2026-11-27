@@ -40,7 +40,7 @@ export function keep(id: string, entry: Going): Going {
 /** Message `entry` goes: kept here first, so a reload loses nothing, then run with the draft it came from and the field's revision then. */
 export function go(run: Runner, id: string, entry: Going, rev: number | null): Promise<void> {
   keep(id, { ...entry, rev });
-  return run([...entry.op, ...draftArgs(entry.draft, rev)]).then(
+  return run([...entry.op, ...(entry.peer ? [] : draftArgs(entry.draft, rev))]).then(
     (reply) => answered(run, id, entry, reply),
     (cause) => markGoing(id, entry.cid, { stuck: String(cause) }),
   );
@@ -76,6 +76,7 @@ export function adopt(run: Runner, id: string, entry: Going): Promise<Record<str
 /** Try again or Add again: Rust runs the message's own command again under its id (`retry`), once its book has it. */
 export async function again(run: Runner, id: string, entry: Going): Promise<void> {
   markGoing(id, entry.cid, { stuck: undefined });
+  if (entry.peer) return go(run, id, entry, null);
   const adopted = entry.booked ? { kept: true } : await adopt(run, id, entry);
   if (adopted.kept) return answered(run, id, { ...entry, booked: true }, await run(["draft", id, "retry", entry.cid]));
   if (!adopted.ok) markGoing(id, entry.cid, { stuck: failure(adopted) });
@@ -93,7 +94,7 @@ export function useHanding(id: string, daemon: unknown, run: Runner): void {
   const mine = useGoingOf(id);
   useEffect(() => {
     if (!daemon) return;
-    for (const each of mine.filter((one) => (!one.booked || one.removing) && asked.get(one.cid) !== daemon)) {
+    for (const each of mine.filter((one) => (one.removing || (!one.booked && !one.peer)) && asked.get(one.cid) !== daemon)) {
       asked.set(each.cid, daemon);
       void (each.removing ? tellDrops(run, id) : adopt(run, id, each));
     }
@@ -105,9 +106,9 @@ export function useHanding(id: string, daemon: unknown, run: Runner): void {
 export function sendMessage(run: Runner, id: string, text: string, retryOf?: string, draft?: Draft | null, origin = "user"): Promise<void> {
   const cid = newId();
   const op = sendOp(id, text, cid, { parts: draft ? JSON.stringify(draft) : undefined, retryOf });
-  // Another session's brief or a note is never the user's words to give back into their draft [D2034]: Rust's book passes it by, a refusal said on the rail.
-  if (origin !== "user") return run(op).then((reply) => void (reply.ok || reply.logged === true || reply.result === "logged" || sendFailed(cid)), () => sendFailed(cid));
-  return go(run, id, { cid, kind: "send", op, draft: draft ?? { parts: [text], attachmentIds: [] }, at: Date.now() }, null);
+  // Another session's brief or a note is never the user's words to give back [D2034]: kept here only, its refusal on its bubble.
+  const peer = origin !== "user" || undefined;
+  return go(run, id, { cid, kind: "send", op, draft: draft ?? { parts: [text], attachmentIds: [] }, at: Date.now(), peer }, null);
 }
 
 const sends = (list: readonly Going[]) => list.filter((each) => each.kind === "send" && !each.removing);

@@ -36,6 +36,8 @@ export type Going = {
   removing?: boolean;
   /** A start whose session couldn't go: only Discard goes on with it. */
   left?: boolean;
+  /** Another session's brief tried again: never Rust's book's, so never given back as the user's words [D2034]. */
+  peer?: boolean;
 };
 
 const PREFIX = "brigadier.uncertain.";
