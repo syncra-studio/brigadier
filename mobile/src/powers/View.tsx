@@ -19,6 +19,8 @@ const signs = store<readonly { key: number; owner: string; sign: string; done: (
 // Every ask's and sheet's number, unique in the app.
 let asks = 0;
 
+export const VIEW_WORDS = { title: "Show this image?", body: "It's outside this session's project, so this iPhone reads it only with Face ID." };
+
 /** The Face ID sheet for the first path waiting, mounted once beside the thread. */
 export function ImageSigns() {
   const first = useSyncExternalStore(signs.subscribe, () => signs.get()[0]);
@@ -26,8 +28,7 @@ export function ImageSigns() {
   return (
     <Confirm
       key={first.key}
-      title="Show this image?"
-      body="It's outside this session's project, so this iPhone reads it only with Face ID."
+      {...VIEW_WORDS}
       shown={first.sign}
       args={["attach", first.owner, "view", first.sign]}
       onDone={(reply) => {

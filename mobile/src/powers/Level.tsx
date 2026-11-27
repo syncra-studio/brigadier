@@ -11,6 +11,9 @@ import { refusal } from "./powers";
 
 type Level = "ask" | "auto" | "full";
 
+/** The desktop's Full Access confirm words. */
+export const FULL_ACCESS = { title: "Turn on Full Access?", body: "Agents can use all of these without asking.", shown: "Files · Commands · Internet" };
+
 const LEVELS: { level: Level; label: string; detail: string }[] = [
   { level: "ask", label: "Ask", detail: "Asks before edits and commands" },
   { level: "auto", label: "Auto", detail: "Works on its own, asks before risky actions" },
@@ -60,7 +63,7 @@ export function LevelPill({ id, row, connected }: { id: string; row: LevelRow | 
       {asking && sheet ? (
         <Confirm
           {...(asking.level === "full"
-            ? { title: "Turn on Full Access?", body: "Agents can use all of these without asking.", shown: "Files · Commands · Internet" }
+            ? FULL_ACCESS
             : { title: `Change to ${sheet.label}?`, body: "From the next turn.", shown: `${sheet.label}: ${sheet.detail}` })}
           args={["level", id, asking.level, "--op", asking.op]}
           onDone={(reply) => {

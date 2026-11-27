@@ -6,6 +6,10 @@ import { start, stop } from "./src/mac/mac";
 import { MacScreens } from "./src/mac/MacScreens";
 import { loadSample } from "./src/mac/sample";
 import { Confirm } from "./src/act/Confirm";
+import { FULL_ACCESS } from "./src/powers/Level";
+import { nightWords } from "./src/powers/Overnight";
+import { shellPower } from "./src/powers/powers";
+import { VIEW_WORDS } from "./src/powers/View";
 import { Lock } from "./src/Lock";
 import { Macs, type Status } from "./src/macs/Macs";
 import { Notice, PROBLEMS } from "./src/Notice";
@@ -25,11 +29,19 @@ type At =
 // `-screen <name>` opens one screen with sample data and no network, for simulator screenshots (no Face ID there).
 const sample = Link.screen;
 const SAMPLE_MAC: Mac = { pk: "sample", name: "MacBook Pro", device: "", addresses: [] };
+/** `-screen power-…`: each power's Face ID sheet over the sample thread (`-screen powers`), with sample args. */
+const POWER_SHEETS: Record<string, { title: string; body?: string; shown: string; args: string[] }> = {
+  "power-shell": shellPower("s1", 'npm test -- --watch=false && rm -rf "build/tmp"', "c-1"),
+  "power-full": { ...FULL_ACCESS, args: ["level", "s1", "full", "--op", "o1"] },
+  "power-overnight": { ...nightWords("start", false), shown: "Fix the failing login test", args: ["overnight", "s1", "start", "--op", "o1"] },
+  "power-view": { ...VIEW_WORDS, shown: "/private/tmp/screenshots/login-page.png", args: ["attach", "s1", "view", "/private/tmp/screenshots/login-page.png"] },
+};
+const powers = sample === "powers" || (sample !== null && sample in POWER_SHEETS);
 function sampleAt(): At {
   if (sample === "finishing") return { at: "finishing", check: "042917" };
   if (sample === "connected") return { at: "connected", mac: SAMPLE_MAC };
-  if (sample === "sessions" || sample === "thread" || sample === "samples") {
-    loadSample();
+  if (sample === "sessions" || sample === "thread" || sample === "samples" || powers) {
+    loadSample(powers);
     return { at: "mac", mac: SAMPLE_MAC };
   }
   if (sample?.startsWith("notice-")) return { at: "notice", problem: sample.slice(7) as Problem };
@@ -161,7 +173,8 @@ export default function App() {
           }}
         />
       )}
-      {at.at === "mac" && <MacScreens name={at.mac.name} onMacs={() => setAt({ at: "macs" })} open={sample === "thread" || sample === "samples" ? sample : undefined} />}
+      {at.at === "mac" && <MacScreens name={at.mac.name} onMacs={() => setAt({ at: "macs" })} open={sample === "thread" || sample === "samples" ? sample : powers ? "thread" : undefined} />}
+      {sample && POWER_SHEETS[sample] && <Confirm {...POWER_SHEETS[sample]} onDone={() => {}} />}
       {sample === "act" && (
         <Confirm
           title="Run this on your Mac?"

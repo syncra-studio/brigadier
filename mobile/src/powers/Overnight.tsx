@@ -14,6 +14,14 @@ import { type Power, refusal } from "./powers";
 type Act = "on" | "start" | "off";
 type Props = { id: string; row: Row; connected: boolean };
 
+/** Each act's sheet words; `night`, the user is back from one. */
+export const nightWords = (act: Act, night: boolean): { title: string; body?: string } =>
+  act === "on"
+    ? { title: "Turn Overnight on?", body: "It asks what it needs, then finishes the job while you’re away." }
+    : act === "start"
+      ? { title: "Start night?", body: "This Mac stays awake. It picks what you skip and tells you in the morning." }
+      : { title: night ? "I’m back: end the night?" : "Turn Overnight off?" };
+
 /** Each session's last act the Mac took, by its op id, till the row's `overnight_op` reaches it. */
 const taken = store<ReadonlyMap<string, { op: string; act: Act; at: number }>>(new Map());
 function put(id: string, entry: { op: string; act: Act; at: number } | null) {
@@ -44,14 +52,8 @@ function useAct(id: string, row: Row) {
   const shown = row.title || "New session";
   const ask = (act: Act, night: boolean) => {
     setError(null);
-    const words =
-      act === "on"
-        ? { title: "Turn Overnight on?", body: "It asks what it needs, then finishes the job while you’re away." }
-        : act === "start"
-          ? { title: "Start night?", body: "This Mac stays awake. It picks what you skip and tells you in the morning." }
-          : { title: night ? "I’m back: end the night?" : "Turn Overnight off?" };
     const op = newId();
-    setAsking({ ...words, shown, act, op, args: ["overnight", id, act, "--op", op] });
+    setAsking({ ...nightWords(act, night), shown, act, op, args: ["overnight", id, act, "--op", op] });
   };
   const sheet = asking ? (
     <Confirm
