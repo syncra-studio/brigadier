@@ -115,7 +115,12 @@ pub fn starts() -> Vec<(u32, u64)> {
 /// shortcut: no process groups on Windows, so pgid is 0 and the drill's group checks stay red;
 /// phase 2's named job per child gives the group.
 pub fn ps() {
-    for e in processes().iter().filter(|e| e.th32ProcessID != 0) {
+    // Not itself: ps isn't listed on the other systems either.
+    let me = std::process::id();
+    for e in processes()
+        .iter()
+        .filter(|e| e.th32ProcessID != 0 && e.th32ProcessID != me)
+    {
         let name = String::from_utf16_lossy(
             &e.szExeFile[..e.szExeFile.iter().position(|&c| c == 0).unwrap_or(260)],
         );
