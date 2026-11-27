@@ -27,6 +27,11 @@ with a few rules of Brigadier's on top, and the CLI enforces them. A git worktre
 doesn't contain a process. The daemon tells the app from a session's agent by the process that calls
 it, and gives an agent's connection only the commands meant for agents.
 
+Remote access (in development, off unless `BRIGADIER_REMOTE=1`): a separate `brigadier-remote` process
+holds the network under a macOS sandbox that lets it only accept connections from private, link-local
+and Tailscale addresses; it can't read Brigadier's data, reach the daemon's socket or the Keychain,
+connect anywhere or start programs, and holds no keys.
+
 Computer use is off until you turn it on. Once it's on, a session at Ask asks you before its first use of
 each app in a chat; Brigadier's daemon checks this, not the agent's CLI. A yes holds for that app in that
 chat, its workers included, until the chat is deleted, the daemon restarts or you turn computer use off.

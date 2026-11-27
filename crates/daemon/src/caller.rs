@@ -46,6 +46,9 @@ pub(super) fn of(stream: &UnixStream, data: &Path) -> Caller {
     let Ok(pid) = wire::peer_pid(stream) else {
         return unknown();
     };
+    if super::remote::under_gateway(pid) {
+        return Caller::Refused("The phone gateway can't call the daemon.".into());
+    }
     let (Some(hosts), Some((_, env))) = (procs::hosts_above(pid), procs::args(pid)) else {
         return unknown();
     };

@@ -350,6 +350,9 @@ pub(super) fn serve(
                             brigadier::computer::test(&data, &args, &rows)
                                 .unwrap_or_else(|e| json!({"ok": false, "error": e.to_string()}))
                         }
+                        Some("remote") if super::remote::enabled() => {
+                            super::remote::cli(&data, &args)
+                        }
                         Some(cmd) if ROUTED.contains(&cmd) => run(),
                         _ => json!({"ok": false, "error": format!("not routed: {args:?}")}),
                     };

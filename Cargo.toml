@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/daemon", "crates/frames", "crates/core", "crates/cli", "crates/fake", "crates/host", "crates/panel", "crates/browser-data", "crates/computer"]
+members = ["crates/daemon", "crates/frames", "crates/core", "crates/cli", "crates/fake", "crates/host", "crates/panel", "crates/browser-data", "crates/computer", "crates/remote-gateway"]
 resolver = "3"
 
 [workspace.dependencies]

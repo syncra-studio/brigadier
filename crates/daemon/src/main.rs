@@ -36,6 +36,8 @@
 //! a launchd job of its own, so quitting the app leaves it and every session running [D60, D606].
 //! While it runs it keeps the Mac awake as `brigadier awake` says: off, while a session works, or
 //! always (`awake`) [D30, D36], and with the lid closed too when set (`lid`) [D333].
+//!
+//! With `BRIGADIER_REMOTE=1` and Allow connections on, it runs the phone gateway (`remote`).
 
 use brigadier::index::Index;
 use brigadier_core::{awake_mode, data_dir};
@@ -63,6 +65,7 @@ mod install;
 mod logging;
 mod ops;
 mod prs;
+mod remote;
 mod reset;
 mod store;
 mod switch;
@@ -198,6 +201,7 @@ fn main() -> io::Result<()> {
     let mut finished: HashMap<String, u64> = HashMap::new();
     let mut changed = 0;
     let mut full: Option<Instant> = None;
+    let mut remote = remote::Remote::default();
     loop {
         if let Err(e) = logging::trim(&mut stderr) {
             eprintln!("brigadierd: stderr log: {e}");
@@ -266,6 +270,7 @@ fn main() -> io::Result<()> {
                 .values()
                 .any(|r| r["overnight"]["state"] == "night");
         awake.set(on);
+        remote.pass(&data);
         lid.set(&data, on && brigadier_core::lid::wanted(&data));
         changed = brigadier::queue::wake::changed(changed, TICK);
     }

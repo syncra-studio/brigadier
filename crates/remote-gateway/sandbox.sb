@@ -1,0 +1,10 @@
+;; brigadier-remote's sandbox (remote design §4): it reads only the system's libraries, the root
+;; folder (dyld reads it) and its own program, starts nothing else, and on the network only
+;; accepts on the listener the daemon passed it, replies included. No data folder, no Unix
+;; socket (daemon.sock included), no Keychain or other service, no loopback, nothing out.
+(version 1)
+(deny default)
+(allow process-exec (literal (param "GATEWAY")))
+(allow file-read* (literal "/") (literal (param "GATEWAY")) (subpath "/usr/lib") (subpath "/System/Library"))
+(allow sysctl-read)
+(allow network-inbound (local tcp))

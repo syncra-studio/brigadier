@@ -159,7 +159,11 @@ fn agent_call(data: &Path, args: &[String]) -> Option<Value> {
         || args.first().is_some_and(|a| a == "answer")
             && (args.get(2))
                 .is_some_and(|r| r.starts_with("computer-") || r.starts_with("browser-"));
-    if who["app"] == true && (held || args.first().is_some_and(|a| a == "plugins") && signing) {
+    // And remote access's state: offers, devices and the gateway [beat-competitors D62].
+    let remote = args.first().is_some_and(|a| a == "remote");
+    if who["app"] == true
+        && (held || remote || args.first().is_some_and(|a| a == "plugins") && signing)
+    {
         let _ = conn.set_timeout(Some(Duration::from_secs(660)));
         let reply = conn.call(&json!({"id": 2, "op": "run", "args": args}));
         return Some(reply.unwrap_or_else(
