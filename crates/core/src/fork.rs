@@ -221,8 +221,13 @@ fn copy_of(dir: &Path, order: &[String], at: &str) -> io::Result<Vec<Value>> {
     let next = order.iter().skip_while(|c| *c != at).nth(1);
     let input = |i: &Value| i["kind"] == "input" && next.is_some_and(|n| i["cid"] == n.as_str());
     if let Some(cut) = items.iter().position(input) {
-        items.truncate(cut);
-        refs.truncate(cut);
+        // A night's decision logged past the next message still goes with its turn [§8].
+        let late = crate::overnight::late(&items, cut);
+        let (tail, at) = (items.split_off(cut), refs.split_off(cut));
+        for i in late {
+            items.push(tail[i - cut].clone());
+            refs.push(at[i - cut].clone());
+        }
     }
     crate::handoff::check::copied(&mut items, refs);
     Ok(items)
