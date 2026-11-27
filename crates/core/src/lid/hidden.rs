@@ -1,4 +1,5 @@
-//! Working with the lid closed stays hidden on Windows [D170]: nothing to hold or set up.
+//! Working with the lid closed stays hidden off macOS [D170], Linux's too until logind's lid hold
+//! is built (proposed): nothing to hold or set up.
 
 use serde_json::{Value, json};
 use std::io;
@@ -23,7 +24,7 @@ pub fn wanted(_data: &Path) -> bool {
 pub fn recover(_data: &Path) {}
 
 #[derive(Default)]
-pub struct Lid;
+pub struct Lid {}
 
 impl Lid {
     pub fn set(&mut self, _data: &Path, _want: bool) {}

@@ -18,9 +18,9 @@ pub mod images;
 pub mod keeps;
 mod kept;
 pub mod library;
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 pub mod lid;
-#[cfg(windows)]
+#[cfg(not(target_os = "macos"))]
 #[path = "lid/hidden.rs"]
 pub mod lid;
 pub mod message;
