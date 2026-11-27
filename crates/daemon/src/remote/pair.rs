@@ -317,8 +317,12 @@ pub(super) fn cli(data: &Path, args: &[String]) -> Value {
         (Some("allow"), None) => answer(&mut s, true),
         (Some("deny"), None) => answer(&mut s, false),
         (Some("revoke"), Some(device)) => revoke(&mut s, data, device),
+        (Some("device"), Some(id)) if args.len() == 6 && args[3] == "power" => {
+            super::powers::set(data, id, &args[4], &args[5])
+        }
+        (Some("log"), Some(device)) if args.len() == 3 => super::powers::entries(data, device),
         _ => {
-            json!({"ok": false, "error": "usage: remote status|on|off|offer|allow|deny|revoke <device>"})
+            json!({"ok": false, "error": "usage: remote status|on|off|offer|allow|deny|revoke <device>|device <id> power <p> on|off|log <device>"})
         }
     }
 }

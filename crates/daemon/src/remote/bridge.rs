@@ -6,6 +6,7 @@
 //! the table [beat-competitors D51, the Delegator's condition on M3a].
 
 use super::allow::{self, Checked};
+use super::fresh;
 use super::{HOST, STATE, link};
 use brigadier_frames::wire;
 use serde_json::Value;
@@ -103,7 +104,18 @@ pub(super) fn request(
     req: &Value,
 ) -> Result<(), String> {
     let host = HOST.get().ok_or("no host")?;
-    let cx = allow::Ctx { device, host };
+    let data = s.data.clone();
+    if req["op"] == "challenge" {
+        let stream = s.streams.get_mut(&id).ok_or("gone")?;
+        let mut answer = fresh::challenge(stream, req);
+        answer["re"] = req["id"].clone();
+        return link::reply(s, id, &answer).map_err(|e| e.to_string());
+    }
+    let cx = allow::Ctx {
+        device,
+        host,
+        data: &data,
+    };
     let checked = match allow::check(&cx, req) {
         Ok(checked) => checked,
         Err(why) => {
@@ -119,6 +131,13 @@ pub(super) fn request(
     }
     if checked.value()["op"] == "mention" {
         stream.mentions.insert(checked.value()["id"].to_string());
+    }
+    // Checked against its fresh signature, if it needs one; nothing reaches the agent otherwise.
+    if let Some(need) = checked.need()
+        && let Err(why) = fresh::verify(&data, stream, need, &req["act"])
+    {
+        let refused = serde_json::json!({"re": req["id"], "ok": false, "error": why});
+        return link::reply(s, id, &refused).map_err(|e| e.to_string());
     }
     let bridge = stream.bridge.as_mut().ok_or("no bridge")?;
     bridge.send(checked).map_err(|e| e.to_string())

@@ -1,6 +1,7 @@
 use super::*;
 use crate::remote::Host;
 use std::collections::BTreeMap;
+use std::path::Path;
 
 fn host() -> Host {
     let mut rows = BTreeMap::new();
@@ -21,6 +22,7 @@ fn args(req: Value) -> Result<Vec<String>, Fail> {
     let cx = Ctx {
         device: "d",
         host: &host,
+        data: Path::new("/nonexistent"),
     };
     let checked = check(&cx, &req)?;
     Ok(serde_json::from_value(checked.value()["args"].clone()).unwrap_or_default())
@@ -36,6 +38,7 @@ fn reading_ops_need_a_visible_session_and_known_fields() {
     let cx = Ctx {
         device: "d",
         host: &host,
+        data: Path::new("/nonexistent"),
     };
     assert!(
         check(
@@ -83,10 +86,16 @@ fn run_rows() {
         ])
         .is_err()
     );
-    assert!(run_of(&["queue", "s1", "add", "ls", "--qid", "q", "--shell"]).is_err());
+    assert!(
+        run_of(&[
+            "queue", "s1", "add", "ls", "--qid", "q", "--shell", "--to", "w1"
+        ])
+        .is_err()
+    );
+    // An answer whose ask can't be found is refused, never taken as one-time.
+    assert!(run_of(&["answer", "s1", "r1", "allow"]).is_err());
     assert!(run_of(&["queue", "s1", "add", "x", "--qid", "q", "--to", "w1"]).is_ok());
     assert!(run_of(&["queue", "s1", "add", "x", "--qid", "q", "--from", "s1"]).is_err());
-    assert!(run_of(&["queue", "s1", "background", "c1"]).is_err());
     // Text that is a flag would be read as one by the CLI.
     assert!(run_of(&["queue", "s1", "add", "--shell", "--qid", "q"]).is_err());
     assert!(run_of(&["send", "s1", "--steer", "--cid", "c"]).is_err());
@@ -96,6 +105,7 @@ fn run_rows() {
     assert!(run_of(&["start", "n1", "--project", "p1"]).is_err());
     assert!(run_of(&["remote", "status"]).is_err());
     assert!(run_of(&["level", "s1", "full"]).is_err());
+    assert!(run_of(&["level", "s1", "full", "--op", "o1"]).is_ok());
     assert!(run_of(&["models", "--project", "p1", "--fresh"]).is_err());
     assert!(run_of(&["rewind", "s1", "c1", "--preview"]).is_ok());
     assert!(run_of(&["rewind", "s1", "c1", "--preview", "--op", "o"]).is_err());

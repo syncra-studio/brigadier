@@ -84,5 +84,5 @@ pub(super) fn find(data: &Path, id: &str) -> Option<Value> {
 /// Settings › Connections' row of a device: never its keys.
 pub(super) fn shown(device: &Value, seen: Option<u64>) -> Value {
     json!({"id": device["id"], "name": device["name"], "model": device["model"], "os": device["os"],
-        "paired": device["paired"], "seen": seen.map_or(device["seen"].clone(), Value::from), "powers": null})
+        "paired": device["paired"], "seen": seen.map_or(device["seen"].clone(), Value::from), "powers": super::powers::shown(device)})
 }

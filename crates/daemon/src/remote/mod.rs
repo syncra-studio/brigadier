@@ -10,9 +10,11 @@ mod allow;
 mod bonjour;
 mod bridge;
 mod devices;
+mod fresh;
 mod gateway;
 mod link;
 mod pair;
+mod powers;
 
 use serde_json::Value;
 use std::collections::HashMap;

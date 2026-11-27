@@ -62,6 +62,8 @@ pub(super) struct Stream {
     /// The way to the op table once `hello` fits, and the `@` menu requests it is answering.
     pub(super) bridge: Option<Bridge>,
     pub(super) mentions: HashSet<String>,
+    /// Challenges issued on this stream, not yet used.
+    pub(super) nonces: Vec<super::fresh::Nonce>,
 }
 
 impl Stream {
@@ -108,6 +110,7 @@ fn open(s: &mut State, id: u32, peer: &str) {
         buf: vec![],
         bridge: None,
         mentions: HashSet::new(),
+        nonces: vec![],
     };
     s.streams.insert(id, stream);
 }

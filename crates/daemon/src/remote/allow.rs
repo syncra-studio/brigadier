@@ -1,20 +1,27 @@
 //! What a phone may send (remote design §4.1, the one table): each request is rebuilt here from
 //! its allowed fields only, or refused with "Not from the phone". The result is a [`Checked`],
 //! which only this file can make and which is the only thing the bridge writes to a phone's
-//! `ops::serve` [beat-competitors D51]. Rows needing a fresh Face ID signature or a power (§4.2,
-//! §4.7) and the rows of M3c are refused until their steps land.
+//! `ops::serve` [beat-competitors D51]. Rows needing a fresh Face ID signature carry what it must
+//! name (`fresh`); the rows of M3c are refused until it lands.
 
 use super::Host;
+use super::fresh::{self, Need};
 use serde_json::{Map, Value, json};
+use std::path::Path;
 
 pub(super) const REFUSED: &str = "Not from the phone";
 
 /// A request that passed the table, as it is sent on. Its field is private: nothing else builds one.
-pub(super) struct Checked(Value);
+pub(super) struct Checked(Value, Option<Need>);
 
 impl Checked {
     pub(super) fn value(&self) -> &Value {
         &self.0
+    }
+
+    /// The fresh signature this command needs, if any (§4.2).
+    pub(super) fn need(&self) -> Option<&Need> {
+        self.1.as_ref()
     }
 }
 
@@ -22,13 +29,14 @@ impl Checked {
 pub(super) struct Ctx<'a> {
     pub(super) device: &'a str,
     pub(super) host: &'a Host,
+    pub(super) data: &'a Path,
 }
 
 type Fail = &'static str;
 
 impl Ctx<'_> {
     /// A session the daemon lists to this device: one of its own rows, never a field's say-so.
-    fn visible(&self, id: &str) -> Result<Value, Fail> {
+    pub(super) fn visible(&self, id: &str) -> Result<Value, Fail> {
         plain(id)?;
         (self.host.row)(id).ok_or(REFUSED)
     }
@@ -72,6 +80,7 @@ fn json_of(s: &str) -> Result<Value, Fail> {
 pub(super) fn check(cx: &Ctx, req: &Value) -> Result<Checked, Fail> {
     let op = req["op"].as_str().unwrap_or("");
     let mut out = Map::new();
+    let mut need = None;
     out.insert("id".into(), req["id"].as_u64().ok_or(REFUSED)?.into());
     out.insert("op".into(), op.into());
     let mut copy = |key: &str, ok: &dyn Fn(&Value) -> bool| -> Result<(), Fail> {
@@ -112,8 +121,8 @@ pub(super) fn check(cx: &Ctx, req: &Value) -> Result<Checked, Fail> {
             let args: Vec<String> = (req["args"].as_array().ok_or(REFUSED)?.iter())
                 .map(|a| a.as_str().map(String::from).ok_or(REFUSED))
                 .collect::<Result<_, _>>()?;
-            out.insert("args".into(), json!(run(cx, args, true)?));
-            &["args"]
+            out.insert("args".into(), json!(run(cx, args, true, &mut need)?));
+            &["args", "act"]
         }
         _ => return Err(REFUSED),
     };
@@ -135,7 +144,7 @@ pub(super) fn check(cx: &Ctx, req: &Value) -> Result<Checked, Fail> {
     {
         return Err(REFUSED);
     }
-    Ok(Checked(Value::Object(out)))
+    Ok(Checked(Value::Object(out), need))
 }
 
 /// The flags after a command's positional words: each allowed one at most once, its value checked.
@@ -216,7 +225,12 @@ fn draft_target(cx: &Ctx, target: &str) -> Result<(), Fail> {
 /// A `run` command as the phone may send it (§4.1 "Acting"), with `--slot <device>` added last
 /// where the device's own draft slot applies (lane D, `crates/cli/src/attach/slot.rs`). `top` is
 /// false for the command a `draft adopt` keeps to try again, which itself passes this table.
-fn run(cx: &Ctx, mut args: Vec<String>, top: bool) -> Result<Vec<String>, Fail> {
+fn run(
+    cx: &Ctx,
+    mut args: Vec<String>,
+    top: bool,
+    need: &mut Option<Need>,
+) -> Result<Vec<String>, Fail> {
     let a = |i: usize| args.get(i).map(String::as_str).ok_or(REFUSED);
     let n = args.len();
     let rest = |from: usize| args.get(from..).unwrap_or(&[]);
@@ -266,6 +280,13 @@ fn run(cx: &Ctx, mut args: Vec<String>, top: bool) -> Result<Vec<String>, Fail> 
                     if let Some(w) = f.get("--to") {
                         cx.worker_of(w, id)?;
                     }
+                    // `!`: power (a), the line shown whole on the phone and signed as it is.
+                    if f.has("--shell") {
+                        if f.has("--to") || f.has("--parts") || f.has("--chips") {
+                            return Err(REFUSED);
+                        }
+                        *need = fresh::power("shell", &args);
+                    }
                     send_flags(cx, id, &f)?;
                     slot = true;
                 }
@@ -275,6 +296,10 @@ fn run(cx: &Ctx, mut args: Vec<String>, top: bool) -> Result<Vec<String>, Fail> 
                     number(a(4)?)?;
                 }
                 ("restore" | "resume", 3) => {}
+                ("background", 4) => {
+                    plain(a(3)?)?;
+                    *need = fresh::power("shell", &args);
+                }
                 _ => return Err(REFUSED),
             }
         }
@@ -290,8 +315,14 @@ fn run(cx: &Ctx, mut args: Vec<String>, top: bool) -> Result<Vec<String>, Fail> 
                     let kind = f.get("--kind").ok_or(REFUSED)?;
                     let op: Vec<String> =
                         serde_json::from_str(f.get("--op").ok_or(REFUSED)?).map_err(|_| REFUSED)?;
-                    let kept = run(cx, op.clone(), false)?;
-                    if !top || op.first().map(String::as_str) != Some(kind) || kept != op {
+                    // A kept command is tried again with no one to sign it: none that needs a signature.
+                    let mut signed = None;
+                    let kept = run(cx, op.clone(), false, &mut signed)?;
+                    if !top
+                        || signed.is_some()
+                        || op.first().map(String::as_str) != Some(kind)
+                        || kept != op
+                    {
                         return Err(REFUSED);
                     }
                     json_of(f.get("--draft").ok_or(REFUSED)?)?;
@@ -350,6 +381,7 @@ fn run(cx: &Ctx, mut args: Vec<String>, top: bool) -> Result<Vec<String>, Fail> 
             cx.visible(a(1)?)?;
             plain(a(3)?)?;
         }
+        "answer" | "level" | "overnight" => *need = fresh::row(cx, &args)?,
         "jobs" => {
             cx.visible(a(1)?)?;
             match (a(2)?, n) {
@@ -379,7 +411,8 @@ const SEND: [(&str, bool); 8] = [
     ("--draft-rev", true),
     ("--from", true),
 ];
-const QUEUE_ADD: [(&str, bool); 7] = [
+const QUEUE_ADD: [(&str, bool); 8] = [
+    ("--shell", false),
     ("--qid", true),
     ("--at", true),
     ("--parts", true),
