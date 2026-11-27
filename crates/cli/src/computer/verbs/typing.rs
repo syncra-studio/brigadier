@@ -125,7 +125,7 @@ pub(super) fn type_into(
 }
 
 /// Finder itself, on the sealed system volume: no other app can be at its path.
-fn finder(pid: i64) -> bool {
+pub(super) fn finder(pid: i64) -> bool {
     app_of(pid).is_ok_and(|a| a == Path::new("/System/Library/CoreServices/Finder.app"))
 }
 

@@ -29,6 +29,8 @@ pub(super) fn act(
     let target =
         (args["element_token"].as_str()).and_then(|t| t.rsplit(':').next()?.parse::<u64>().ok());
     let mut args = args;
+    // Ours, not the driver's: whether the drag is meant to drop something (shot.rs).
+    let drop = (args.as_object_mut()).and_then(|a| a.remove("drop")) == Some(Value::Bool(true));
     // A run's step reads nothing after it, so it needn't wait for a window to show.
     if s.batch && name != "drag" {
         args["post_action_wait"] = "none".into();
@@ -68,9 +70,9 @@ pub(super) fn act(
         Ok(Err(why)) => return Err(refuse(&cap(&format!("{line}: failed. {}", ours(&why))))),
         Ok(Ok(done)) => done,
     };
-    // A background drag drops only through a macOS drag-and-drop session: without one, a file
-    // wasn't moved, whatever the window shows [D129].
-    let undropped = name == "drag" && done["drag_session"] != true && done["effect"] != "refused";
+    // A background drag drops only through a macOS drag-and-drop session: without one, the file
+    // it meant to drop wasn't moved, whatever the window shows [D129].
+    let undropped = drop && done["drag_session"] != true && done["effect"] != "refused";
     if s.batch {
         return match done["effect"].as_str() {
             Some(e @ ("refused" | "partial")) => Err(refuse(&format!(

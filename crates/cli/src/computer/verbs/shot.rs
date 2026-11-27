@@ -1,6 +1,7 @@
 //! A picture of one window, its hash against the last so a stale one never passes as fresh, and
 //! a drag by its pixels [D2032].
 
+use super::typing::finder;
 use super::{Sess, call, refuse};
 use brigadier_core as core;
 use serde_json::{Value, json};
@@ -44,8 +45,10 @@ pub(super) fn drag(
         )
     };
     let ((fx, fy), (tx, ty)) = (at(a), at(b));
+    // A file dragged in Finder means a drop; a pane's divider or a slider means none [D129].
+    let drop = (s.controls.iter()).any(|c| c.n == from && c.cell) && finder(s.pid);
     Ok(
-        json!({"pid": s.pid, "window_id": s.window, "from_x": fx, "from_y": fy, "to_x": tx, "to_y": ty, "session": me}),
+        json!({"pid": s.pid, "window_id": s.window, "from_x": fx, "from_y": fy, "to_x": tx, "to_y": ty, "session": me, "drop": drop}),
     )
 }
 
