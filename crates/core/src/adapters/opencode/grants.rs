@@ -223,7 +223,8 @@ pub(super) fn inside(rules: &Value, dir: &str, writes: &[String], ask: &Value) -
 
 /// The words of a command the path rules judge. The brief or message of a plain `brigadier start` or
 /// `send` (no `cd`, no shell around it) is prose, not a path: its words as the shell passes them,
-/// a positional one with spaces left out unless it starts as a path does; an option's value stays.
+/// a positional one with spaces left out unless it starts as a path does or holds `..`; an option's
+/// value stays.
 fn words(r: &str) -> Vec<String> {
     let agent = crate::agent::call(r)
         .then(|| crate::agent::plain_words(r))
@@ -239,7 +240,8 @@ fn words(r: &str) -> Vec<String> {
                 let prose = i > 1
                     && !w[i - 1].starts_with('-')
                     && w[i].contains(char::is_whitespace)
-                    && !w[i].starts_with(['/', '~', '.', '-']);
+                    && !w[i].starts_with(['/', '~', '.', '-'])
+                    && !w[i].contains("..");
                 !prose
             })
             .map(|i| w[i].clone())
@@ -303,4 +305,3 @@ fn matches(pattern: &str, value: &str) -> bool {
     let (p, v): (Vec<char>, Vec<char>) = (pattern.chars().collect(), value.chars().collect());
     go(&p, &v) || pattern.strip_suffix(" *").is_some_and(|bare| bare == value)
 }
-
