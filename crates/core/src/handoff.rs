@@ -8,7 +8,6 @@ use crate::archive::{self, Entry};
 use crate::{Spec, fold::Fold};
 use serde_json::Value;
 use std::io;
-use std::process::Command;
 
 pub mod check;
 pub mod estimate;
@@ -18,6 +17,8 @@ mod records;
 mod room;
 pub use room::remember;
 mod skills;
+mod text;
+use text::{fill, git, head, tail};
 
 /// Each section's most, in characters (about four to a token), in reading order [w31].
 const OPEN: usize = 2_000;
@@ -27,48 +28,6 @@ const EXCHANGE: usize = 6_000;
 const FILES: usize = 3_000;
 /// The most of a `!` command's report among the user's words.
 const SHELL: usize = 600;
-
-/// The first `max` characters, on a character boundary, marked where cut.
-fn head(s: &str, max: usize) -> String {
-    match s.char_indices().nth(max) {
-        Some((at, _)) => format!("{}…", &s[..at]),
-        None => s.to_string(),
-    }
-}
-
-/// The last `max` bytes, on a character boundary.
-fn tail(s: &str, max: usize) -> &str {
-    let mut at = s.len().saturating_sub(max);
-    while !s.is_char_boundary(at) {
-        at += 1;
-    }
-    &s[at..]
-}
-
-/// Lines added while they fit `max`; a last line says how many didn't.
-fn fill(lines: impl IntoIterator<Item = String>, max: usize, more: &str) -> String {
-    let (mut out, mut left) = (String::new(), 0);
-    for line in lines {
-        if left > 0 || out.len() + line.len() > max {
-            left += 1;
-        } else {
-            out += &line;
-        }
-    }
-    if left > 0 {
-        out += &format!("({left} more: {more})\n");
-    }
-    out
-}
-
-/// A git command's output in the session's folder; empty outside a repository.
-fn git(cwd: &str, args: &[&str]) -> String {
-    let out = Command::new("git").arg("-C").arg(cwd).args(args).output();
-    out.ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim_end().to_string())
-        .unwrap_or_default()
-}
 
 /// What a session's past holds for its hand-off: its entries, its user's answers, where each of
 /// its conversations began, and whether the user stopped a turn since their last message, or
