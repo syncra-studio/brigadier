@@ -106,6 +106,11 @@ fn main() -> io::Result<()> {
     for key in [brigadier_core::agent::SESSION, brigadier_core::agent::GRANT] {
         unsafe { std::env::remove_var(key) };
     }
+    // The git it runs itself takes Windows' long paths too.
+    #[cfg(windows)]
+    for (key, value) in brigadier_core::adapters::setup::long_paths() {
+        unsafe { std::env::set_var(key, value) };
+    }
     // Before the data folder: an ignored argument started a daemon replacing the live one [D950].
     let args: Vec<String> = std::env::args().skip(1).collect();
     let usage = "usage: brigadierd [--install | --version | --help]";

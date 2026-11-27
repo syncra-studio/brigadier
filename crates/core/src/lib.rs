@@ -468,12 +468,8 @@ pub fn cli_version(spec: &Spec, a: &dyn adapters::Adapter) -> String {
         .and_then(|m| m.modified())
         .map(|t| format!("{t:?}"))
         .unwrap_or_default();
-    let cache = spec
-        .dir
-        .parent()
-        .and_then(Path::parent)
-        .map(|d| d.join("versions.json"))
-        .unwrap_or_default();
+    let cache = (spec.dir.parent().and_then(Path::parent)).map(|d| d.join("versions.json"));
+    let cache = cache.unwrap_or_default();
     let mut map: BTreeMap<String, (String, String)> = fs::read(&cache)
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
@@ -488,6 +484,7 @@ pub fn cli_version(spec: &Spec, a: &dyn adapters::Adapter) -> String {
     command
         .arg("--version")
         .env_clear()
+        .envs(adapters::setup::system_env())
         .env("HOME", adapters::home_path(""));
     let Ok(out) = adapters::setup::run(&mut command, VERSION_SECS) else {
         return String::new();

@@ -121,7 +121,7 @@ fn spawn(
     let env: serde_json::Map<String, Value> = env.into_iter().map(|(k, v)| (k, v.into())).collect();
     Ok(core::create(data, &run).and_then(|run| {
         owner::ensure(data, &run)?;
-        let req = json!({"op": "spawn", "argv": [shell, "-l", "-c", line], "env": env, "cwd": run.cwd, "pty": false, "backend": "shell"});
+        let req = json!({"op": "spawn", "argv": core::adapters::setup::shell_argv(Some(line)), "env": env, "cwd": run.cwd, "pty": false, "backend": "shell"});
         owner::call(data, &run.id, req)
     }))
 }

@@ -10,7 +10,9 @@ pub fn shell_step(command: &str) -> (&'static str, String) {
     // The thread's own `brigadier start|wait|queue|send|stop` is no row: its start, message or end has its own, as
     // in the old thread [D47, D3044].
     let mut call = command.split_whitespace();
-    if call.next().is_some_and(|w| basename(w) == "brigadier")
+    if call
+        .next()
+        .is_some_and(|w| basename(w).trim_end_matches(".exe") == "brigadier")
         && call
             .next()
             .is_some_and(|sub| matches!(sub, "start" | "wait" | "queue" | "send" | "stop"))
@@ -319,19 +321,21 @@ fn pattern(args: &[String]) -> Option<&str> {
     None
 }
 
-/// `/bin/zsh -lc 'wc -l a.py'` and `cd /tmp/x && wc -l a.py` → `wc -l a.py`.
+/// `/bin/zsh -lc 'wc -l a.py'`, `powershell.exe -NoProfile -Command "wc -l a.py"` and
+/// `cd /tmp/x && wc -l a.py` → `wc -l a.py`.
 pub fn unwrap_shell(command: &str) -> String {
     let mut c = command.trim().to_string();
-    if let Some((program, rest)) = c.split_once(char::is_whitespace)
-        && matches!(basename(program), "sh" | "bash" | "zsh")
-        && let Some(body) = rest
-            .trim_start()
-            .strip_prefix("-lc")
-            .or_else(|| rest.trim_start().strip_prefix("-c"))
-            .filter(|b| b.starts_with(char::is_whitespace))
-    {
-        // The script is the shell's next word, its quotes undone as the shell would.
-        c = words(body).into_iter().next().unwrap_or_default();
+    if let Some((posix, body)) = script(&c) {
+        // A POSIX shell's script is its next word, its quotes undone as the shell would; PowerShell's
+        // and cmd's is the rest, one pair of quotes around it undone.
+        let body = body.trim();
+        let quoted = (body.chars().next()).filter(|&q| body.len() > 1 && body.ends_with(q));
+        c = match (posix, quoted) {
+            (true, _) => words(body).into_iter().next().unwrap_or_default(),
+            (false, Some('\'')) => body[1..body.len() - 1].replace("''", "'"),
+            (false, Some('"')) => body[1..body.len() - 1].replace("\\\"", "\""),
+            (false, _) => body.to_string(),
+        };
     }
     let mut c = c.trim();
     while let Some(rest) = c.strip_prefix("cd ") {
@@ -346,6 +350,29 @@ pub fn unwrap_shell(command: &str) -> String {
         }
     }
     c.to_string()
+}
+
+/// The script a shell runs: (whether the shell is a POSIX one, what follows its `-c`, `-lc`,
+/// `-Command` or `/c`), past other flags before it. Its program may be a quoted Windows path.
+fn script(command: &str) -> Option<(bool, &str)> {
+    let (program, mut rest) = match command.strip_prefix('"') {
+        Some(quoted) => quoted.split_once('"')?,
+        None => command.split_once(char::is_whitespace)?,
+    };
+    let name = basename(program).to_ascii_lowercase();
+    let posix = match name.strip_suffix(".exe").unwrap_or(&name) {
+        "sh" | "bash" | "zsh" => true,
+        "powershell" | "pwsh" | "cmd" => false,
+        _ => return None,
+    };
+    loop {
+        let (flag, after) = rest.trim_start().split_once(char::is_whitespace)?;
+        match flag.to_ascii_lowercase().as_str() {
+            "-c" | "-lc" | "-command" | "/c" => return Some((posix, after)),
+            f if f.starts_with(['-', '/']) => rest = after,
+            _ => return None,
+        }
+    }
 }
 
 /// A simple command's words, quotes and backslashes undone as the shell does; an unclosed quote
@@ -379,8 +406,8 @@ fn words(command: &str) -> Vec<String> {
 }
 
 fn basename(path: &str) -> &str {
-    path.trim_end_matches('/')
-        .rsplit('/')
+    path.trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
         .next()
         .unwrap_or(path)
 }

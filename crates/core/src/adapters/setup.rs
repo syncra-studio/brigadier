@@ -18,8 +18,17 @@ pub struct Login {
 }
 
 static LOGIN: Mutex<Option<Login>> = Mutex::new(None);
+#[cfg(unix)]
 const SYSTEM_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
+#[cfg(unix)]
 const MARK: &str = "__brigadier_env__";
+
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+use windows::{exe_in, is_exe};
+#[cfg(windows)]
+pub use windows::{long_paths, powershell, refresh, shell, system_env};
 
 /// The login shell's environment, read once and kept until `refresh`.
 pub fn login() -> Login {
@@ -30,6 +39,7 @@ pub fn login() -> Login {
 }
 
 /// The user's shell: `$SHELL`, else the system's default, zsh on macOS, bash then sh on Linux.
+#[cfg(unix)]
 pub fn shell() -> String {
     let fallback = match cfg!(target_os = "linux") {
         true if !std::path::Path::new("/bin/bash").exists() => "/bin/sh",
@@ -41,8 +51,40 @@ pub fn shell() -> String {
         .unwrap_or_else(|| fallback.into())
 }
 
+/// The user's shell as a terminal starts it, or as it runs `line` and exits, its profile loaded.
+pub fn shell_argv(line: Option<&str>) -> Vec<String> {
+    let (start, run) = match cfg!(windows) {
+        true => ("-NoLogo", "-Command"),
+        false => ("-l", "-c"),
+    };
+    let mut argv = vec![shell(), start.to_string()];
+    argv.extend(
+        line.into_iter()
+            .flat_map(|l| [run.to_string(), l.to_string()]),
+    );
+    argv
+}
+
+/// How an agent's install line runs: bash, its pipes failing it; on Windows its own PowerShell,
+/// which runs a downloaded script only past its policy.
+pub fn install_argv(line: &str) -> Vec<String> {
+    #[cfg(unix)]
+    let argv = ["/bin/bash", "-c", &format!("set -o pipefail; {line}")];
+    #[cfg(windows)]
+    let argv = [
+        &powershell(),
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        line,
+    ];
+    argv.map(String::from).to_vec()
+}
+
 /// Reads the login shell's environment again (an install may have changed it). A shell that
 /// fails or hangs leaves the system PATH and no variables.
+#[cfg(unix)]
 pub fn refresh() -> Login {
     let shell = shell();
     let mut command = Command::new(shell);
@@ -93,58 +135,6 @@ fn exe_in(dir: &Path, bin: &str) -> Option<PathBuf> {
     is_exe(&p).then_some(p)
 }
 
-/// `bin` in `dir`, as given or with one of PATHEXT's extensions. An npm `.cmd` shim is the
-/// program it starts where that's an exe of the package's: Windows runs a `.cmd` through cmd, which
-/// refuses an argument with a line break, as a prompt has.
-#[cfg(windows)]
-fn exe_in(dir: &Path, bin: &str) -> Option<PathBuf> {
-    let found = brigadier_frames::procs::find(bin, Some(dir.to_str()?), "")?;
-    let shim = found
-        .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("cmd"));
-    Some(match shim {
-        true => shim_exe(&found, bin).unwrap_or(found),
-        false => found,
-    })
-}
-
-/// The exe an npm shim starts: its target itself, or the first `<bin>.exe` in the target's package.
-/// shortcut: a package whose program is a script alone keeps its shim; resolve node plus the
-/// script if one shows up.
-#[cfg(windows)]
-fn shim_exe(shim: &Path, bin: &str) -> Option<PathBuf> {
-    let text = std::fs::read_to_string(shim).ok()?;
-    let rel = text.split('"').find_map(|w| w.strip_prefix(r"%dp0%\"))?;
-    let target = shim.parent()?.join(rel);
-    if target
-        .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
-    {
-        return target.is_file().then_some(target);
-    }
-    // `node_modules\<package>`, or `\@scope\<package>`, the target's first folders.
-    let parts: Vec<_> = std::path::Path::new(rel).components().collect();
-    let depth = if rel.contains(r"\@") { 3 } else { 2 };
-    let package = parts
-        .iter()
-        .take(depth)
-        .fold(shim.parent()?.to_path_buf(), |p, c| p.join(c));
-    let want = format!("{bin}.exe");
-    let mut dirs = vec![(package, 0)];
-    while let Some((dir, level)) = dirs.pop() {
-        for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
-            let (path, kind) = (e.path(), e.file_type().ok()?);
-            if kind.is_file() && e.file_name().eq_ignore_ascii_case(&want) {
-                return Some(path);
-            }
-            if kind.is_dir() && level < 5 {
-                dirs.push((path, level + 1));
-            }
-        }
-    }
-    None
-}
-
 /// The CLI the user chose for agent `name` in Settings › Providers (`agent_paths` in the settings),
 /// while it is still a program; one that went away falls back to the one found [D2082].
 pub fn chosen(name: &str) -> Option<PathBuf> {
@@ -185,11 +175,6 @@ pub fn runs(exe: &Path, cwd: &Path) -> bool {
         Ok(out) => out.status.success(),
         Err(e) => e.starts_with("timed out"),
     }
-}
-
-#[cfg(windows)]
-fn is_exe(p: &Path) -> bool {
-    p.is_file()
 }
 
 #[cfg(unix)]
@@ -399,6 +384,15 @@ pub fn newer(latest: &str, current: &str) -> bool {
     matches!((parts(latest), parts(current)), (Some(l), Some(c)) if l > c)
 }
 
+/// Windows' own variables a child needs; none elsewhere.
+#[cfg(unix)]
+pub fn system_env() -> Vec<(String, String)> {
+    Vec::new()
+}
+
+/// PATH's separator.
+const SEP: char = if cfg!(windows) { ';' } else { ':' };
+
 /// The environment every child starts from, the same for a session, a status check and a sign-in:
 /// the basics, the login shell's PATH after the CLI's own folder, and the variables `keys` names.
 pub fn base_env(spec: &crate::Spec, exe: &Path, keys: &[String]) -> Vec<(String, String)> {
@@ -411,14 +405,18 @@ pub fn base_env(spec: &crate::Spec, exe: &Path, keys: &[String]) -> Vec<(String,
     let agent = crate::agent::env(spec);
     let bin = agent
         .as_ref()
-        .map_or(String::new(), |(bin, _)| format!("{bin}:"));
+        .map_or(String::new(), |(bin, _)| format!("{bin}{SEP}"));
     let mut env = vec![
         ("HOME".into(), var("HOME")),
         ("USER".into(), var("USER")),
         ("LANG".into(), "en_US.UTF-8".into()),
         ("TMPDIR".into(), var("TMPDIR")),
-        ("PATH".into(), format!("{bin}{dir}:{}", login.path)),
+        ("PATH".into(), format!("{bin}{dir}{SEP}{}", login.path)),
     ];
+    // An empty HOME there is a home of "" to Node; Windows' own variables come instead.
+    #[cfg(windows)]
+    env.retain(|(_, v)| !v.is_empty());
+    env.extend(system_env());
     env.extend(
         keys.iter()
             .filter_map(|k| Some((k.clone(), login.vars.get(k)?.clone()))),

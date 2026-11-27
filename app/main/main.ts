@@ -2,6 +2,7 @@
 // exceptions are what only a main process can do: the native folder picker, staging the window for the
 // first launch's intro (intro.ts), macOS notices and the Dock badge (notices.ts) and the menu bar's item (tray.ts) (D19, D40, D71, D200).
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { copyFile, readdir } from "node:fs/promises";
 import path from "node:path";
@@ -23,14 +24,19 @@ const ORIGIN = `app://${APP_ID}`;
 const uiDir = path.join(__dirname, "../../ui");
 const uiDist = path.join(uiDir, "dist");
 // BRIGADIER_DATA points the app and its daemon at another data folder, as it does for the CLI.
-// Linux keeps it with data, not config (Electron's appData), as the daemon does (proposed).
-const dataRoot = process.platform === "linux" ? process.env.XDG_DATA_HOME || path.join(app.getPath("home"), ".local/share") : app.getPath("appData");
+// Linux keeps it with data, not config (Electron's appData), as the daemon does (proposed); Windows in Local, not Roaming.
+const home = app.getPath("home");
+const roots: Partial<Record<string, string>> = { linux: process.env.XDG_DATA_HOME || path.join(home, ".local/share"), win32: process.env.LOCALAPPDATA || path.join(home, "AppData", "Local") };
+const dataRoot = roots[process.platform] ?? app.getPath("appData");
 const dataDir = process.env.BRIGADIER_DATA ?? path.join(dataRoot, APP_NAME);
-const socketPath = path.join(dataDir, "daemon.sock");
+// Windows' daemon listens on a pipe named for the data folder as given, its sha256's first 16 digits [D172].
+const pipe = `\\\\.\\pipe\\brigadier-${createHash("sha256").update(dataDir).digest("hex").slice(0, 16)}-daemon`;
+const socketPath = process.platform === "win32" ? pipe : path.join(dataDir, "daemon.sock");
 // Packaged, the bundle's daemon installs its build outside the bundle and execs it there [D40].
+const exe = process.platform === "win32" ? ".exe" : "";
 const [daemonPath, daemonArgs] = app.isPackaged
-  ? [path.join(process.resourcesPath, "bin/brigadierd"), ["--install"]]
-  : [path.join(__dirname, "../../../target/debug/brigadierd"), []];
+  ? [path.join(process.resourcesPath, `bin/brigadierd${exe}`), ["--install"]]
+  : [path.join(__dirname, `../../../target/debug/brigadierd${exe}`), []];
 
 const theme = readFileSync(path.join(uiDir, "src/theme.css"), "utf8");
 const themeBackground = /--color-background:\s*([^;]+);/.exec(theme)![1];
@@ -75,7 +81,7 @@ function panel(): typeof addon {
 const warmFolderPanel = () => void setTimeout(panel, 1500);
 
 function startDaemon(): void {
-  const daemon = spawn(daemonPath, daemonArgs, { detached: true, stdio: "ignore" });
+  const daemon = spawn(daemonPath, daemonArgs, { detached: true, stdio: "ignore", windowsHide: true });
   daemon.once("error", (error) => console.error("Could not start the daemon:", error));
   daemon.unref();
 }

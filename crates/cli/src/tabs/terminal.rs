@@ -91,7 +91,8 @@ fn start(
     // What it printed before (a restart's earlier shell), when a line is to be typed.
     let dir = core::session_dir(data, &id);
     let printed = typed.map_or(0, |_| tail(&dir, 1 << 20).len());
-    let reply = crate::setup::in_terminal(data, &spec, vec![shell, "-l".into()], env, cols, rows)?;
+    let argv = core::adapters::setup::shell_argv(None);
+    let reply = crate::setup::in_terminal(data, &spec, argv, env, cols, rows)?;
     if reply["ok"] != true {
         let why = reply["error"].as_str().unwrap_or("The shell didn't start");
         return Err(io::Error::other(why.to_string()));

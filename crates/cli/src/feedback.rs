@@ -440,11 +440,8 @@ fn link(note: &str, details: &str) -> String {
     let title = format!("[Bug]: {}", title(note));
     let body = format!("{note}\n\n{details}");
     let repo = fb::REPO;
-    format!(
-        "https://github.com/{repo}/issues/new?title={}&body={}",
-        encode(&title),
-        encode(&body)
-    )
+    let (title, body) = (encode(&title), encode(&body));
+    format!("https://github.com/{repo}/issues/new?title={title}&body={body}")
 }
 
 /// This app's version, and what goes with feedback: "Brigadier 0.1.0 (build 2100)", "macOS 27.0
@@ -463,23 +460,25 @@ fn details(data: &Path) -> (String, Vec<String>) {
     if let Ok(v) = macos.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()) {
         out.push(format!("macOS {v} ({chip})"));
     }
+    // Windows' `ver` says "Microsoft Windows [Version 10.0.26100.4061]".
+    #[cfg(windows)]
+    if let Ok(o) = Command::new("cmd").args(["/c", "ver"]).output()
+        && let Some(v) = String::from_utf8_lossy(&o.stdout).split("Version ").nth(1)
+    {
+        out.push(format!("Windows {} ({chip})", v.trim().trim_matches(']')));
+    }
     let release = fs::read_to_string("/etc/os-release").unwrap_or_default();
     if let Some(name) = release.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=")) {
         out.push(format!("{} ({chip})", name.trim_matches('"')));
     }
     for a in adapters::all() {
-        let checks: Value = fs::read(data.join("agents").join(format!("{}.json", a.name())))
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
+        let checks = fs::read(data.join("agents").join(format!("{}.json", a.name())));
+        let checks: Value = serde_json::from_slice(&checks.unwrap_or_default()).unwrap_or_default();
         let version = (checks.as_object().into_iter().flat_map(|m| m.values()))
             .find_map(|c| c["version"].as_str().filter(|v| !v.is_empty()));
         // The number alone: CLIs say "2.1.0 (Claude Code)" or "codex-cli 0.50.0".
-        let version = version.map(|v| {
-            (v.split_whitespace())
-                .find(|w| w.starts_with(|c: char| c.is_ascii_digit()))
-                .unwrap_or(v)
-        });
+        let number = |w: &&str| w.starts_with(|c: char| c.is_ascii_digit());
+        let version = version.map(|v| v.split_whitespace().find(number).unwrap_or(v));
         if let Some(v) = version {
             out.push(format!("{} {v}", a.label()));
         }

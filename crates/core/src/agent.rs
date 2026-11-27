@@ -138,13 +138,27 @@ pub fn granted(dir: &Path, token: &str) -> bool {
 /// no approval ever covers them.
 pub fn call(command: &str) -> bool {
     let c = command.trim().trim_end_matches(":*").trim_end_matches(" *");
+    // Windows may run it through PowerShell or cmd, whose escapes, expansions and quotes (curly
+    // ones too) differ: there a backslash, `%`, `@`, `^` or anything past ASCII isn't plain.
+    if cfg!(windows) && c.chars().any(|ch| !ch.is_ascii() || "\\%@^".contains(ch)) {
+        return false;
+    }
     let Some(mut words) = past_cd(c).and_then(plain_words) else {
         return false;
     };
-    // `zsh -lc '<it>'` with nothing after it: its script is checked the same way.
+    // `zsh -lc '<it>'` or `pwsh -Command '<it>'` with nothing after it: its script is checked the
+    // same way.
+    let shell = words
+        .first()
+        .and_then(|w| w.rsplit('/').next())
+        .unwrap_or("");
+    let shell = shell
+        .strip_suffix(".exe")
+        .filter(|_| cfg!(windows))
+        .unwrap_or(shell);
     if words.len() == 3
-        && matches!(words[0].rsplit('/').next(), Some("sh" | "bash" | "zsh"))
-        && matches!(words[1].as_str(), "-c" | "-lc")
+        && (matches!(shell, "sh" | "bash" | "zsh") && matches!(words[1].as_str(), "-c" | "-lc")
+            || cfg!(windows) && matches!(shell, "powershell" | "pwsh") && words[1] == "-Command")
     {
         let Some(inner) = past_cd(&words[2]).and_then(plain_words) else {
             return false;
@@ -156,6 +170,10 @@ pub fn call(command: &str) -> bool {
     // session's level, never this grant [D3023].
     let action = words.iter().skip(2).find(|w| !w.starts_with("--"));
     let mcp_call = words.get(1).is_some_and(|w| w == "mcp") && !action.is_some_and(|a| a == "list");
+    let program = program
+        .strip_suffix(".exe")
+        .filter(|_| cfg!(windows))
+        .unwrap_or(program);
     (program == "brigadier" || program.ends_with("/brigadier"))
         && words.get(1).is_some_and(|w| COMMANDS.contains(&w.as_str()))
         && !mcp_call

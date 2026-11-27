@@ -107,6 +107,7 @@ fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 
 /// A message's `--parts`: the composer's draft as its JSON, chips and files; Null for plain text [D109].
 /// Opens a file, folder or URL with its default app: `open` on macOS, `xdg-open` on Linux.
+#[cfg(unix)]
 pub(crate) fn open(target: impl AsRef<std::ffi::OsStr>) -> io::Result<std::process::ExitStatus> {
     let opener = if cfg!(target_os = "linux") {
         "xdg-open"
@@ -119,6 +120,7 @@ pub(crate) fn open(target: impl AsRef<std::ffi::OsStr>) -> io::Result<std::proce
 /// Shows a file or folder in the file manager, selected in its folder.
 /// shortcut: Linux opens the folder it's in without selecting it; use the file manager's D-Bus
 /// ShowItems if users miss it.
+#[cfg(unix)]
 pub(crate) fn reveal(path: impl AsRef<Path>) -> io::Result<std::process::ExitStatus> {
     let path = path.as_ref();
     if cfg!(target_os = "linux") {
@@ -128,6 +130,35 @@ pub(crate) fn reveal(path: impl AsRef<Path>) -> io::Result<std::process::ExitSta
         .arg("-R")
         .arg(path)
         .status()
+}
+
+/// Opens it with its default app, through the shell as Explorer does.
+#[cfg(windows)]
+pub(crate) fn open(target: impl AsRef<std::ffi::OsStr>) -> io::Result<std::process::ExitStatus> {
+    shell_open(target.as_ref(), None)
+}
+
+/// Explorer, its folder open and it selected.
+#[cfg(windows)]
+pub(crate) fn reveal(path: impl AsRef<Path>) -> io::Result<std::process::ExitStatus> {
+    let select = format!("/select,\"{}\"", path.as_ref().display());
+    shell_open("explorer.exe".as_ref(), Some(select.as_ref()))
+}
+
+#[cfg(windows)]
+fn shell_open(
+    file: &std::ffi::OsStr,
+    args: Option<&std::ffi::OsStr>,
+) -> io::Result<std::process::ExitStatus> {
+    use brigadier_frames::win::wide;
+    use std::os::windows::process::ExitStatusExt;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    let (verb, file, args) = (wide("open"), wide(file), args.map(wide));
+    let args = args.as_ref().map_or(std::ptr::null(), |a| a.as_ptr());
+    let null = std::ptr::null();
+    // SW_SHOWNORMAL; above 32 is success.
+    let done = unsafe { ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), file.as_ptr(), args, null, 1) };
+    Ok(std::process::ExitStatus::from_raw(u32::from(done as isize <= 32)))
 }
 
 pub(crate) fn parts(args: &[String]) -> io::Result<Value> {

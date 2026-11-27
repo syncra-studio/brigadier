@@ -1,5 +1,5 @@
 //! The file facts core reads that each system gives its own way: a file's identity, positional
-//! reads and writes, a write stamp, and a directory junction on Windows.
+//! reads and writes, a write stamp, and on Windows a directory junction and the registry's environment.
 
 use std::fs::{File, Metadata};
 use std::io;
@@ -238,4 +238,48 @@ pub fn junction(target: &Path, link: &Path) -> io::Result<()> {
         let _ = std::fs::remove_dir(link);
     }
     set
+}
+
+/// A variable as new processes get it: (the machine's, the user's), from the registry, expanded.
+/// An install changes these, which a running process's own environment never sees.
+#[cfg(windows)]
+pub fn registry_env(name: &str) -> (Option<String>, Option<String>) {
+    use brigadier_frames::win::wide;
+    use windows_sys::Win32::System::Registry::{
+        HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_EXPAND_SZ, RRF_RT_REG_SZ,
+        RegGetValueW,
+    };
+    let get = |root: HKEY, key: &str| {
+        let (key, value) = (wide(key), wide(name));
+        let mut buf = vec![0u16; 512];
+        // Twice at most: the first call names the size when the buffer is too small.
+        for _ in 0..2 {
+            let mut len = (buf.len() * 2) as u32;
+            let flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ;
+            let ptr = buf.as_mut_ptr().cast();
+            let null = std::ptr::null_mut();
+            let got = unsafe {
+                RegGetValueW(
+                    root,
+                    key.as_ptr(),
+                    value.as_ptr(),
+                    flags,
+                    null,
+                    ptr,
+                    &mut len,
+                )
+            };
+            if got == 0 {
+                let text = String::from_utf16_lossy(&buf[..len as usize / 2]);
+                return Some(text.trim_end_matches('\0').to_string()).filter(|t| !t.is_empty());
+            }
+            buf.resize(len as usize / 2 + 1, 0);
+        }
+        None
+    };
+    let machine = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment";
+    (
+        get(HKEY_LOCAL_MACHINE, machine),
+        get(HKEY_CURRENT_USER, "Environment"),
+    )
 }

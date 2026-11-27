@@ -368,6 +368,7 @@ fn open(data: &Path, me: &str, server: &Value, cwd: &Path) -> Result<Conn, Strin
                         .map_or(cwd.to_path_buf(), PathBuf::from),
                 )
                 .env_clear()
+                .envs(brigadier_core::adapters::setup::system_env())
                 .envs([
                     ("HOME", var("HOME")),
                     ("USER", var("USER")),

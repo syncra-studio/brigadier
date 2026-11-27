@@ -13,6 +13,11 @@ use std::time::Duration;
 use std::{env, process};
 
 fn main() {
+    // The git it runs itself takes Windows' long paths too; no thread runs yet.
+    #[cfg(windows)]
+    for (key, value) in brigadier_core::adapters::setup::long_paths() {
+        unsafe { env::set_var(key, value) };
+    }
     let args: Vec<String> = env::args().skip(1).collect();
     let data = brigadier_core::data_dir();
     // An agent's helper process (an adapter's channel to its CLI's server), not a command. Only a

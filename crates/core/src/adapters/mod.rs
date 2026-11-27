@@ -387,7 +387,8 @@ pub fn get(name: &str) -> Option<&'static dyn Adapter> {
 }
 
 pub fn home_path(rest: &str) -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(rest)
+    // HOME, else the account's; on Windows USERPROFILE, which Windows sets and HOME it doesn't.
+    std::env::home_dir().unwrap_or_default().join(rest)
 }
 
 /// Text of a JSON line's field, or empty.

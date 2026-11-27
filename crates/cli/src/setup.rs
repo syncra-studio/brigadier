@@ -435,13 +435,9 @@ pub(crate) fn start(
         let line = a
             .install()
             .ok_or_else(|| io::Error::other("no installer"))?;
-        let shell = Path::new("/bin/bash");
-        let argv = vec![
-            shell.display().to_string(),
-            "-c".into(),
-            format!("set -o pipefail; {line}"),
-        ];
-        (argv, adapters::base_env(&spec, shell, &[]))
+        let argv = adapters::setup::install_argv(line);
+        let env = adapters::base_env(&spec, Path::new(&argv[0]), &[]);
+        (argv, env)
     };
     in_terminal(data, &spec, argv, env, cols, rows)
 }
