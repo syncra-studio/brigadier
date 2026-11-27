@@ -68,6 +68,22 @@ pub fn group(procs: &[Proc], pgid: i32, not_before_us: u64) -> Vec<Proc> {
 pub fn descendants(procs: &[Proc], pid: i32) -> Vec<Proc> {
     let mut found = vec![];
     let mut frontier = vec![pid];
+    // Windows never reparents, and MSYS's fork leaves a parent that's gone: such an orphan is still
+    // in its group's job, every member of which descends from the job's leader.
+    if cfg!(windows) && procs.iter().any(|p| p.pid == pid && p.pgid == pid) {
+        let orphan = |p: &Proc| {
+            !procs
+                .iter()
+                .any(|q| q.pid == p.ppid && q.start_us <= p.start_us)
+        };
+        for p in procs
+            .iter()
+            .filter(|p| p.pgid == pid && p.pid != pid && orphan(p))
+        {
+            found.push(*p);
+            frontier.push(p.pid);
+        }
+    }
     while let Some(parent) = frontier.pop() {
         for p in procs.iter().filter(|p| p.ppid == parent) {
             found.push(*p);
