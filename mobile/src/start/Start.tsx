@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ActionSheetIOS, KeyboardAvoidingView, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
-import { EMPTY_DRAFT, plainText } from "../../vendor/brigadier-shared/draft";
+import { type Chip, type Draft, EMPTY_DRAFT, plainText } from "../../vendor/brigadier-shared/draft";
 import { asGroups, type ModelChoice, type ModelGroup, type ModelRow } from "../../vendor/brigadier-shared/session/model";
 import { failure } from "../../vendor/brigadier-shared/session/run";
 import { flagOf, type Going, UNCONFIRMED } from "../../vendor/brigadier-shared/session/uncertain";
@@ -32,6 +32,13 @@ function phoneOp({ op, draft, rev }: Going): string[] {
   return [...out, "--draft", JSON.stringify({ parts: draft.parts, attachmentIds: draft.attachmentIds }), ...(typeof rev === "number" ? ["--draft-rev", String(rev)] : [])];
 }
 
+type Files = { chips: Extract<Chip, { attachmentId: string }>[]; ids: string[] };
+const NO_FILES: Files = { chips: [], ids: [] };
+const filesOf = (draft: Pick<Draft, "parts" | "attachmentIds"> | undefined): Files => ({
+  chips: (draft?.parts ?? []).filter((part): part is Files["chips"][number] => typeof part !== "string" && "attachmentId" in part),
+  ids: draft?.attachmentIds ?? [],
+});
+
 /** A new session's id, made here as the desktop makes it, so the start can be asked again under it. */
 export const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -43,10 +50,17 @@ export function Start({ project, name, onStarted }: { project: string; name: str
   const connected = conn >= 0;
   const [words, setWords] = useState(() => plainText(drafts.draftOf(key)?.parts ?? []));
   const words$ = useRef(words);
-  const put = (next: string) => {
+  // What the field holds beyond its words, kept through edits and sent with it (`--parts`): a draft's files and its
+  // pasted or image chips. A mention reads as its words: the phone's start takes none of a file's.
+  const [files, setFiles] = useState(() => filesOf(drafts.draftOf(key)));
+  const files$ = useRef(files);
+  const put = (next: string, kept = files$.current) => {
     words$.current = next;
+    files$.current = kept;
     setWords(next);
+    setFiles(kept);
   };
+  const draftNow = (): Draft => ({ parts: [...(words$.current ? [words$.current] : []), ...files$.current.chips], attachmentIds: files$.current.ids });
   // A start refused while New chat was closed says why once it opens.
   const [error, setError] = useState<string | null>(() => drafts.givenError(key));
   // The start being signed, as it goes; `fresh`: from the field just now, so a cancel puts its words back there.
@@ -61,7 +75,7 @@ export function Start({ project, name, onStarted }: { project: string; name: str
   const [landed, setLanded] = useState<{ id: string; title: string; error: string } | null>(null);
 
   useEffect(() => {
-    void drafts.loadDraft(run, key).then((saved) => saved && !words$.current.trim() && put(plainText(saved.parts)));
+    void drafts.loadDraft(run, key).then((saved) => saved && !words$.current.trim() && put(plainText(saved.parts), filesOf(saved)));
   }, []);
   // A read or save refused while away goes now, as the session composer does.
   useEffect(() => {
@@ -72,14 +86,15 @@ export function Start({ project, name, onStarted }: { project: string; name: str
     drafts.onGiven(key, (back) => {
       const typed = words$.current;
       const next = typed.trim() ? `${plainText(back.parts)}\n\n${typed}` : plainText(back.parts);
-      put(next);
+      const theirs = filesOf(back);
+      put(next, { chips: [...theirs.chips, ...files$.current.chips], ids: [...new Set([...theirs.ids, ...files$.current.ids])] });
       if (back.error) setError(back.error);
-      return { parts: next ? [next] : [], attachmentIds: [] };
+      return draftNow();
     }),
   );
-  const typed = (next: string) => {
-    put(next);
-    drafts.keepDraft(run, key, { parts: next ? [next] : [], attachmentIds: [] });
+  const typed = (next: string, kept = files$.current) => {
+    put(next, kept);
+    drafts.keepDraft(run, key, draftNow());
   };
 
   // The model: the one picked here, else the project's last session's, else the first an agent offers; only one the
@@ -108,17 +123,18 @@ export function Start({ project, name, onStarted }: { project: string; name: str
 
   const start = () => {
     const message = words$.current.trim();
-    if (!message || !choice) return;
+    const draft = draftNow();
+    const withFiles = draft.attachmentIds.length > 0 || files$.current.chips.length > 0;
+    if ((!message && !withFiles) || !choice) return;
     // The Mac reads words that start with `--` as a flag, so it refuses them.
     if (message.startsWith("--")) return setError("A message can't start with --");
     setError(null);
-    const draft = { parts: [words$.current], attachmentIds: [] };
     const rev = drafts.revOf(key);
     const cid = newId();
-    const op = ["start", sessionId(), "--project", project, "--cid", cid, "--draft", JSON.stringify(draft), "--draft-rev", String(rev), "--text", message, "--backend", choice.provider, "--model", choice.model, ...(choice.effort ? ["--effort", choice.effort] : []), ...(choice.fast ? ["--fast"] : [])];
+    const op = ["start", sessionId(), "--project", project, "--cid", cid, "--draft", JSON.stringify(draft), "--draft-rev", String(rev), "--text", message, ...(withFiles ? ["--parts", JSON.stringify(draft)] : []), "--backend", choice.provider, "--model", choice.model, ...(choice.effort ? ["--effort", choice.effort] : []), ...(choice.fast ? ["--fast"] : [])];
     // Kept before the field empties, so a give-back by any way takes this copy once, and nothing typed since.
     const entry = uncertain.keepGoing(key, { cid, kind: "start", op, draft, rev, at: Date.now() });
-    put("");
+    put("", NO_FILES);
     drafts.keepDraft(run, key, EMPTY_DRAFT);
     setAsking({ entry, fresh: true });
   };
@@ -171,11 +187,20 @@ export function Start({ project, name, onStarted }: { project: string; name: str
     });
   };
 
-  const ready = connected && !!choice && words.trim() !== "";
+  const ready = connected && !!choice && (words.trim() !== "" || files.ids.length + files.chips.length > 0);
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: color.background }} behavior="padding" keyboardVerticalOffset={header}>
       <SafeAreaView edges={["bottom"]} style={st.page}>
         <Text style={st.muted}>New chat in {name}</Text>
+        {files.ids.length + files.chips.length > 0 && (
+          <Text style={st.muted}>
+            {(() => {
+              const n = new Set([...files.ids, ...files.chips.map((chip) => ("attachmentId" in chip ? chip.attachmentId : ""))]).size;
+              return n === 1 ? "1 file goes with it · " : `${n} files go with it · `;
+            })()}
+            <Text style={{ color: color.link }} accessibilityRole="button" onPress={() => typed(words$.current, NO_FILES)}>Remove</Text>
+          </Text>
+        )}
         <View style={st.field}>
           <TextInput style={st.input} multiline autoFocus value={words} onChangeText={typed} placeholder={connected ? "Do anything" : "Not connected"} placeholderTextColor={color.mutedForeground} accessibilityLabel="Message" />
           <View style={st.bar}>

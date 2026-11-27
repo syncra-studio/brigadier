@@ -6,7 +6,8 @@ import type { Draft } from "../../vendor/brigadier-shared/draft";
 import { store } from "../../vendor/brigadier-shared/store";
 import { Fork } from "../fork/Fork";
 import { thread } from "../mac/mac";
-import { Rewind } from "../rewind/Rewind";
+import { macNow } from "../link";
+import { type Lost, lostRewinds, Rewind } from "../rewind/Rewind";
 import { color, text } from "../theme";
 import { Background } from "./Background";
 import { Changes } from "./Changes";
@@ -16,7 +17,7 @@ import { ShellOutput } from "./Shell";
 type Open =
   | { kind: "changes" | "background" | "plan" }
   | { kind: "shell"; cmd: string; command: string }
-  | { kind: "rewind"; cid: string; text: string; draft?: Draft | null }
+  | { kind: "rewind"; cid: string; text: string; draft?: Draft | null; lost?: Lost }
   | { kind: "fork"; at: string };
 /** The sheet open over session `id`'s thread. */
 export const sheet = store<(Open & { id: string }) | null>(null);
@@ -39,8 +40,17 @@ export function SessionMenu({ id }: { id: string }) {
   const rewind = () => {
     const can = new Set(session()?.rewind ?? []);
     const messages = (session()?.items ?? []).flatMap((item) => (item.kind === "message" && item.role === "user" && item.cid && can.has(item.cid) ? [{ ...item, cid: item.cid }] : [])).reverse().slice(0, 8);
-    if (messages.length === 0) return Alert.alert("No message to rewind to yet.");
-    choose(messages.map((item) => [(item.draft?.shell ? `!${item.draft.shell}` : item.text).replace(/\s+/g, " ").slice(0, 60) || "Message", () => open({ kind: "rewind", cid: item.cid, text: item.text, draft: item.draft })]), "Rewind to this message");
+    const label = (text: string, draft?: Draft | null) => (draft?.shell ? `!${draft.shell}` : text).replace(/\s+/g, " ").slice(0, 60) || "Message";
+    // A rewind whose answer was lost first: its message may be gone already.
+    const lost = lostRewinds.get().filter((each) => each.mac === macNow() && each.id === id);
+    if (messages.length + lost.length === 0) return Alert.alert("No message to rewind to yet.");
+    choose(
+      [
+        ...lost.map((each): [string, () => void] => [`Try again: ${label(each.text, each.draft)}`, () => open({ kind: "rewind", cid: each.cid, text: each.text, draft: each.draft, lost: each })]),
+        ...messages.map((item): [string, () => void] => [label(item.text, item.draft), () => open({ kind: "rewind", cid: item.cid, text: item.text, draft: item.draft })]),
+      ],
+      "Rewind to this message",
+    );
   };
   return (
     <Pressable accessibilityRole="button" accessibilityLabel="More" hitSlop={12} onPress={() => choose([["Changes", () => open({ kind: "changes" })], ["Background", () => open({ kind: "background" })], ["Plan", () => open({ kind: "plan" })], ["Fork", fork], ["Rewind", rewind]])}>
@@ -64,7 +74,7 @@ export function Sheets({ id, onOpen }: { id: string; onOpen: (id: string, title:
     case "shell":
       return <ShellOutput key={open.cmd} id={id} cmd={open.cmd} command={open.command} onClose={close} />;
     case "rewind":
-      return <Rewind key={open.cid} id={id} cid={open.cid} text={open.text} draft={open.draft} onClose={close} />;
+      return <Rewind key={open.lost?.op ?? open.cid} id={id} cid={open.cid} text={open.text} draft={open.draft} lost={open.lost} onClose={close} />;
     case "fork":
       return <Fork key={open.at} id={id} at={open.at} onForked={onOpen} onClose={close} />;
   }

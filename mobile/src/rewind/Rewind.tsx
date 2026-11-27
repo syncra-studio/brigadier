@@ -7,6 +7,8 @@ import type { Draft } from "../../vendor/brigadier-shared/draft";
 import { REWIND_CANT } from "../../vendor/brigadier-shared/words";
 import { Button } from "../Button";
 import { forMac, newId } from "../compose/state";
+import { store } from "../../vendor/brigadier-shared/store";
+import { macNow } from "../link";
 import { lists, thread } from "../mac/mac";
 import { color } from "../theme";
 import { Sheet, st } from "../sheets/Sheet";
@@ -31,14 +33,22 @@ function said(reply: Record<string, any>, restore: boolean): string {
   return reply.complete === false ? `Rewound · ${count}, some stayed as they are` : `Rewound · ${count}`;
 }
 
-export function Rewind({ id, cid, text, draft, onClose }: { id: string; cid: string; text: string; draft?: Draft | null; onClose: () => void }) {
+/**
+ * A rewind whose answer was lost, kept per Mac outside the dialog, so the menu offers Try again under its id after a
+ * reconnect, its message gone from the thread or not.
+ */
+export type Lost = { mac: string; id: string; cid: string; op: string; restore: boolean; text: string; draft?: Draft | null };
+export const lostRewinds = store<readonly Lost[]>([]);
+const keepLost = (op: string, each: Lost | null) => lostRewinds.set([...lostRewinds.get().filter((one) => one.op !== op), ...(each ? [each] : [])]);
+
+export function Rewind({ id, cid, text, draft, lost: was, onClose }: { id: string; cid: string; text: string; draft?: Draft | null; lost?: Lost; onClose: () => void }) {
   const { run, drafts } = forMac();
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [restore, setRestore] = useState(false);
   const [busy, setBusy] = useState(false);
   // One id for all of this dialog's tries: a reply lost after the rewind landed is answered as already done.
-  const [op] = useState(newId);
+  const [op] = useState(() => was?.op ?? newId());
   // A restore undoes every turn from here as they are when it runs: a turn starting or ending reads the preview again,
   // and a choice made on the old one is made again.
   const turns = useSyncExternalStore(thread.subscribe, () => {
@@ -59,7 +69,7 @@ export function Rewind({ id, cid, text, draft, onClose }: { id: string; cid: str
   }, [turns, tries]);
   // The choice of a try whose answer was lost: Try again sends it under the same id, preview or none, as Rust answers
   // a rewind already done as done.
-  const [lost, setLost] = useState<boolean | null>(null);
+  const [lost, setLost] = useState<boolean | null>(was?.restore ?? null);
   const go = (restore: boolean) => {
     if (going.current || (!preview && lost === null)) return;
     going.current = true;
@@ -71,11 +81,13 @@ export function Rewind({ id, cid, text, draft, onClose }: { id: string; cid: str
         going.current = false;
         const unknown = reply.error === "closed" || reply.error === "disconnected";
         setLost(unknown ? restore : null);
+        keepLost(op, unknown ? { mac: macNow(), id, cid, op, restore, text, draft } : null);
         if (!unknown) setTries((n) => n + 1);
         return setError(why(reply));
       }
       // The message back in the composer, above what's typed there, its files with it; a `!` command's report as the
       // command. Under the dialog's one id, so it comes back once.
+      keepLost(op, null);
       drafts.takeBack(run, id, { cid: op, parts: draft?.shell ? [`!${draft.shell}`] : (draft?.parts ?? [text]), attachmentIds: draft?.shell ? [] : (draft?.attachmentIds ?? []) });
       setDone({ words: said(reply, restore), redo: restore && reply.restored > 0 });
     });
