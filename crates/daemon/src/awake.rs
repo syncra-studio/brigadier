@@ -7,21 +7,28 @@
 //! On Linux logind holds idle and sleep for `systemd-inhibit`, whose command (`tail --pid`) ends with
 //! the daemon, and the desktop's screensaver holds the display for as long as the daemon's session
 //! bus connection lives; logind drops a dead process's hold, the bus a closed connection's (proposed).
+//!
+//! On Windows a thread of its own holds SetThreadExecutionState's system and display requests; they
+//! go with the thread, and with the daemon however it ends [D157].
 
+#[cfg(not(windows))]
 use std::process::{Child, Command, Stdio};
+#[cfg(not(windows))]
 use std::time::{Duration, Instant};
+#[cfg(not(windows))]
 use std::{process, thread};
 
+#[cfg(not(windows))]
 #[derive(Default)]
 pub struct Awake(Option<Child>, Screen);
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
 type Screen = ();
 /// The display's hold: the connection the screensaver gave its cookie to, once tried while held.
 #[cfg(target_os = "linux")]
 type Screen = Option<Option<zbus::Connection>>;
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
 fn hold() -> Command {
     let mut c = Command::new("/usr/bin/caffeinate");
     c.args(["-d", "-i", "-s", "-w", &process::id().to_string()]);
@@ -49,8 +56,9 @@ fn hold() -> Command {
 }
 
 /// Whether the system lists the hold `pid` keeps.
+#[cfg(not(windows))]
 fn listed(pid: u32) -> bool {
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     let (list, mine) = (
         Command::new("/usr/bin/pmset")
             .args(["-g", "assertions"])
@@ -65,7 +73,7 @@ fn listed(pid: u32) -> bool {
     list.is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains(&mine))
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
 fn screen(_: &mut Screen, _: bool) {}
 
 /// Holds the display through the screensaver's Inhibit, GNOME's session manager's where there's none
@@ -110,6 +118,39 @@ fn screen(held: &mut Screen, on: bool) {
     );
 }
 
+#[cfg(windows)]
+#[derive(Default)]
+pub struct Awake(Option<std::sync::mpsc::Sender<()>>);
+
+#[cfg(windows)]
+impl Awake {
+    /// Holds or lets go: the holding thread ends once its sender goes.
+    pub fn set(&mut self, on: bool) {
+        use windows_sys::Win32::System::Power::{
+            ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED, SetThreadExecutionState,
+        };
+        if !on || self.0.is_some() {
+            self.0 = self.0.take().filter(|_| on);
+            return;
+        }
+        let (held, until) = std::sync::mpsc::channel::<()>();
+        std::thread::spawn(move || {
+            unsafe {
+                SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED)
+            };
+            let _ = until.recv();
+            unsafe { SetThreadExecutionState(ES_CONTINUOUS) };
+        });
+        self.0 = Some(held);
+    }
+
+    /// Holding takes effect at once here.
+    pub fn hold_confirmed(&mut self) {
+        self.set(true);
+    }
+}
+
+#[cfg(not(windows))]
 impl Awake {
     /// Holds or lets go. A caffeinate that exited on its own is started again.
     pub fn set(&mut self, on: bool) {

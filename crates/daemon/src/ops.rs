@@ -12,7 +12,7 @@ use brigadier_core::check_id;
 use brigadier_frames::wire;
 use serde_json::{Value, json};
 use std::io::{self, Read};
-use std::os::unix::net::UnixStream;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -81,14 +81,14 @@ const ROUTED: [&str; 55] = [
 ];
 
 pub(super) fn serve(
-    mut stream: UnixStream,
+    mut stream: wire::Stream,
     conn: u64,
     state: &Shared,
     data: &Path,
     store: &Arc<Store>,
     phone: Option<super::remote::Device>,
 ) -> io::Result<()> {
-    if wire::peer_uid(&stream)? != unsafe { libc::geteuid() } {
+    if !wire::same_user(&stream)? {
         return Ok(());
     }
     let caller = match phone {

@@ -72,6 +72,11 @@ impl Adapter for Codex {
         // Also its update, run again (learn.chatgpt.com/docs/codex/cli). Without the variable the
         // installer asks "Start Codex now?" on the terminal, and a yes starts Codex inside the
         // install, which fails there and fails the install.
+        #[cfg(windows)]
+        return Some(
+            "$env:CODEX_NON_INTERACTIVE='1'; irm https://chatgpt.com/codex/install.ps1 | iex",
+        );
+        #[cfg(unix)]
         Some("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh")
     }
 

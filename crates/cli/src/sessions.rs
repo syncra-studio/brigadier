@@ -13,7 +13,6 @@ use brigadier_frames::procs;
 use serde_json::{Value, json};
 use std::fs;
 use std::io;
-use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
 mod audit;
@@ -292,7 +291,7 @@ fn size(path: &Path) -> u64 {
         let Ok(meta) = fs::symlink_metadata(&next) else {
             continue;
         };
-        total += meta.blocks() * 512;
+        total += brigadier_core::os::disk_bytes(&meta);
         if meta.is_dir() {
             stack.extend(
                 fs::read_dir(&next)

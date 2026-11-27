@@ -1,11 +1,10 @@
 //! Scripted turn directives for the drills and demos.
 
-use super::{Agent, emit, limited, now, out};
+use super::{Agent, emit, limited, now, out, own_session, sh, sleeper};
 use serde_json::json;
-use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::time::Duration;
-use std::{env, fs, io, process, thread};
+use std::{env, fs, process, thread};
 
 /// The directives that call a tool, each first put to Brigadier's tool hook as a real CLI's
 /// PreToolUse is [repo-merge D92].
@@ -141,7 +140,7 @@ impl Agent {
                 self.tools += 1;
                 let id = format!("tl{}-{}", self.tools, now());
                 emit(json!({"t": "tool", "id": id, "name": "shell", "command": cmd}));
-                let out = Command::new("/bin/sh").arg("-c").arg(&cmd).output();
+                let out = sh().arg("-c").arg(&cmd).output();
                 let (ok, text) = match out {
                     Ok(o) => (o.status.success(), [o.stdout, o.stderr].concat()),
                     Err(e) => (false, e.to_string().into_bytes()),
@@ -199,7 +198,7 @@ impl Agent {
                 let id = format!("tl{}-{}", self.tools, now());
                 let cmd = format!("sleep {n}");
                 emit(json!({"t": "tool", "id": id, "name": "shell", "command": cmd}));
-                let started = Command::new("/bin/sh")
+                let started = sh()
                     .arg("-c")
                     .arg(&cmd)
                     .stdin(Stdio::null())
@@ -214,7 +213,7 @@ impl Agent {
                 let id = format!("tl{}-{}", self.tools, now());
                 let cmd = format!("python3 -m http.server {n} --bind 127.0.0.1");
                 emit(json!({"t": "tool", "id": id, "name": "shell", "command": cmd}));
-                let started = Command::new("/bin/sh")
+                let started = sh()
                     .arg("-c")
                     .arg(&cmd)
                     .stdin(Stdio::null())
@@ -401,26 +400,13 @@ impl Agent {
                 .to_string()
                 .as_bytes()),
             "bg" => drop(
-                Command::new("/bin/sleep")
-                    .arg(n.to_string())
+                sleeper(&n.to_string())
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
                     .spawn(),
             ),
-            "escape" => unsafe {
-                drop(
-                    Command::new("/bin/sleep")
-                        .arg("300")
-                        .stdout(Stdio::null())
-                        .pre_exec(|| {
-                            (libc::setsid() >= 0)
-                                .then_some(())
-                                .ok_or_else(io::Error::last_os_error)
-                        })
-                        .spawn(),
-                );
-            },
+            "escape" => drop(own_session(sleeper("300").stdout(Stdio::null())).spawn()),
             // A shell step that double-forks into a session of its own, as a daemon does (port phase 3).
             "detach" => {
                 self.tools += 1;
@@ -428,17 +414,12 @@ impl Agent {
                 let cmd = r#""$0" hold "$1" </dev/null >/dev/null 2>&1 &"#;
                 emit(json!({"t": "tool", "id": id, "name": "shell", "command": cmd}));
                 let home = env::args().skip_while(|a| a != "--home").nth(1);
-                let mut sh = Command::new("/bin/sh");
+                let mut sh = sh();
                 sh.args(["-c", cmd])
                     .arg(env::current_exe().unwrap_or_default())
                     .arg(home.unwrap_or_default())
                     .stdin(Stdio::null());
-                let setsid = || {
-                    (unsafe { libc::setsid() } >= 0)
-                        .then_some(())
-                        .ok_or_else(io::Error::last_os_error)
-                };
-                let ran = unsafe { sh.pre_exec(setsid) }.status();
+                let ran = own_session(&mut sh).status();
                 emit(json!({"t": "tool_done", "id": id, "ok": ran.is_ok()}));
             }
             "exit" => process::exit(n as i32),

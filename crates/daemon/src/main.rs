@@ -45,10 +45,8 @@ use brigadier_core::{host::accounts, projects};
 use brigadier_frames::{lock_held, take_lock, wire};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
-use std::fs::{self, Permissions};
+use std::fs;
 use std::io::{self, Write};
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::io::AsFd;
 use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
@@ -63,6 +61,10 @@ mod install;
 mod logging;
 mod ops;
 mod prs;
+#[cfg(unix)]
+mod remote;
+#[cfg(windows)]
+#[path = "remote/none.rs"]
 mod remote;
 mod reset;
 mod store;
@@ -129,7 +131,8 @@ fn main() -> io::Result<()> {
     };
     let data = data_dir();
     fs::create_dir_all(&data)?;
-    fs::set_permissions(&data, Permissions::from_mode(0o700))?;
+    #[cfg(unix)]
+    fs::set_permissions(&data, std::os::unix::fs::PermissionsExt::from_mode(0o700))?;
     if install {
         return install::install_and_exec(&data);
     }
@@ -145,7 +148,12 @@ fn main() -> io::Result<()> {
         },
         None => return Ok(()),
     };
-    let mut stderr = fs::File::from(io::stderr().as_fd().try_clone_to_owned()?);
+    #[cfg(unix)]
+    let mut stderr = fs::File::from(std::os::fd::AsFd::as_fd(&io::stderr()).try_clone_to_owned()?);
+    #[cfg(windows)]
+    let mut stderr = fs::File::from(
+        std::os::windows::io::AsHandle::as_handle(&io::stderr()).try_clone_to_owned()?,
+    );
     // Sleep a daemon that died, or a reboot, left disabled for the lid [D333].
     brigadier_core::lid::recover(&data);
     let mut lid = brigadier_core::lid::Lid::default();
@@ -312,12 +320,12 @@ fn replace_older(data: &Path, awake: &mut awake::Awake) -> io::Result<bool> {
 }
 
 /// The pid and build (none before build numbers) of the daemon answering on the socket, if one does.
-fn answering(data: &Path) -> io::Result<Option<(libc::pid_t, Option<u64>)>> {
+fn answering(data: &Path) -> io::Result<Option<(i32, Option<u64>)>> {
     // Nothing answering means a daemon still starting up: leave it be.
     let Ok(mut stream) = wire::connect_socket(&data.join("daemon.sock")) else {
         return Ok(None);
     };
-    if wire::peer_uid(&stream)? != unsafe { libc::geteuid() } {
+    if !wire::same_user(&stream)? {
         return Ok(None);
     }
     // The kernel names the listener, whatever version it is.
@@ -337,10 +345,14 @@ fn answering(data: &Path) -> io::Result<Option<(libc::pid_t, Option<u64>)>> {
 }
 
 /// Stops the daemon `pid`, harder if it doesn't let go of its lock.
-fn stop(data: &Path, pid: libc::pid_t) {
+fn stop(data: &Path, pid: i32) {
     let lock = data.join("daemon.lock");
-    for sig in [libc::SIGTERM, libc::SIGKILL] {
-        unsafe { libc::kill(pid, sig) };
+    let start = brigadier_frames::procs::info(pid).map_or(0, |p| p.start_us);
+    for kill in [false, true] {
+        match kill {
+            true => brigadier_frames::procs::kill_checked(pid, start),
+            false => brigadier_frames::procs::term_checked(pid, start),
+        }
         let deadline = Instant::now() + Duration::from_secs(2);
         while lock_held(&lock) && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(20));

@@ -129,7 +129,7 @@ impl Agent {
     pub fn stopped(&mut self, child: Option<&mut Child>) -> bool {
         if let Some(child) = child {
             for p in procs::descendants(&procs::all(), child.id() as i32) {
-                unsafe { libc::kill(p.pid, libc::SIGKILL) };
+                procs::kill_checked(p.pid, p.start_us);
             }
             let _ = child.kill();
             let _ = child.wait();

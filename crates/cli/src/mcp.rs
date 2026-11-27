@@ -57,7 +57,7 @@ impl Drop for Conn {
         match &mut self.way {
             Way::Pipe { child, .. } => {
                 // Its whole group: an `npx` or shell launcher leaves the server itself behind.
-                unsafe { libc::killpg(child.id() as i32, libc::SIGKILL) };
+                brigadier_frames::spawn::kill_tree(child.id());
                 let _ = child.wait();
             }
             Way::Http { headers, .. } => {
@@ -333,6 +333,7 @@ fn open(data: &Path, me: &str, server: &Value, cwd: &Path) -> Result<Conn, Strin
             let headers = match headers {
                 Some((path, text)) => {
                     let mut f = std::fs::OpenOptions::new();
+                    #[cfg(unix)]
                     std::os::unix::fs::OpenOptionsExt::mode(&mut f, 0o600);
                     let mut file = f
                         .write(true)
@@ -382,8 +383,8 @@ fn open(data: &Path, me: &str, server: &Value, cwd: &Path) -> Result<Conn, Strin
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null());
             // Its own process group, so a Stop of the agent's turn doesn't take it down.
-            std::os::unix::process::CommandExt::process_group(&mut c, 0);
-            let mut child = c.spawn().map_err(|e| format!("{name} didn't start: {e}"))?;
+            let mut child = brigadier_frames::spawn::grouped(&mut c)
+                .map_err(|e| format!("{name} didn't start: {e}"))?;
             let (stdin, stdout) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
             let (tx, lines) = channel();
             thread::spawn(move || {

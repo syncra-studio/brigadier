@@ -12,9 +12,7 @@ use brigadier_core::{check_id, session_dir};
 use brigadier_frames::base64;
 use brigadier_frames::log::{self, Reader};
 use serde_json::{Value, json};
-use std::fs;
 use std::io;
-use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
@@ -82,7 +80,7 @@ pub fn watch(
         frame["watch"] = re.clone();
         out.send(frame.to_string()).is_ok()
     };
-    let inode = |path: &Path| fs::metadata(path).map(|m| m.ino()).ok();
+    let inode = |path: &Path| brigadier_core::os::file_id(path);
     let opened = inode(&log_path);
     let mut reader: Option<Reader> = None;
     let (mut pid, mut spawn) = (None, None);

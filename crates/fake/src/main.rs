@@ -38,6 +38,43 @@ struct Agent {
     took: Option<String>,
 }
 
+/// The shell the fake's steps run in: /bin/sh, or on Windows Git's `sh` on PATH.
+fn sh() -> std::process::Command {
+    std::process::Command::new(if cfg!(windows) { "sh" } else { "/bin/sh" })
+}
+
+/// `sleep secs` as its own process: /bin/sleep, or on Windows Git's through its `sh`.
+fn sleeper(secs: &str) -> std::process::Command {
+    match cfg!(windows) {
+        true => {
+            let mut c = sh();
+            c.args(["-c", &format!("exec sleep {secs}")]);
+            c
+        }
+        false => {
+            let mut c = std::process::Command::new("/bin/sleep");
+            c.arg(secs);
+            c
+        }
+    }
+}
+
+/// `c`, out of its group once it starts: a session of its own, or on Windows out of its group's job.
+fn own_session(c: &mut std::process::Command) -> &mut std::process::Command {
+    #[cfg(unix)]
+    unsafe {
+        std::os::unix::process::CommandExt::pre_exec(c, || {
+            (libc::setsid() >= 0)
+                .then_some(())
+                .ok_or_else(std::io::Error::last_os_error)
+        });
+    }
+    // CREATE_BREAKAWAY_FROM_JOB
+    #[cfg(windows)]
+    std::os::windows::process::CommandExt::creation_flags(c, 0x0100_0000);
+    c
+}
+
 fn now() -> u64 {
     log::now_ms()
 }

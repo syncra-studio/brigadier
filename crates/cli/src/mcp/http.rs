@@ -18,7 +18,7 @@ fn post(
     msg: &Value,
     wait: Duration,
 ) -> Result<Vec<Value>, String> {
-    let mut c = Command::new("/usr/bin/curl");
+    let mut c = Command::new(brigadier_frames::curl());
     c.args([
         "-sS",
         "--suppress-connect-headers",

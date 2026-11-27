@@ -9,6 +9,7 @@ mod store;
 
 use brigadier_core as core;
 use serde_json::Value;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::{fs, io};
@@ -50,6 +51,7 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     let root = data.join("browser");
     let _one = core::projects::lock(&root, "profiles.lock")?;
+    #[cfg(unix)]
     fs::set_permissions(&root, fs::Permissions::from_mode(0o700))?;
     let mut places = profiles::Places::read(data)?;
     if area == "profiles" {

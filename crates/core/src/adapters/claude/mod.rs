@@ -60,6 +60,9 @@ impl Adapter for Claude {
     }
 
     fn install(&self) -> Option<&'static str> {
+        #[cfg(windows)]
+        return Some("irm https://claude.ai/install.ps1 | iex");
+        #[cfg(unix)]
         Some("curl -fsSL https://claude.ai/install.sh | bash")
     }
 

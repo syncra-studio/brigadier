@@ -131,7 +131,7 @@ fn typed(mut args: Vec<String>) -> Vec<String> {
 }
 
 fn host_child() -> bool {
-    let parent = unsafe { libc::getppid() };
+    let parent = procs::info(process::id() as i32).map_or(0, |p| p.ppid);
     // Under no host at all it is no agent's: the daemon's message writer and test prompt [D617].
     procs::hosts_above(process::id() as i32)
         .is_some_and(|h| h.first().is_none_or(|h| h.0 == parent))

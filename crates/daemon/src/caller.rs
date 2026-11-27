@@ -12,9 +12,9 @@
 
 use super::Shared;
 use brigadier_core::agent::{GRANT, SESSION, granted};
+use brigadier_frames::wire::Stream;
 use brigadier_frames::{procs, wire};
 use serde_json::{Value, json};
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,7 +31,7 @@ pub(super) enum Caller {
     Refused(String),
     /// A signed-in phone. Only `remote::bridge` can make its `Device`, and every request it
     /// sends that way has passed `remote::allow`'s table first.
-    Remote(#[expect(dead_code, reason = "read from M3b on")] super::remote::Device),
+    Remote(#[cfg_attr(unix, expect(dead_code, reason = "read from M3b on"))] super::remote::Device),
 }
 
 /// The session id a session folder path names, if it is one of this data folder's.
@@ -44,7 +44,7 @@ fn ours(data: &Path, dir: &str) -> Option<String> {
         .flatten()
 }
 
-pub(super) fn of(stream: &UnixStream, data: &Path) -> Caller {
+pub(super) fn of(stream: &Stream, data: &Path) -> Caller {
     let unknown = || Caller::Refused("Brigadier can't tell who is calling, so it refuses.".into());
     let Ok(pid) = wire::peer_pid(stream) else {
         return unknown();

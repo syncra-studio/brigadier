@@ -16,8 +16,6 @@ use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::os::fd::{AsRawFd, FromRawFd};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -70,11 +68,13 @@ pub fn start(
 ) -> io::Result<i32> {
     let listener = match fd {
         // Close-on-exec again, so no child of this host holds the port past it.
+        #[cfg(unix)]
         Some(fd) => unsafe {
             libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
-            TcpListener::from_raw_fd(fd)
+            std::os::fd::FromRawFd::from_raw_fd(fd)
         },
-        None => TcpListener::bind(("127.0.0.1", 0))?,
+        // Windows has no exec to keep it through.
+        _ => TcpListener::bind(("127.0.0.1", 0))?,
     };
     let port = listener.local_addr()?.port();
     let file = dir.join("plugins").join("proxy.json");
@@ -90,10 +90,7 @@ pub fn start(
     fs::create_dir_all(file.parent().unwrap())?;
     let tmp = file.with_extension("tmp");
     let _ = fs::remove_file(&tmp);
-    fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
+    brigadier_frames::private(fs::OpenOptions::new().write(true).create_new(true))
         .open(&tmp)?
         .write_all(
             json!({"port": port, "secret": secret})
@@ -101,7 +98,10 @@ pub fn start(
                 .as_bytes(),
         )?;
     fs::rename(tmp, file)?;
-    let raw = listener.as_raw_fd();
+    #[cfg(unix)]
+    let raw = std::os::fd::AsRawFd::as_raw_fd(&listener);
+    #[cfg(windows)]
+    let raw = 0;
     let proxy = Arc::new(Proxy {
         dir: dir.into(),
         port,
@@ -233,6 +233,8 @@ impl Proxy {
             out.write_all(text.as_bytes())?;
             // Streams as it comes; a CLI that hangs up ends curl, even while the stream is quiet.
             let (mut peer, pid) = (out.try_clone()?, child.id() as i32);
+            #[cfg(windows)]
+            let start = brigadier_frames::procs::info(pid).map_or(0, |p| p.start_us);
             let gone = thread::spawn(move || {
                 let mut b = [0u8; 256];
                 loop {
@@ -247,7 +249,10 @@ impl Proxy {
                     }
                 }
                 // Not reaped until the wait below, so the pid is still curl's.
-                unsafe { libc::kill(pid, libc::SIGTERM) };
+                #[cfg(unix)]
+                let _ = unsafe { libc::kill(pid, libc::SIGTERM) };
+                #[cfg(windows)]
+                brigadier_frames::procs::kill_checked(pid, start);
             });
             let (mut buf, mut start) = ([0u8; 16 << 10], vec![]);
             loop {
@@ -411,16 +416,13 @@ fn curl(
     body: &[u8],
 ) -> io::Result<(Child, BufReader<ChildStdout>, Vec<String>)> {
     let file = dir.join("plugins").join(format!("h-{}", &random()[..16]));
-    let mut f = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
+    let mut f = brigadier_frames::private(fs::OpenOptions::new().write(true).create_new(true))
         .open(&file)?;
     for (k, v) in forwarded.iter().chain(&up.headers) {
         writeln!(f, "{k}: {v}")?;
     }
     drop(f);
-    let mut c = Command::new("/usr/bin/curl");
+    let mut c = Command::new(brigadier_frames::curl());
     c.args([
         "-sS",
         "--suppress-connect-headers",
@@ -485,11 +487,13 @@ fn curl(
 }
 
 /// The listener's fd, kept open across a move's exec.
+#[cfg(unix)]
 pub fn keep(fd: i32) {
     unsafe { libc::fcntl(fd, libc::F_SETFD, 0) };
 }
 
 /// Closes on exec again, after a move that failed.
+#[cfg(unix)]
 pub fn unkeep(fd: i32) {
     unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
 }

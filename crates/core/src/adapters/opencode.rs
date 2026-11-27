@@ -34,22 +34,13 @@ impl OpenCode {
         let mut env = base_env(spec, &self.exe().unwrap_or_default(), &self.keys());
         // Keep credentials in its normal database; even output missed during a stream drop is
         // session-owned and removed on delete [D35, D89].
-        env.extend([
-            (
-                "XDG_DATA_HOME".into(),
-                spec.dir.join("runtime").display().to_string(),
-            ),
-            (
-                "XDG_STATE_HOME".into(),
-                spec.dir.join("state").display().to_string(),
-            ),
-            (
-                "OPENCODE_DB".into(),
-                home_path(".local/share/opencode/opencode.db")
-                    .display()
-                    .to_string(),
-            ),
-        ]);
+        let db = home_path(".local/share/opencode/opencode.db");
+        let paths = [
+            ("XDG_DATA_HOME", spec.dir.join("runtime")),
+            ("XDG_STATE_HOME", spec.dir.join("state")),
+            ("OPENCODE_DB", db),
+        ];
+        env.extend(paths.map(|(key, path)| (key.into(), path.display().to_string())));
         // The commit style the message writer follows, so the agent's own commits match [D1029], and the `brigadier` line [D2025]:
         // an instructions file in the session's folder, given as inline config, which OpenCode
         // merges with the user's own and loads beside AGENTS.md.
@@ -102,6 +93,10 @@ impl Adapter for OpenCode {
         ("opencode", &[".opencode/bin"])
     }
     fn install(&self) -> Option<&'static str> {
+        // Its docs list npm, Scoop and Chocolatey on Windows; npm is what a Node user has.
+        #[cfg(windows)]
+        return Some("npm install -g opencode-ai");
+        #[cfg(unix)]
         Some("curl -fsSL https://opencode.ai/v2/install | bash")
     }
 

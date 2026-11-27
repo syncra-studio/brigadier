@@ -68,7 +68,7 @@ pub(super) fn held(
     // shortcut: a dead daemon's pid reused by another process reads as live until that one ends.
     let live = match pid == me {
         true => LOOKING.lock().unwrap().contains(wid),
-        false => pid > 0 && unsafe { libc::kill(pid as i32, 0) } == 0,
+        false => pid > 0 && brigadier_frames::procs::alive(pid as i32),
     };
     if live {
         return None;

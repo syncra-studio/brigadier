@@ -97,6 +97,7 @@ s#"/[C]hatGPT\.app/"##
   -e '\#^crates/core/src/adapters/codex/mod\.rs:#{
 s#learn\.[c]hatgpt\.com/docs/codex/cli##
 s#https://[c]hatgpt\.com/codex/install\.sh##
+s#https://[c]hatgpt\.com/codex/install\.ps1##
 s#"[C]hatGPT$##
 s#said\.contains\("[C]hatGPT"\)##
 s#"[C]hatGPT account"##

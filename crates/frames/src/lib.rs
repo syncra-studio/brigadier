@@ -42,6 +42,13 @@ pub fn lock_held(path: &Path) -> bool {
     }
 }
 
+/// Options for a file only its user may read: 0600, or on Windows the profile's own ACL.
+pub fn private(options: &mut OpenOptions) -> &mut OpenOptions {
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(options, 0o600);
+    options
+}
+
 /// The system's own curl: /usr/bin's, or Windows' in System32 (Windows 10 1803 on).
 pub fn curl() -> std::path::PathBuf {
     #[cfg(windows)]

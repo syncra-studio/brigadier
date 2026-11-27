@@ -19,7 +19,7 @@ use brigadier_frames::{lock_held, take_lock, wire};
 use serde_json::Value;
 use std::fs::{self, File};
 use std::io;
-use std::os::unix::fs::symlink;
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 #[cfg(target_os = "macos")]
@@ -63,7 +63,15 @@ pub fn install_and_exec(data: &Path) -> io::Result<()> {
             return Ok(());
         }
     }
-    Err(Command::new(bin.join("current/brigadierd")).exec())
+    #[cfg(unix)]
+    return Err(Command::new(bin.join("current/brigadierd")).exec());
+    // No exec: the daemon starts out of every job around this one, which then ends [D157].
+    #[cfg(windows)]
+    {
+        let build = build_of(&bin.join("current")).unwrap_or(mine);
+        let daemon = bin.join(build.to_string()).join("brigadierd.exe");
+        brigadier_frames::spawn::detached(&mut Command::new(daemon)).map(drop)
+    }
 }
 
 /// Starts the daemon as the data folder's launchd job unless this build or a newer one runs, and
@@ -254,9 +262,18 @@ fn start_unit(data: &Path, bin: &Path) -> io::Result<bool> {
 }
 
 /// The build `current` points at, if its folder holds a daemon.
+#[cfg(unix)]
 fn build_of(current: &Path) -> Option<u32> {
     let build = fs::read_link(current).ok()?.to_str()?.parse().ok()?;
     current.join("brigadierd").exists().then_some(build)
+}
+
+/// On Windows `current` is a file naming the build: symlinks need Developer Mode.
+#[cfg(windows)]
+fn build_of(current: &Path) -> Option<u32> {
+    let build: u32 = fs::read_to_string(current).ok()?.trim().parse().ok()?;
+    let folder = current.with_file_name(build.to_string());
+    folder.join("brigadierd.exe").exists().then_some(build)
 }
 
 fn wait_lock(path: &Path) -> io::Result<File> {
@@ -321,7 +338,8 @@ fn copy(from: &Path, to: &Path) -> io::Result<()> {
 
 fn copy_file(from: &Path, to: &Path) -> io::Result<()> {
     fs::copy(from, to)?;
-    File::open(to)?.sync_all()
+    // Written to: Windows flushes only a file open for writing.
+    fs::OpenOptions::new().write(true).open(to)?.sync_all()
 }
 
 fn put(bin: &Path, here: &Path, build: u32) -> io::Result<()> {
@@ -350,7 +368,10 @@ fn put(bin: &Path, here: &Path, build: u32) -> io::Result<()> {
         fs::rename(&stage, &dest)?;
     }
     let link = bin.join(format!(".current-{}", process::id()));
-    symlink(build.to_string(), &link)?;
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(build.to_string(), &link)?;
+    #[cfg(windows)]
+    fs::write(&link, build.to_string())?;
     fs::rename(&link, bin.join("current"))
 }
 

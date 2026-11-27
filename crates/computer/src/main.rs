@@ -22,6 +22,10 @@ const USAGE: &str =
     "usage: brigadier-computer --data <dir> [--ask accessibility|screenRecording|all]";
 
 fn main() {
+    // Computer use is macOS's alone [D158].
+    if cfg!(not(target_os = "macos")) {
+        fail(&"Computer use works only on macOS.")
+    }
     let args: Vec<String> = env::args().collect();
     let flag = |name: &str| {
         let at = args.iter().position(|a| a == name)?;
@@ -71,9 +75,10 @@ fn main() {
     };
     let private = cursor_off.is_none();
     // Unreaped, the pid stays the driver's until this process exits.
-    let pid = child.id() as libc::pid_t;
+    let pid = child.id() as i32;
+    let start = brigadier_frames::procs::info(pid).map_or(0, |p| p.start_us);
     let end = move || -> ! {
-        unsafe { libc::kill(pid, libc::SIGKILL) };
+        brigadier_frames::procs::kill_checked(pid, start);
         process::exit(0)
     };
 

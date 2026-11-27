@@ -128,6 +128,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "unicode-normalization",
+ "windows-sys",
 ]
 
 [[package]]
@@ -246,6 +247,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "snow",
+ "windows-sys",
  "zbus",
  "zruntime",
 ]

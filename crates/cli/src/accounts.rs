@@ -10,7 +10,6 @@ use brigadier_core::adapters::{self, Adapter, probe_as};
 use brigadier_core::{self as core, SETUP, Spec, account_home};
 use serde_json::{Value, json};
 use std::io;
-use std::os::unix::fs::DirBuilderExt;
 use std::path::Path;
 use std::sync::Mutex;
 use std::{fs, thread};
@@ -295,10 +294,11 @@ fn add(
         .ok_or_else(|| io::Error::other(format!("{} is not installed", a.label())))?;
     let id = format!("a{}", &adapters::uuid()[..8]);
     let home = account_home(data, &id);
-    fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(&home)?;
+    let mut folder = fs::DirBuilder::new();
+    folder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut folder, 0o700);
+    folder.create(&home)?;
     let main = adapters::home_path(acc.home);
     for link in acc.links {
         let target = main.join(link);
@@ -307,7 +307,15 @@ fn add(
             fs::create_dir_all(&target)?;
         }
         if target.exists() {
+            #[cfg(unix)]
             std::os::unix::fs::symlink(&target, home.join(link))?;
+            // A folder by junction, a file by hard link: neither needs Developer Mode. A CLI that
+            // saves a shared file by rename leaves that account its own copy (port.md).
+            #[cfg(windows)]
+            match target.is_dir() {
+                true => brigadier_core::os::junction(&target, &home.join(link))?,
+                false => fs::hard_link(&target, home.join(link))?,
+            }
         }
     }
     {

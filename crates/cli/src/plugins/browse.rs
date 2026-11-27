@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -23,7 +24,7 @@ const ICON_SECS: u64 = 5;
 
 /// One GET through the system's curl, as the rest of Brigadier's requests; `max` bytes at most.
 fn get(url: &str, max: u64, secs: u64) -> Result<Vec<u8>, String> {
-    let mut c = Command::new("/usr/bin/curl");
+    let mut c = Command::new(brigadier_frames::curl());
     c.args([
         "-sSfL",
         "--max-time",
@@ -453,6 +454,7 @@ fn copy(
         let file = to.join(rel);
         fs::create_dir_all(file.parent().unwrap_or(&to))?;
         fs::write(&file, bytes)?;
+        #[cfg(unix)]
         if e["mode"] == "100755" {
             fs::set_permissions(&file, fs::Permissions::from_mode(0o755))?;
         }

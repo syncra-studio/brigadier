@@ -6,7 +6,7 @@ use super::{gh, signed_in};
 use brigadier_core::adapters::setup;
 use serde_json::{Value, json};
 use std::io::{self, BufRead, BufReader};
-use std::os::unix::process::CommandExt;
+
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -65,7 +65,7 @@ fn cancel() -> u64 {
     if let Some(running) = AT_WORK.lock().unwrap().take() {
         // One that ended keeps its outcome; its group may be gone or reused.
         if running.ended.lock().unwrap().is_none() {
-            unsafe { libc::killpg(running.pgid, libc::SIGKILL) };
+            brigadier_frames::spawn::kill_tree(running.pgid as u32);
         }
         running.end(Err(STOPPED.into()));
     }
@@ -89,16 +89,16 @@ fn start() -> io::Result<Value> {
         "--git-protocol",
         "https",
     ];
-    let spawned = Command::new(&gh)
+    let mut command = Command::new(&gh);
+    let spawned = command
         .args(args)
         .env("PATH", setup::login().path)
         // The app opens the page itself (Open GitHub), once the code is shown.
         .env("BROWSER", "true")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .process_group(0)
-        .spawn();
+        .stderr(Stdio::piped());
+    let spawned = brigadier_frames::spawn::grouped(spawned);
     let mut child = match spawned {
         Ok(child) => child,
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
@@ -129,7 +129,7 @@ fn start() -> io::Result<Value> {
         // Held while it checks, so a cancel either sees it here or has already passed it.
         let mut at_work = AT_WORK.lock().unwrap();
         if STARTS.load(Ordering::SeqCst) != mine {
-            unsafe { libc::killpg(pgid, libc::SIGKILL) };
+            brigadier_frames::spawn::kill_tree(pgid as u32);
             let _ = child.wait();
             return Err(io::Error::other(STOPPED));
         }
@@ -151,7 +151,7 @@ fn start() -> io::Result<Value> {
     }
     let cancelled = running.ended.lock().unwrap().is_some();
     if cancelled || code.is_none() {
-        unsafe { libc::killpg(pgid, libc::SIGKILL) };
+        brigadier_frames::spawn::kill_tree(pgid as u32);
         let _ = child.wait();
     }
     if cancelled {
@@ -177,7 +177,7 @@ fn start() -> io::Result<Value> {
                     break Err("Signing in to GitHub didn’t finish. Try again.".into());
                 }
                 Ok(None) if Instant::now() > deadline => {
-                    unsafe { libc::killpg(pgid, libc::SIGKILL) };
+                    brigadier_frames::spawn::kill_tree(pgid as u32);
                     let _ = child.wait();
                     break Err("Signing in to GitHub took too long. Try again.".into());
                 }

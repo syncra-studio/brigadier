@@ -108,9 +108,7 @@ fn reports(dir: &Path, l: &Link, f: &Fold) -> bool {
 
 /// "15:10", or a day or more away "Mon 09:00", as the model picker says when a limit resets.
 pub(crate) fn clock(ms: u64) -> String {
-    let secs = (ms / 1000) as libc::time_t;
-    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
-    unsafe { libc::localtime_r(&secs, &mut tm) };
+    let tm = brigadier_core::os::local_time((ms / 1000) as i64);
     let day = ["Sun ", "Mon ", "Tue ", "Wed ", "Thu ", "Fri ", "Sat "][tm.tm_wday as usize % 7];
     let far = ms >= brigadier_frames::log::now_ms() + 86_400_000;
     format!(

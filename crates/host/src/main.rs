@@ -7,25 +7,37 @@
 //!
 //! An app update replaces this binary on disk. A host that holds no process then re-execs itself
 //! onto the new one (same pid); one with work keeps its old build until the work ends [D60].
+//!
+//! On Windows the host's own job, ended by the kernel when its last handle goes with the host,
+//! stands in for the watchdog. There is no exec: an idle host on an old build exits, and the next
+//! use of the session starts one from `bin/current`, the file naming the build.
 
 mod proxy;
 
 use brigadier_frames::runner::{Groups, Runner};
 use brigadier_frames::{procs, take_lock, wire};
 use serde_json::{Value, json};
+#[cfg(unix)]
 use std::fs::File;
-use std::io::{self, BufRead, Write};
+use std::io;
+#[cfg(unix)]
+use std::io::{BufRead, Write};
+#[cfg(unix)]
 use std::os::fd::{AsRawFd, FromRawFd};
-use std::os::unix::fs::MetadataExt;
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+#[cfg(unix)]
+use std::sync::Mutex;
 use std::time::Duration;
 use std::{env, fs, process, thread};
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().skip(1).collect();
+    #[cfg(unix)]
     if args.first().map(String::as_str) == Some("--watchdog") {
         return watchdog();
     }
@@ -39,8 +51,9 @@ fn main() -> io::Result<()> {
     // A host moving to a new build hands its session lock through exec, still held, so no other
     // host can take the session in between.
     let lock = match args.get(1).and_then(|a| a.strip_prefix("--lock-fd=")) {
+        #[cfg(unix)]
         Some(fd) => adopt(fd.parse().map_err(io::Error::other)?)?,
-        None => match take_lock(&dir.join("owner.lock"))? {
+        _ => match take_lock(&dir.join("owner.lock"))? {
             Some(lock) => lock,
             None => return Ok(()),
         },
@@ -51,13 +64,20 @@ fn main() -> io::Result<()> {
     unsafe {
         libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1)
     };
+    // Everything the session starts sits in this job, so nothing outlives the host [D157].
+    #[cfg(windows)]
+    let _job = brigadier_frames::win::own_job(brigadier_frames::win::HOST, true)?;
     let me = procs::info(process::id() as i32).map_or(0, |p| p.start_us);
     fs::write(
         dir.join("owner.json"),
         json!({"pid": process::id(), "start_us": me, "build": wire::build()}).to_string(),
     )?;
 
+    #[cfg(windows)]
+    let watch = |_: &Groups| {};
+    #[cfg(unix)]
     let dog = Arc::new(Mutex::new(Some(spawn_watchdog(&exe)?)));
+    #[cfg(unix)]
     let watch = {
         let dog = dog.clone();
         move |groups: &Groups| {
@@ -80,6 +100,26 @@ fn main() -> io::Result<()> {
         let runner = runner.clone();
         proxy::start(&dir, proxy_fd, Box::new(move |v| drop(runner.note(v))))?
     };
+    #[cfg(windows)]
+    let _ = proxy;
+    #[cfg(windows)]
+    {
+        let runner = runner.clone();
+        thread::spawn(move || {
+            loop {
+                thread::sleep(Duration::from_secs(1));
+                let now = stamp(&exe);
+                if now.is_none() || now == born {
+                    continue;
+                }
+                // Nothing can start from here on; the session lock goes with the process.
+                if let Some(_op) = runner.retire() {
+                    process::exit(0);
+                }
+            }
+        });
+    }
+    #[cfg(unix)]
     {
         let (runner, fd) = (runner.clone(), lock.as_raw_fd());
         thread::spawn(move || {
@@ -141,6 +181,7 @@ fn main() -> io::Result<()> {
 }
 
 /// The watchdog sits in its own process group, so stopping the agent's groups never hits it.
+#[cfg(unix)]
 fn spawn_watchdog(exe: &Path) -> io::Result<Child> {
     procs::spawn(
         Command::new(exe)
@@ -153,6 +194,7 @@ fn spawn_watchdog(exe: &Path) -> io::Result<Child> {
 }
 
 /// Takes over the session lock a moving host passed through exec, still held.
+#[cfg(unix)]
 fn adopt(fd: i32) -> io::Result<File> {
     if unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) } < 0 {
         return Err(io::Error::last_os_error());
@@ -161,14 +203,23 @@ fn adopt(fd: i32) -> io::Result<File> {
 }
 
 /// The executable file's identity: an update that replaces it changes this.
+#[cfg(unix)]
 fn stamp(exe: &Path) -> Option<(u64, i64, i64)> {
+    use std::os::unix::fs::MetadataExt;
     fs::metadata(exe)
         .ok()
         .map(|m| (m.ino(), m.mtime(), m.mtime_nsec()))
 }
 
+/// The build `bin/current` names, beside this build's own folder; None when run from elsewhere.
+#[cfg(windows)]
+fn stamp(exe: &Path) -> Option<String> {
+    fs::read_to_string(exe.parent()?.parent()?.join("current")).ok()
+}
+
 /// Reads the latest group list from the host. When the host is gone (EOF), stops those groups:
 /// TERM, then KILL a second later. Start times guard against recycled ids.
+#[cfg(unix)]
 fn watchdog() -> io::Result<()> {
     let mut last = String::new();
     for line in io::stdin().lock().lines() {

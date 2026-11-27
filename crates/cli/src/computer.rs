@@ -81,7 +81,10 @@ pub fn helper(conn: u64, out: Sender<String>, pid: i32) {
     {
         let mut link = lock(&HUB.link);
         if link.pid > 0 && link.pid != pid {
-            unsafe { libc::kill(link.pid, libc::SIGTERM) };
+            #[cfg(unix)]
+            unsafe {
+                libc::kill(link.pid, libc::SIGTERM)
+            };
         }
         *link = Link {
             conn,
@@ -318,7 +321,10 @@ fn launch(data: &Path, ask: Option<&str>) -> io::Result<()> {
 fn stop_helper() {
     let mut link = lock(&HUB.link);
     if link.pid > 0 {
-        unsafe { libc::kill(link.pid, libc::SIGTERM) };
+        #[cfg(unix)]
+        unsafe {
+            libc::kill(link.pid, libc::SIGTERM)
+        };
     }
     *link = Link::default();
     HUB.changed.notify_all();

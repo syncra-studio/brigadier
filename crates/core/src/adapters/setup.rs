@@ -93,10 +93,56 @@ fn exe_in(dir: &Path, bin: &str) -> Option<PathBuf> {
     is_exe(&p).then_some(p)
 }
 
-/// `bin` in `dir`, as given or with one of PATHEXT's extensions.
+/// `bin` in `dir`, as given or with one of PATHEXT's extensions. An npm `.cmd` shim is the
+/// program it starts where that's an exe of the package's: Windows runs a `.cmd` through cmd, which
+/// refuses an argument with a line break, as a prompt has.
 #[cfg(windows)]
 fn exe_in(dir: &Path, bin: &str) -> Option<PathBuf> {
-    brigadier_frames::procs::find(bin, Some(dir.to_str()?), "")
+    let found = brigadier_frames::procs::find(bin, Some(dir.to_str()?), "")?;
+    let shim = found
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("cmd"));
+    Some(match shim {
+        true => shim_exe(&found, bin).unwrap_or(found),
+        false => found,
+    })
+}
+
+/// The exe an npm shim starts: its target itself, or the first `<bin>.exe` in the target's package.
+/// shortcut: a package whose program is a script alone keeps its shim; resolve node plus the
+/// script if one shows up.
+#[cfg(windows)]
+fn shim_exe(shim: &Path, bin: &str) -> Option<PathBuf> {
+    let text = std::fs::read_to_string(shim).ok()?;
+    let rel = text.split('"').find_map(|w| w.strip_prefix(r"%dp0%\"))?;
+    let target = shim.parent()?.join(rel);
+    if target
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+    {
+        return target.is_file().then_some(target);
+    }
+    // `node_modules\<package>`, or `\@scope\<package>`, the target's first folders.
+    let parts: Vec<_> = std::path::Path::new(rel).components().collect();
+    let depth = if rel.contains(r"\@") { 3 } else { 2 };
+    let package = parts
+        .iter()
+        .take(depth)
+        .fold(shim.parent()?.to_path_buf(), |p, c| p.join(c));
+    let want = format!("{bin}.exe");
+    let mut dirs = vec![(package, 0)];
+    while let Some((dir, level)) = dirs.pop() {
+        for e in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let (path, kind) = (e.path(), e.file_type().ok()?);
+            if kind.is_file() && e.file_name().eq_ignore_ascii_case(&want) {
+                return Some(path);
+            }
+            if kind.is_dir() && level < 5 {
+                dirs.push((path, level + 1));
+            }
+        }
+    }
+    None
 }
 
 /// The CLI the user chose for agent `name` in Settings › Providers (`agent_paths` in the settings),

@@ -4,7 +4,6 @@ use brigadier_core::fold::Owner;
 use brigadier_core::{Spec, session_dir};
 use brigadier_frames::{lock_held, procs, wire};
 use serde_json::{Value, json};
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -88,16 +87,7 @@ fn spawn_host(data: &Path, dir: &Path, scoped: bool) -> io::Result<()> {
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         // Its own session: no terminal, no signals from whoever started it.
-        unsafe {
-            host.pre_exec(|| {
-                if libc::setsid() < 0 {
-                    Err(io::Error::last_os_error())
-                } else {
-                    Ok(())
-                }
-            })
-        };
-        let mut child = host.spawn()?;
+        let mut child = brigadier_frames::spawn::detached(&mut host)?;
         let (data, dir, at) = (data.to_path_buf(), dir.to_path_buf(), Instant::now());
         thread::spawn(move || {
             // systemd-run fails at once when it can't make the scope, before any host holds the lock.

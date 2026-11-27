@@ -24,6 +24,9 @@ serde_json.workspace = true
 zbus = { version = "=6.5.0", default-features = false, features = ["default-rt"] }
 zruntime = "=0.2.4"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_System_Power"] }
+
 [[bin]]
 name = "brigadierd"
 path = "src/main.rs"

@@ -10,7 +10,7 @@ use brigadier_core::{self as core, message};
 use serde_json::Value;
 use std::fs;
 use std::io;
-use std::os::unix::fs::DirBuilderExt;
+
 use std::path::{Path, PathBuf};
 
 /// A device id: 64 lower-case hex characters.
@@ -123,9 +123,11 @@ fn lent(
             continue;
         }
         // A new chat's folder, made as `core::create` makes it.
-        let step = fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
+        let mut folder = fs::DirBuilder::new();
+        folder.recursive(true);
+        #[cfg(unix)]
+        std::os::unix::fs::DirBuilderExt::mode(&mut folder, 0o700);
+        let step = folder
             .create(&to)
             .and_then(|()| fs::create_dir_all(&sent))
             .and_then(|()| fs::rename(own.join(&id), sent.join(&id)));

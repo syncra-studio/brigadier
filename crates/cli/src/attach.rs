@@ -15,7 +15,7 @@ use brigadier_core::{self as core, adapters, check_id};
 use serde_json::{Value, json};
 use std::fs;
 use std::io;
-use std::os::unix::fs::OpenOptionsExt;
+
 use std::path::{Path, PathBuf};
 
 /// `device`: a paired device's, whose files are its slot's alone, never the Mac's [D51].
@@ -157,7 +157,10 @@ pub fn run(data: &Path, args: &[String], device: Option<&str>) -> io::Result<Val
             // Opened without waiting: a pipe named as an image would hold the read.
             let open = |p| {
                 let mut options = fs::OpenOptions::new();
-                let from = options.read(true).custom_flags(libc::O_NONBLOCK).open(p)?;
+                options.read(true);
+                #[cfg(unix)]
+                std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NONBLOCK);
+                let from = options.open(p)?;
                 Ok((from.metadata()?, from))
             };
             match path.as_ref().map(open) {

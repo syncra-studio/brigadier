@@ -119,7 +119,14 @@ fn check_path(a: &dyn adapters::Adapter, path: &Path) -> io::Result<()> {
     if !meta.is_file() {
         return refuse(format!("{shown} is a folder, not a program."));
     }
-    if std::os::unix::fs::PermissionsExt::mode(&meta.permissions()) & 0o111 == 0 {
+    #[cfg(windows)]
+    let runs = (path.extension()).is_some_and(|e| {
+        let e = format!(".{}", e.to_string_lossy().to_ascii_lowercase());
+        brigadier_frames::procs::pathext().contains(&e)
+    });
+    #[cfg(unix)]
+    let runs = std::os::unix::fs::PermissionsExt::mode(&meta.permissions()) & 0o111 != 0;
+    if !runs {
         return refuse(format!("{shown} isn't a program that can run."));
     }
     let out = adapters::probe(path, &adapters::home_path(""), &[], &["--version"], 10)

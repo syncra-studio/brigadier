@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io;
-use std::os::unix::fs::MetadataExt;
+
 use std::path::{Path, PathBuf};
 
 pub enum Place {
@@ -155,8 +155,7 @@ pub(super) fn hold(path: &Path) -> io::Result<File> {
 }
 
 fn same(path: &Path, lock: &File) -> bool {
-    let ino = |m: io::Result<fs::Metadata>| m.map(|m| m.ino()).ok();
-    ino(fs::metadata(path)).is_some_and(|at| ino(lock.metadata()) == Some(at))
+    core::os::file_id(path).is_some_and(|at| core::os::open_id(lock) == Some(at))
 }
 
 /// Message `cid`'s lock, held till it's dropped. Home's then goes with its file once the message

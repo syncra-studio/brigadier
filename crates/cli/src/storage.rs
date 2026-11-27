@@ -11,7 +11,6 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::io;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread;
@@ -170,10 +169,11 @@ fn size(paths: &[PathBuf], skip: &[PathBuf]) -> Size {
         let Ok(meta) = fs::symlink_metadata(&next) else {
             continue;
         };
-        let bytes = meta.blocks() * 512;
-        if !meta.is_dir() && meta.nlink() > 1 {
-            let new = (0, meta.nlink(), bytes);
-            names.entry((meta.dev(), meta.ino())).or_insert(new).0 += 1;
+        let bytes = brigadier_core::os::disk_bytes(&meta);
+        let (links, id) = brigadier_core::os::names(&meta);
+        if !meta.is_dir() && links > 1 {
+            let new = (0, links, bytes);
+            names.entry(id).or_insert(new).0 += 1;
             continue;
         }
         total += bytes;
@@ -285,20 +285,7 @@ fn list(data: &Path) -> io::Result<Value> {
             chat
         })
         .collect();
-    Ok(json!({"ok": true, "free": disk_free(data), "chats": chats}))
-}
-
-// f_bavail is 32 bits on macOS, 64 on Linux.
-#[allow(clippy::unnecessary_cast)]
-fn disk_free(data: &Path) -> Option<u64> {
-    use std::os::unix::ffi::OsStrExt;
-    let path = std::ffi::CString::new(data.as_os_str().as_bytes()).ok()?;
-    let mut s = std::mem::MaybeUninit::<libc::statvfs>::zeroed();
-    if unsafe { libc::statvfs(path.as_ptr(), s.as_mut_ptr()) } != 0 {
-        return None;
-    }
-    let s = unsafe { s.assume_init() };
-    Some(s.f_bavail as u64 * s.f_frsize)
+    Ok(json!({"ok": true, "free": brigadier_core::os::free_bytes(data), "chats": chats}))
 }
 
 /// Frees `id`'s part of `group`, if it still goes, as an archive or the worker's end would have: the

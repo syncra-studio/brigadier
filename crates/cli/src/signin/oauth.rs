@@ -50,7 +50,7 @@ pub(super) fn fetch(
     kind: Option<&str>,
     body: &str,
 ) -> Result<Reply, String> {
-    let mut c = Command::new("/usr/bin/curl");
+    let mut c = Command::new(brigadier_frames::curl());
     c.args([
         "-sS",
         "--suppress-connect-headers",

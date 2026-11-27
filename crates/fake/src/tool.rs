@@ -3,7 +3,7 @@
 use super::{Agent, emit, ledger, now};
 use serde_json::json;
 use std::fs;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -23,7 +23,7 @@ impl Agent {
         let id = format!("tl{}-{}", self.tools, now());
         self.note(&format!("tool {directive}"));
         emit(json!({"t": "tool", "id": id, "name": directive}));
-        let mut child = match Command::new("/bin/sh")
+        let mut child = match super::sh()
             .arg("-c")
             .arg(cmd)
             .stdin(Stdio::null())
