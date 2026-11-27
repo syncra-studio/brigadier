@@ -41,9 +41,10 @@ pub fn send(
     crate::handoff::remember(spec, f);
     let (led, night) = lead::led(spec, origin, &msg.agent);
     let text = led.as_deref().unwrap_or(msg.agent.as_str());
-    // The user's next turn, or their Resume, goes to the agent they picked; a message into a
+    // The user's next turn or Resume, including a resent brief, uses their pick; a message into a
     // running turn stays with it, the pick waiting for the next [D90, D76].
-    let picking = matches!(origin, "user" | "system")
+    let picking = (matches!(origin, "user" | "system")
+        || (origin.starts_with("peer:") && retry_of.is_some()))
         && backend.is_none()
         && f.picked.is_some()
         && f.turns.is_empty();

@@ -372,8 +372,12 @@ fn conversation(data: &Path, id: &str, title: &str) -> String {
     if check_id(id).is_ok() {
         let _ = crate::rewind::read_active(&session_dir(data, id), |item| {
             let text = item["text"].as_str().unwrap_or("");
+            let origin = item["origin"].as_str().unwrap_or("");
             match item["kind"].as_str() {
-                Some("input") if item["origin"] != "system" => said.push(format!("User: {text}")),
+                Some("input") if let Some(from) = origin.strip_prefix("peer:") => {
+                    said.push(format!("Session {from}: {text}"));
+                }
+                Some("input") if origin != "system" => said.push(format!("User: {text}")),
                 Some("text") => match said.last_mut() {
                     Some(last) if last.starts_with("Assistant: ") => *last += text,
                     _ => said.push(format!("Assistant: {text}")),

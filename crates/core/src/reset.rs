@@ -26,10 +26,11 @@ pub fn reset_due(f: &Fold, accepted: impl FnOnce(&Value) -> bool) -> Option<Valu
     if again && resets <= began {
         return Some(json!({"held": "stuck"}));
     }
-    // A user's message the limit refused before its turn began may or may not be in its CLI's
+    // A request the limit refused before its turn began may or may not be in its CLI's
     // conversation, and nothing proves it isn't: never sent again; only its CLI's own record
     // naming it carries it on, else it waits for the user [D66, D74, D80].
-    let unbegun = last["began"] == false && last["origin"] == "user";
+    let origin = last["origin"].as_str().unwrap_or("");
+    let unbegun = last["began"] == false && (origin == "user" || origin.starts_with("peer:"));
     if (last["delivered"] != true || unbegun) && !accepted(last) {
         let why = if unbegun { "unbegun" } else { "unconfirmed" };
         return Some(json!({"held": why}));

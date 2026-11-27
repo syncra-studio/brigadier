@@ -429,7 +429,7 @@ fn make(data: &Path, pid: &str, r: &Record) -> io::Result<()> {
 }
 
 /// Every message text 4.3 sends goes through here, so wave 3's message payload changes it in one
-/// place: a worker's brief, as the user's (`send`), and a result into its parent (`core::send`).
+/// place: a worker's brief, as its parent's (`send`), and a result into its parent (`core::send`).
 fn say(data: &Path, id: &str, text: &str, cid: &str) -> io::Result<Value> {
     crate::run(data, &["send", id, text, "--cid", cid].map(String::from))
 }

@@ -87,11 +87,12 @@ pub fn switch(
         len = Some(l);
     }
     // The message the CLI refused outright goes again only on proof: its limit, after delivery,
-    // before any work. Anything else is told what happened, never sent the user's words twice.
+    // before any work. Peer requests, including a lead's brief, keep their sender on replay.
+    let last_origin = last["origin"].as_str().unwrap_or("");
     let proof = last["outcome"] == "limited"
         && last["delivered"] == true
         && last["began"] == false
-        && last["origin"] == "user";
+        && (last_origin == "user" || last_origin.starts_with("peer:"));
     let (origin, text) = if fresh {
         match crate::handoff::build(spec, f, why, &last, to.from, to.backend, to.model, "") {
             Ok(t) => ("system", t),
@@ -100,7 +101,7 @@ pub fn switch(
             }
         }
     } else if proof {
-        ("user", last["text"].as_str().unwrap_or("").to_string())
+        (last_origin, last["text"].as_str().unwrap_or("").to_string())
     } else {
         // A worker moved to its job's next model on the same account [D375].
         let same = f.accounts.get(from).map_or("", String::as_str) == to.account;

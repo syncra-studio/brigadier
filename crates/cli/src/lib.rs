@@ -371,14 +371,16 @@ fn send(data: &Path, args: &[String]) -> io::Result<Value> {
     }
     let spec = core::load(data, id).map_err(unsent)?;
     core::message::take(data, &spec.dir, &parts, flag(args, "--from")).map_err(unsent)?;
-    if let Some(reply) = control::reply(data, id, text, &parts, flag(args, "--cid"), None)? {
+    if !has(args, "--retry-of")
+        && let Some(reply) = control::reply(data, id, text, &parts, flag(args, "--cid"), None)?
+    {
         return Ok(reply);
     }
     owner::ensure(data, &spec).map_err(unsent)?;
     let cid = flag(args, "--cid").map_or_else(control::new_cid, String::from);
-    // A block its subagents or workers hold open is still running: as mid-turn [D521].
+    // A held block queues ordinary messages; retries must keep their sender and id [D521].
     let reply = match workers::holding(data, id) {
-        true => json!({"error": "busy: a turn is running"}),
+        true => json!({"ok": false, "error": "busy: a turn is running"}),
         false => control::send(
             data,
             &spec,
@@ -391,9 +393,7 @@ fn send(data: &Path, args: &[String]) -> io::Result<Value> {
             false,
         )?,
     };
-    // Mid-turn, to an agent that takes only a steer then, it waits in the queue for the
-    // next turn under its own id, as the composer's Queue does: delivered once [D54, D324].
-    if reply["error"] != "busy: a turn is running" {
+    if has(args, "--retry-of") || reply["error"] != "busy: a turn is running" {
         return Ok(core::applied(&spec.dir, &cid, reply));
     }
     let mut queued = vec!["queue".into(), id.into(), "add".into(), text.into()];

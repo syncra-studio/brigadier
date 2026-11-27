@@ -142,15 +142,17 @@ pub fn recover(
             let last = f.last.clone().unwrap_or_default();
             let backend = last["backend"].as_str().filter(|b| !b.is_empty());
             let old = last["cid"].as_str().unwrap_or("");
-            let resend = last["never_ran"] == true && last["origin"] == "user";
+            let from = last["origin"].as_str().unwrap_or("");
+            let request = from == "user" || from.starts_with("peer:");
+            let resend = last["never_ran"] == true && request;
             // Stopped before the agent said or did anything for it, and with no ack proving it
-            // took it, the user's message may never have reached it (a stop drops what it hadn't
+            // took it, the request may never have reached it (a stop drops what it hadn't
             // read): it goes with the Resume, so nothing they sent is lost [D82, D154].
             let acked = last["delivered"] == true
                 && adapters::get(backend.unwrap_or(&f.backend)).is_some_and(|a| a.acks());
-            let carried = !resend && last["origin"] == "user" && last["said"] == false && !acked;
+            let carried = !resend && request && last["said"] == false && !acked;
             let (cid, origin, said) = match resend {
-                true => (format!("{old}.r{now}"), "user", "resent"),
+                true => (format!("{old}.r{now}"), from, "resent"),
                 false => (format!("rs{now}"), "system", "continued"),
             };
             // Another agent picked since takes it on, from the hand-off [D90].

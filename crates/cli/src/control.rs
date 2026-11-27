@@ -3,7 +3,7 @@
 //! logs it, writes it and marks it delivered as it does a message; one never proven delivered
 //! stays uncertain and is never sent again by itself [D60, D82].
 
-use crate::{call_fn, child, flag, owner};
+use crate::{attach::book::unsent, call_fn, child, flag, owner};
 use brigadier_core::adapters::{self, Delivery};
 use brigadier_core::fold::{self, Fold};
 use brigadier_core::message::answers::{Answers, answers as answers_of};
@@ -19,8 +19,8 @@ use std::{io, process, thread};
 
 mod given;
 mod level;
+mod origin;
 mod steer;
-use crate::attach::book::unsent;
 pub use given::beside;
 use given::with;
 pub use level::level;
@@ -455,6 +455,7 @@ pub(crate) fn send(
     .map_err(unsent)?;
     let cid = cid.map_or_else(new_cid, String::from);
     let call = crate::attach::book::stalls(call_fn(data, &spec.id));
+    let origin = origin::of(data, spec, &cid, retry_of).map_err(unsent)?;
     let held = crate::workers::with_next(data, &spec.id, Some(&cid), &mut msg);
     let go = || -> io::Result<Value> {
         let f = core::fold(&spec.dir, true)?;
@@ -462,7 +463,7 @@ pub(crate) fn send(
         // A launch tells a session's agent the user's jobs as they are now [D387].
         let spec = &crate::routing::told(data, spec);
         Ok(core::send(
-            spec, &f.fold, running, &call, &cid, "user", &msg, backend, retry_of,
+            spec, &f.fold, running, &call, &cid, &origin, &msg, backend, retry_of,
         ))
     };
     let mut reply = go().map_err(unsent)?;
