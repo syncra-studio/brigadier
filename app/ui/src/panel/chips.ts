@@ -169,11 +169,11 @@ export function setCommentDraft(session: string, draft: CommentDraft | null): vo
   else save();
 }
 
-/** The comment being written on `session`'s diff, saved now, after the chip writes still on their way: a refused new chat's Discard takes them from Rust [C80]. Resolves with the last write's reply. */
+/** The comment being written on `session`'s diff, saved now, after the chip writes still on their way: a refused new chat's Discard takes them from Rust [C80]. Resolves with the comment's save, if any: a read that failed (a session not made yet) is no unsaved write. */
 export function flushComment(session: string): Promise<Record<string, any>> {
   clearTimeout(saving.get(session));
   const draft = drafts.get(session);
-  return draft?.text ? tell(session, ["draft", JSON.stringify(draft)]) : chipsWritten(session);
+  return draft?.text ? tell(session, ["draft", JSON.stringify(draft)]) : chipsWritten(session).then(() => ({}));
 }
 
 /**
