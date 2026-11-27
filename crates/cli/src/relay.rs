@@ -385,6 +385,7 @@ pub(crate) fn sender(e: &core::archive::Entry) -> String {
         "tool" => format!("tool {}", e.who),
         "summary" => format!("summary written by {}", e.who),
         "answer" => format!("answer given by {}, not the user", e.who),
+        "decided" => "decided by Overnight, not the user".into(),
         f => f.into(),
     }
 }

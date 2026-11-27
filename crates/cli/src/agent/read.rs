@@ -176,6 +176,7 @@ fn raw(data: &Path, me: &str, id: &str, at: &str) -> Value {
             "text" => s("text").to_string(),
             "failed" => s("message").to_string(),
             _ if item["event"] == "summary" => s("text").to_string(),
+            _ if let Some(d) = core::archive::decision(item) => d,
             // Only the kinds a read shows: no other record leaves its log, as a launch's argv may
             // hold an MCP server's credentials: no command prints a secret [D2026].
             _ => continue,
@@ -193,7 +194,7 @@ fn raw(data: &Path, me: &str, id: &str, at: &str) -> Value {
     }
     if out.is_empty() {
         return refuse(&format!(
-            "{id}#{at} is no message, step or summary: `brigadier search` gives those."
+            "{id}#{at} is no message, step, summary or decision: `brigadier search` gives those."
         ));
     }
     let dir = core::session_dir(data, me).join("tmp");

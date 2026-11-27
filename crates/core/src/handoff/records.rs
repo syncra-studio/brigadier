@@ -152,15 +152,7 @@ fn answered_by(by: &str) -> &'static str {
 
 /// An Overnight decision's note, in place among the answers, as Overnight's [repo-merge §8].
 pub(super) fn decided(item: &serde_json::Value, at: &str) -> Option<(String, String, String)> {
-    let note = item["kind"] == "note" && item["event"] == "overnight";
-    let d = item["decided"].as_object().filter(|_| note)?;
-    let s = |k: &str| d.get(k).and_then(|v| v.as_str()).unwrap_or("");
-    let text = format!(
-        "{}. Why: {}. The other option: {}",
-        s("title"),
-        s("why"),
-        s("other")
-    );
+    let text = crate::archive::decision(item)?;
     Some((at.into(), text, "decided".into()))
 }
 

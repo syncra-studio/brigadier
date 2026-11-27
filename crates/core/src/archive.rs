@@ -172,7 +172,8 @@ pub fn answer(item: &Value) -> Option<String> {
     Some(text).filter(|t| !t.trim().is_empty())
 }
 
-/// An answer, from the log or a fork's copy, by the reference a hand-off gives it, as the user's entry. Nothing
+/// An answer or an Overnight decision, from the log or a fork's copy, by the reference a hand-off
+/// gives it, as the user's entry or the one who gave it. Nothing
 /// indexes it; only the log keeps it.
 pub fn answered(dir: &Path, at: &str) -> Option<Entry> {
     let mut found = None;
@@ -186,29 +187,40 @@ pub fn answered(dir: &Path, at: &str) -> Option<Entry> {
     found
 }
 
-/// Every answer Overnight, a reviewer or a parent gave for the user, which `read` leaves out of its
-/// entries, under its reference, inherited ones too.
+/// Every answer Overnight, a reviewer or a parent gave for the user, and Overnight's decisions,
+/// which `read` leaves out of its entries, under its reference, inherited ones too.
 pub fn answers_by(dir: &Path) -> Vec<Entry> {
     let mut all = vec![];
     let _ = each(dir, |item, here| {
-        if !item["control"]["by"].is_null() {
+        if !item["control"]["by"].is_null() || item["event"] == "overnight" {
             all.extend(answer_entry(item, here));
         }
     });
     all
 }
 
+/// An Overnight decision's words, if `item` is its note [repo-merge §8].
+pub fn decision(item: &Value) -> Option<String> {
+    let note = item["kind"] == "note" && item["event"] == "overnight";
+    let d = item["decided"].as_object().filter(|_| note)?;
+    let s = |k: &str| d.get(k).and_then(Value::as_str).unwrap_or("");
+    let (title, why, other) = (s("title"), s("why"), s("other"));
+    Some(format!("{title}. Why: {why}. The other option: {other}"))
+}
+
 fn answer_entry(item: &Value, at: String) -> Option<Entry> {
+    // Only the user's own is theirs: Overnight's, a reviewer's or a parent's says so (O50).
+    let by = item["control"]["by"].as_str();
+    let (from, who, text) = match decision(item) {
+        Some(d) => ("decided", "overnight", d),
+        None if by.is_none() => ("user", "", answer(item)?),
+        None => ("answer", by.unwrap_or(""), answer(item)?),
+    };
     Some(Entry {
         at,
-        // Only the user's own is theirs: Overnight's, a reviewer's or a parent's says so (O50).
-        from: if item["control"]["by"].is_null() {
-            "user"
-        } else {
-            "answer"
-        },
-        who: item["control"]["by"].as_str().unwrap_or("").into(),
-        text: answer(item)?,
+        from,
+        who: who.into(),
+        text,
         files: vec![],
         ts: item["ts"].as_u64().unwrap_or(0),
         sent: vec![],
