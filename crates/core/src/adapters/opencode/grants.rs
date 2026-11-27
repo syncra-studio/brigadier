@@ -221,24 +221,28 @@ pub(super) fn inside(rules: &Value, dir: &str, writes: &[String], ask: &Value) -
         })
 }
 
-/// The words of a command the path rules judge. In a plain `brigadier` agent command (no `cd`, no
-/// shell around it), a quoted brief or message is prose, not a path: its words as the shell passes
-/// them, past the program, a multi-word one left out unless it starts as a path does.
+/// The words of a command the path rules judge. The brief or message of a plain `brigadier start` or
+/// `send` (no `cd`, no shell around it) is prose, not a path: its words as the shell passes them,
+/// a positional one with spaces left out unless it starts as a path does; an option's value stays.
 fn words(r: &str) -> Vec<String> {
     let agent = crate::agent::call(r)
         .then(|| crate::agent::plain_words(r))
         .flatten();
-    let ours = |p: &String| p.rsplit('/').next() == Some("brigadier");
-    let pathlike = |w: &str| {
-        w.starts_with(['/', '~', '.'])
-            || w.split_whitespace()
-                .next()
-                .is_some_and(|f| f.contains('/') && f.contains('='))
+    let ours = |w: &[String]| {
+        w.first()
+            .is_some_and(|p| p.rsplit('/').next() == Some("brigadier"))
+            && matches!(w.get(1).map(String::as_str), Some("start" | "send"))
     };
     match agent {
-        Some(w) if w.first().is_some_and(ours) => (w.into_iter().enumerate())
-            .filter(|(i, w)| *i == 0 || !w.contains(char::is_whitespace) || pathlike(w))
-            .map(|(_, w)| w)
+        Some(w) if ours(&w) => (0..w.len())
+            .filter(|&i| {
+                let prose = i > 1
+                    && !w[i - 1].starts_with('-')
+                    && w[i].contains(char::is_whitespace)
+                    && !w[i].starts_with(['/', '~', '.', '-']);
+                !prose
+            })
+            .map(|i| w[i].clone())
             .collect(),
         _ => r.split_whitespace().map(String::from).collect(),
     }
@@ -299,3 +303,4 @@ fn matches(pattern: &str, value: &str) -> bool {
     let (p, v): (Vec<char>, Vec<char>) = (pattern.chars().collect(), value.chars().collect());
     go(&p, &v) || pattern.strip_suffix(" *").is_some_and(|bare| bare == value)
 }
+
