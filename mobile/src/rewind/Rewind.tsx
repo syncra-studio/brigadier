@@ -75,13 +75,15 @@ export function Rewind({ id, cid, text, draft, lost: was, onClose }: { id: strin
     going.current = true;
     setBusy(true);
     setError(null);
+    // The Mac it goes to, kept under that one whatever is connected when its answer comes.
+    const mac = macNow();
     void run(["rewind", id, cid, "--op", op, ...(restore ? ["--restore"] : [])]).then((reply) => {
       setBusy(false);
       if (!reply.ok) {
         going.current = false;
         const unknown = reply.error === "closed" || reply.error === "disconnected";
         setLost(unknown ? restore : null);
-        keepLost(op, unknown ? { mac: macNow(), id, cid, op, restore, text, draft } : null);
+        keepLost(op, unknown ? { mac, id, cid, op, restore, text, draft } : null);
         if (!unknown) setTries((n) => n + 1);
         return setError(why(reply));
       }
@@ -89,7 +91,8 @@ export function Rewind({ id, cid, text, draft, lost: was, onClose }: { id: strin
       // command. Under the dialog's one id, so it comes back once.
       keepLost(op, null);
       drafts.takeBack(run, id, { cid: op, parts: draft?.shell ? [`!${draft.shell}`] : (draft?.parts ?? [text]), attachmentIds: draft?.shell ? [] : (draft?.attachmentIds ?? []) });
-      setDone({ words: said(reply, restore), redo: restore && reply.restored > 0 });
+      // An undo done already (its first answer lost) says no count: Redo stays offered for it.
+      setDone({ words: said(reply, restore), redo: restore && (reply.restored > 0 || reply.already === true) });
     });
   };
   // Rewound: what came of it stays here, with Redo file changes after an undo (the desktop's toast).
@@ -102,6 +105,7 @@ export function Rewind({ id, cid, text, draft, lost: was, onClose }: { id: strin
     );
   }
   const { paths = [], hand = [], leftOut = [], nested = [], stale = [] } = preview ?? {};
+  const chosen = lost ?? restore;
   const big = leftOut.filter((path) => !nested.includes(path));
   const can = paths.length > 0;
   const cant = preview?.why === undefined ? undefined : REWIND_CANT[preview.why];
@@ -118,12 +122,14 @@ export function Rewind({ id, cid, text, draft, lost: was, onClose }: { id: strin
     <Sheet title="Rewind to this message?" onClose={onClose}>
       <Text style={st.body}>The chat goes back to just before this message. Your message returns to the composer.</Text>
       {!preview && !error && <ActivityIndicator color={color.mutedForeground} />}
+      {/* A try whose answer was lost shows its choice, fixed: Try again sends just that. */}
+      {lost !== null && !can && <Text style={st.muted}>{lost ? "Undo the agent's file changes" : "Keep files as they are"}, as chosen before.</Text>}
       {can && (
         <>
-          <Choice on={!restore} label="Keep files as they are" onPress={() => setRestore(false)}>
+          <Choice on={!chosen} label="Keep files as they are" onPress={() => lost === null && setRestore(false)}>
             <Text style={st.muted}>Only the chat goes back.</Text>
           </Choice>
-          <Choice on={restore} label="Undo the agent's file changes" onPress={() => setRestore(true)}>
+          <Choice on={chosen} label="Undo the agent's file changes" onPress={() => lost === null && setRestore(true)}>
             <Text style={st.muted}>Undoes {files(paths.length)} changed during these turns: {named(paths)}.</Text>
             <Text style={st.muted}>Edits you made while the agent worked are included, and Redo brings them back.</Text>
             {stays}
