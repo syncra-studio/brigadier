@@ -49,10 +49,11 @@ function seen(id: string, finished: number) {
   if (seenGoing.has(id)) return void seenGoing.set(id, finished);
   seenGoing.set(id, null);
   try {
-    request({ op: "run", args: ["seen", id, String(finished)] }, () => {
+    request({ op: "run", args: ["seen", id, String(finished)] }, (reply) => {
       const next = seenGoing.get(id);
       seenGoing.delete(id);
-      if (next != null && next !== finished) seen(id, next);
+      // The stream ended: nothing more on it; the hook sends again once signed in.
+      if (reply.error !== "closed" && next != null && next !== finished) seen(id, next);
     });
   } catch {
     // Not connected: sent again once signed in.
