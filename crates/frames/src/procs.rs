@@ -61,14 +61,18 @@ pub fn args(pid: i32) -> Option<(Vec<String>, Vec<String>)> {
         return None;
     }
     let argc = i32::from_ne_bytes(buf.get(..4)?.try_into().ok()?) as usize;
-    // The program's path and its padding, then argv, then the environment, each NUL-ended.
-    let mut words = buf[4..size]
-        .split(|b| *b == 0)
-        .filter(|w| !w.is_empty())
-        .map(|w| String::from_utf8_lossy(w).into_owned());
+    // The program's path and its padding, then argv, then the environment, each NUL-ended. A
+    // process that retitled itself (npm) zeroed its args: those are empty words, never the
+    // environment's first.
+    let mut words = buf[4..size].split(|b| *b == 0);
     words.next()?;
-    let argv: Vec<String> = words.by_ref().take(argc).collect();
-    Some((argv, words.collect()))
+    let mut words = words
+        .skip_while(|w| w.is_empty())
+        .map(|w| String::from_utf8_lossy(w).into_owned());
+    let argv: Vec<String> = (words.by_ref().take(argc))
+        .filter(|w| !w.is_empty())
+        .collect();
+    Some((argv, words.filter(|w| !w.is_empty()).collect()))
 }
 
 /// A process's parent and short name. It answers for every user's processes, the walk's root
