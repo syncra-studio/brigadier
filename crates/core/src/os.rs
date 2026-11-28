@@ -270,8 +270,12 @@ pub fn registry_env(name: &str) -> (Option<String>, Option<String>) {
                 )
             };
             if got == 0 {
-                let text = String::from_utf16_lossy(&buf[..len as usize / 2]);
-                return Some(text.trim_end_matches('\0').to_string()).filter(|t| !t.is_empty());
+                // Up to the first NUL: an expanded value's size is the raw one's, which can be longer.
+                let text = buf[..len as usize / 2]
+                    .split(|&c| c == 0)
+                    .next()
+                    .unwrap_or(&[]);
+                return Some(String::from_utf16_lossy(text)).filter(|t| !t.is_empty());
             }
             buf.resize(len as usize / 2 + 1, 0);
         }
