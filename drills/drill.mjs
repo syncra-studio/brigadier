@@ -913,7 +913,10 @@ async function scale() {
   const lat = { send: [], status: [] }
   let finished = false
   done.then(() => { finished = true })
+  // The rebuild's peak memory, sampled each round (proposed, D176): flat in the logs' size since the fix.
+  let peak = 0
   while (!finished) {
+    if (!WIN) peak = Math.max(peak, +spawnSync('ps', ['-o', 'rss=', '-p', String(rebuild.pid)], { encoding: 'utf8' }).stdout.trim() || 0)
     const id = ids[lat.send.length % live]
     lat.status.push(cli(['status', id]).ms)
     lat.send.push(cli(['send', id, `${cid()} say:1`]).ms)
@@ -921,6 +924,7 @@ async function scale() {
   }
   r.index_rebuild_cold_ms = now() - t0
   r.index_rebuild_cold_out = JSON.parse(rebuildOut.trim() || '{}')
+  r.index_rebuild_peak_rss_mb = WIN ? null : Math.round(peak / 1024)
   r.latency_during_rebuild = { send_p50: pct(lat.send, 0.5), send_p99: pct(lat.send, 0.99), status_p50: pct(lat.status, 0.5), status_p99: pct(lat.status, 0.99), n: lat.send.length }
   r.index_rebuild_warm = cli(['index'], {}, 600000).out
   // Memory per idle owner.

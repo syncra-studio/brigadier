@@ -32,6 +32,7 @@ pub(super) fn fold_into(
     dir: &Path,
     e: &mut Entry,
     len: u64,
+    keep: bool,
 ) -> rusqlite::Result<()> {
     let tx = db.transaction()?;
     // Parsed once, not per row: a cold rebuild inserts millions [D52].
@@ -80,7 +81,10 @@ pub(super) fn fold_into(
                 params![id, title, blob],
             )?;
             tx.commit()?;
-            core::keep(dir, &f);
+            // For this process's later reads; a one-shot rebuild has none.
+            if keep {
+                core::keep(dir, &f);
+            }
             e.title = title;
             e.done = f;
             e.ahead = None;

@@ -92,6 +92,8 @@ pub struct Index {
     pub rows: BTreeMap<String, Value>,
     /// The sessions the last pass looked at: all of them in a full one, else those not at rest.
     pub looked: BTreeSet<String>,
+    /// A one-shot rebuild: no later pass, so each fold goes once its row is out [D176].
+    once: bool,
 }
 
 impl Index {
@@ -131,6 +133,7 @@ impl Index {
             projects: vec![],
             rows: BTreeMap::new(),
             looked: BTreeSet::new(),
+            once: false,
         })
     }
 
@@ -175,7 +178,7 @@ impl Index {
                 }
             }
             if len != e.seen_len
-                && let Err(err) = fold_into(&mut self.db, id, &dir, e, len)
+                && let Err(err) = fold_into(&mut self.db, id, &dir, e, len, !self.once)
             {
                 return Err(self.recover(err));
             }
@@ -341,6 +344,9 @@ impl Index {
                 self.rows.insert(id.clone(), row.clone());
                 changed.push(row);
             }
+            if self.once {
+                *e = Entry::default(); // its row is out and no pass follows
+            }
         }
         self.projects = projects;
         for id in &gone {
@@ -425,6 +431,7 @@ pub fn rebuild(data: &Path, cold: bool) -> io::Result<Value> {
         ));
     };
     let mut ix = Index::open(data, cold)?;
+    ix.once = true;
     ix.sync(true)?;
     Ok(json!({"ok": true, "sessions": ix.rows.len(), "ms": started.elapsed().as_millis() as u64}))
 }
