@@ -184,7 +184,10 @@ pub fn run(data: &Path, args: &[String]) -> io::Result<Value> {
                     return done;
                 }
                 // Add project's (1f, 1g): `find`, `inspect <path>`, `clone <url|owner/name> --to
-                // <dest> [--github [--account <login>]] --id <id>`, `init <dest> [--here] --id <id>`, `github`.
+                // <dest> [--github [--account <login>]] --id <id>`, `init <dest> [--here] --id <id>`, `github`, `identity`.
+                "identity" => {
+                    return repos::identity(data, flag(args, "--name"), flag(args, "--email"));
+                }
                 "find" => return Ok(json!({"ok": true, "repos": repos::find(data)?})),
                 "inspect" => {
                     return Ok(json!({"ok": true, "check": repos::inspect(data, arg(2))?}));

@@ -27,7 +27,7 @@ pub use chat::{chat, listed};
 pub use chip::{chip, moved_on, opened};
 pub use create::Create;
 use github::hosted;
-pub use github::{clone_github, github_repos, project_repos};
+pub use github::{clone_github, github_repos, noreply, project_repos};
 pub use prs::kept;
 pub use search::{kept_key, kept_search};
 use serde_json::Value;

@@ -4,7 +4,7 @@
 // client sees.
 //
 //   BIN=<dir with brigadier, brigadier-host, brigadier-fake, brigadier-procs, brigadierd> node drills/drill.mjs <drill> [minutes]
-//   drills: killloop, hang, procs, detach, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck, npmfind, ghlogins
+//   drills: killloop, hang, procs, detach, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck, npmfind, ghlogins, noidentity
 //   killloop: BUILDS=<dir>:<dir> (; on Windows) rotates in more builds; OLD_BIN=<dir> adds hosts and the first
 //   daemon from a previous release's code.
 //
@@ -2347,9 +2347,40 @@ async function ghLogins() {
   if (process.env.KEEP !== '1') drop(DATA)
 }
 
+// New project with no git identity (a home whose git config has no name or email): the first commit isn't made
+// with git's guess, nothing is left behind, and once the form's name and email are set (for every repository)
+// it's made as them. With an identity already set, the form isn't asked for and nothing in git's config changes.
+async function noIdentity() {
+  freshData('noidentity')
+  const home = `${DATA}/home`
+  // Outside the data folder, which Brigadier never makes a project in.
+  const work = `${ROOT}/noidentity-work`
+  make(work)
+  fs.mkdirSync(`${home}/gh`, { recursive: true })
+  const env = (config) => ({ HOME: home, USERPROFILE: home, GIT_CONFIG_GLOBAL: config, GIT_CONFIG_NOSYSTEM: '1', GH_CONFIG_DIR: `${home}/gh` })
+  const author = (dir) => spawnSync('git', ['-C', dir, 'log', '-1', '--format=%an <%ae>'], { encoding: 'utf8' }).stdout.trim()
+  const none = env(`${home}/empty.gitconfig`)
+  fs.writeFileSync(none.GIT_CONFIG_GLOBAL, '')
+  const asked = await cliAsync(['projects', 'identity'], none)
+  const failed = await cliAsync(['projects', 'init', `${work}/a`, '--id', 'p-drill-a'], none)
+  const saved = await cliAsync(['projects', 'identity', '--name', 'Drill Person', '--email', 'drill'], none)
+  const made = await cliAsync(['projects', 'init', `${work}/b`, '--id', 'p-drill-b'], none)
+  const first = { asked, error: failed.error ?? null, left: fs.existsSync(`${work}/a`), saved, author: made.project?.id === 'p-drill-b' ? author(`${work}/b`) : made.error }
+  const firstOk = asked.set === false && !failed.ok && /name and email/.test(first.error ?? '') && !first.left && saved.set === true && first.author === 'Drill Person <drill>'
+  const set = env(`${home}/set.gitconfig`)
+  const before = '[user]\n\tname = Already Set\n\temail = set@example.invalid\n'
+  fs.writeFileSync(set.GIT_CONFIG_GLOBAL, before)
+  const known = await cliAsync(['projects', 'identity'], set)
+  const again = await cliAsync(['projects', 'init', `${work}/c`, '--id', 'p-drill-c'], set)
+  const second = { known, author: again.ok ? author(`${work}/c`) : again.error, unchanged: fs.readFileSync(set.GIT_CONFIG_GLOBAL, 'utf8') === before }
+  const secondOk = known.set === true && second.author === 'Already Set <set@example.invalid>' && second.unchanged
+  log({ summary: 'noidentity', pass: firstOk && secondOk, first, second })
+  if (process.env.KEEP !== '1') [DATA, work].forEach(drop)
+}
+
 const [drill, arg] = process.argv.slice(2)
 if (!BIN) throw new Error('set BIN to a folder with the brigadier binaries')
 fs.mkdirSync(ROOT, { recursive: true })
-const run = { killloop: () => killloop(+(arg ?? 30)), hang, procs: procsDrill, detach, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed, agentcheck: agentCheck, npmfind: npmFind, ghlogins: ghLogins }[drill]
-if (!run) throw new Error('drills: killloop [minutes], hang, procs, detach, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck, npmfind, ghlogins')
+const run = { killloop: () => killloop(+(arg ?? 30)), hang, procs: procsDrill, detach, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed, agentcheck: agentCheck, npmfind: npmFind, ghlogins: ghLogins, noidentity: noIdentity }[drill]
+if (!run) throw new Error('drills: killloop [minutes], hang, procs, detach, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck, npmfind, ghlogins, noidentity')
 await run()

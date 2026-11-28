@@ -341,8 +341,8 @@ pub fn clone(
 }
 
 /// Makes a new repository at `dest` and adds it under `id`: the folder, `git init` and an empty
-/// first commit, so sessions have a branch to start from. When git can't commit (no name or email,
-/// a signing key that asks), whatever this made goes and git's reason comes back. With `here`,
+/// first commit, so sessions have a branch to start from. When git can't commit (no name or email
+/// set, a signing key that asks), whatever this made goes and the reason comes back. With `here`,
 /// `dest` is an existing folder in no repository (Add project's "Not a repository" row).
 pub fn init(data: &Path, dest: &str, here: bool, id: &str) -> io::Result<projects::Project> {
     let dir = if here {
@@ -365,8 +365,10 @@ pub fn init(data: &Path, dest: &str, here: bool, id: &str) -> io::Result<project
         tool("git").arg("-C").arg(&dir).args(["init", "--quiet"]),
         INIT_SECS,
     )
-    .and_then(|()| {
-        ran(
+    .and_then(|()| match configured(&dir) {
+        // Never git's guess from the account and machine name (macOS makes one) [D107].
+        false => err(NO_IDENTITY),
+        true => ran(
             tool("git").arg("-C").arg(&dir).args([
                 "commit",
                 "--quiet",
@@ -375,7 +377,7 @@ pub fn init(data: &Path, dest: &str, here: bool, id: &str) -> io::Result<project
                 "Initial commit",
             ]),
             INIT_SECS,
-        )
+        ),
     });
     if let Err(e) = commit {
         let _ = if made {
@@ -386,4 +388,56 @@ pub fn init(data: &Path, dest: &str, here: bool, id: &str) -> io::Result<project
         return Err(e);
     }
     projects::add(data, &dir.display().to_string(), Some(id), None)
+}
+
+const NO_IDENTITY: &str = "Git needs your name and email before it can make the first commit.";
+
+/// git's `key` as `dir` sees it, from any of its config files; "" when unset.
+fn config(dir: &Path, key: &str) -> String {
+    let out = setup::run(
+        tool("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["config", "--get", key]),
+        INIT_SECS,
+    );
+    (out.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())).unwrap_or_default()
+}
+
+/// Whether git has a name and an email set for `dir`.
+fn configured(dir: &Path) -> bool {
+    ["user.name", "user.email"]
+        .iter()
+        .all(|key| !config(dir, key).is_empty())
+}
+
+/// `projects identity [--name N --email E]`: the name and email git commits as, for New project's
+/// form. Unset, it suggests the onboarding name and the GitHub account's private email. With both,
+/// they're set for every repository (`git config --global`) on the user's click.
+pub fn identity(data: &Path, name: Option<&str>, email: Option<&str>) -> io::Result<Value> {
+    if let (Some(name), Some(email)) = (name.map(str::trim), email.map(str::trim)) {
+        if name.is_empty() || email.is_empty() {
+            return err("Enter a name and an email.");
+        }
+        for (key, value) in [("user.name", name), ("user.email", email)] {
+            ran(
+                tool("git").args(["config", "--global", key, value]),
+                INIT_SECS,
+            )?;
+        }
+    }
+    // Outside any repository, so no repository's own config answers.
+    let at = std::env::temp_dir();
+    let (mut name, mut email) = (config(&at, "user.name"), config(&at, "user.email"));
+    let set = !name.is_empty() && !email.is_empty();
+    if name.is_empty() {
+        let profile = fs::read(data.join("profile.json")).ok();
+        let profile: Value =
+            (profile.and_then(|b| serde_json::from_slice(&b).ok())).unwrap_or_default();
+        name = profile["name"].as_str().unwrap_or("").into();
+    }
+    if email.is_empty() {
+        email = crate::host::noreply().unwrap_or_default();
+    }
+    Ok(json!({"ok": true, "set": set, "name": name, "email": email}))
 }

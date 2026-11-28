@@ -16,6 +16,7 @@ export const STEPS: readonly Step[] = ["name", "agents", "git", "projects"];
 const LABELS: Record<Step, string> = { intro: "Welcome", name: "Name", agents: "Agents", git: "GitHub or GitLab", projects: "Projects" };
 
 export const MAC = navigator.userAgent.includes("Mac");
+export const HERE = MAC ? "this Mac" : "this computer";
 
 /** Focuses what it's given a frame after it mounts. */
 export function useFocusOnMount<T extends HTMLElement>(): RefObject<T | null> {

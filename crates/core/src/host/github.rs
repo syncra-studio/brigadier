@@ -57,6 +57,17 @@ pub fn clone_github(from: &str, dir: &Path, secs: u64, account: Option<&str>) ->
     }
 }
 
+/// The active account's private commit email, `<id>+<login>@users.noreply.github.com`, as git's
+/// identity form suggests it; None without gh or its sign-in.
+pub fn noreply() -> Option<String> {
+    let mut command = tool(&gh().ok()?);
+    let jq = r#""\(.id)+\(.login)@users.noreply.github.com""#;
+    command.args(["api", "user", "--jq", jq]);
+    let out = setup::run(&mut command, GH_SECS).ok()?;
+    let email = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (out.status.success() && !email.is_empty()).then_some(email)
+}
+
 /// The repositories every account gh keeps for github.com sees (owned, collaborating, its
 /// organizations'), the last pushed first, each under every account that sees it, the active one
 /// first [D202, D625, D680]; owners' pictures kept in `avatars` [D615]. Or `gh: "missing"` /

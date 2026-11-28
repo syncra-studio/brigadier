@@ -4,14 +4,16 @@ import { CheckboxMark } from "../components/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/collapsible";
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
+import { Input } from "../components/input";
 import { TooltipIconButton } from "../components/icon-button";
 import { Branch, ChevronRight, Desktop, Folder, FolderOpen, FolderPlus, MagnifyingGlassSearch, Spinner } from "../icons";
 import { Avatar } from "../landing/pr-parts";
 import { BOX, BOX_INPUT, cloneUrl, folderFromUrl, folderProblem } from "../projects/clone";
 import { newProjectId, useProjects } from "../projects/projects";
-import type { FolderCheck, GitHub, GitHubRepo, Source } from "../projects/store";
+import type { FolderCheck, GitHub, GitHubRepo, GitIdentity, Source } from "../projects/store";
 import { BrandMark } from "../settings/plugins-marks";
 import { errorText } from "./api";
+import { HERE } from "./parts";
 
 /*
  * Where a project comes from, for onboarding's Projects step and Add project both: one file [D676]. A column of sources
@@ -153,6 +155,8 @@ export function useProjectSources({ source, offline, initialPath = "", onExistin
   const [current, setCurrent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<"adding" | "picking" | null>(null);
+  // Asked once a new repository needs a first commit and git has no name or email; saved as the button goes on.
+  const [who, setWho] = useState<GitIdentity | null>(null);
   const online = !offline;
 
   useEffect(() => {
@@ -222,6 +226,15 @@ export function useProjectSources({ source, offline, initialPath = "", onExistin
   const finish = async () => {
     setBusy("adding");
     setError(null);
+    const inits = (fresh && !madeDone) || folders.some((path) => plain.includes(path));
+    try {
+      if (who) await source.identity(who.name, who.email);
+      const known = inits && !who ? await source.identity() : null;
+      setWho(null);
+      if (known && !known.set) return (setWho(known), setBusy(null));
+    } catch (cause) {
+      return (setError(errorText(cause)), setBusy(null));
+    }
     let failed: string | null = null;
     const ids: string[] = [];
     const add = (id: string, work: Promise<unknown>) => work.then(() => ids.push(id), (cause) => (failed = errorText(cause)));
@@ -260,7 +273,7 @@ export function useProjectSources({ source, offline, initialPath = "", onExistin
   };
 
   const adding = busy === "adding";
-  const disabled = !online || (where === "new" && !fresh);
+  const disabled = !online || (where === "new" && !fresh) || (who !== null && !(who.name.trim() && who.email.trim()));
   const submit = () => !disabled && busy === null && void finish();
   const flip = (list: string[], item: string) => (list.includes(item) ? list.filter((each) => each !== item) : [...list, item]);
   const hint = adding && current ? `Cloning ${current}…` : where === "new" ? `In ${parent}` : targets.length ? `Clones go into ${parent}` : undefined;
@@ -324,6 +337,7 @@ export function useProjectSources({ source, offline, initialPath = "", onExistin
             onSubmit={submit}
           />
         )}
+        {who && <AskIdentity who={who} onChange={setWho} busy={adding} />}
         {!online && <p className="text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
         <ErrorLine error={error} />
       </div>
@@ -448,5 +462,18 @@ function NewProject({ name, onName, parent, onParent, busy }: { name: string; on
         <input ref={field} value={name} autoFocus spellCheck={false} autoComplete="off" maxLength={200} disabled={busy} aria-label="Name" placeholder="my-project" onChange={(event) => onName(event.target.value)} className={BOX_INPUT} />
       </div>
     </>
+  );
+}
+
+/** Git's name and email, asked when none is set: anything git takes, but not empty. */
+function AskIdentity({ who, onChange, busy }: { who: GitIdentity; onChange: (who: GitIdentity) => void; busy: boolean }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm text-muted-foreground">This sets the name and email git uses for all your projects on {HERE}.</p>
+      <div className="flex gap-2">
+        <Input value={who.name} autoFocus disabled={busy} aria-label="Name for git" placeholder="Your name" onChange={(event) => onChange({ ...who, name: event.target.value })} />
+        <Input value={who.email} spellCheck={false} disabled={busy} aria-label="Email for git" placeholder="you@example.com" onChange={(event) => onChange({ ...who, email: event.target.value })} />
+      </div>
+    </div>
   );
 }

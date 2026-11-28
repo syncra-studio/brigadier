@@ -8,11 +8,10 @@ import { Input } from "../components/input";
 import { useDaemon } from "../daemon";
 import { ArrowUpRight, Plug, Spinner, Terminal, Warning } from "../icons";
 import { type Agent, checkAll, checkOne, errorText, run, store, useAgents } from "./api";
-import { MAC, PILL, RAISED_BUTTON, StepFooter, StepHeader } from "./parts";
+import { HERE, PILL, RAISED_BUTTON, StepFooter, StepHeader } from "./parts";
 
 /** How often an agent is checked again while its install or sign-in runs. */
 const RECHECK_MS = 2000;
-const HERE = MAC ? "this Mac" : "this computer";
 
 type State = "checking" | "running" | "error" | "install" | "signIn" | "noModel" | "ready";
 
