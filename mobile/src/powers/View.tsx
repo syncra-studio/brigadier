@@ -1,4 +1,4 @@
-// Images a reply names by their path on the Mac (msgs/remote-wire.md, `attach <id> view`): one in the session's
+// Images a reply names by their path on the Mac (`attach <id> view`, crates/daemon/src/remote/rows.rs): one in the session's
 // checkout comes as asked; any other only as its own resolved path, shown whole and signed with Face ID (power
 // `paths`, D57). The Mac's copy then comes through `attachment`, drawn under the reply. The Face ID sheet is the
 // composer's (`ImageSigns`), and what each tap came to is kept apart from the reply, so a reply folded away or scrolled
@@ -13,8 +13,8 @@ import { forgetImage, ThreadImage } from "../thread/Image";
 import { ViewImage } from "../thread/Markdown";
 import { color, text } from "../theme";
 import { refusal } from "./powers";
-import type { Frame } from "../../vendor/brigadier-shared/client";
-import { store } from "../../vendor/brigadier-shared/store";
+import type { Frame } from "../../../app/shared/client";
+import { store } from "../../../app/shared/store";
 
 /** Paths waiting to be signed, oldest first, each with the Mac and session it was asked in; the first is the sheet's till it settles. */
 const signs = store<readonly { key: number; mac: string; owner: string; sign: string; done: (reply: Frame | null) => void }[]>([]);

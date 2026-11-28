@@ -1,6 +1,6 @@
-// The powers (D57, msgs/remote-wire.md): what the Face ID sheet shows for each, and the Mac's words when it refuses.
-import type { Draft } from "../../vendor/brigadier-shared/draft";
-import { failure } from "../../vendor/brigadier-shared/session/run";
+// The powers (D57, crates/daemon/src/remote/powers.rs): what the Face ID sheet shows for each, and the Mac's words when it refuses.
+import type { Draft } from "../../../app/shared/draft";
+import { failure } from "../../../app/shared/session/run";
 
 /** A `<Confirm>` sheet's words and the exact command it signs. */
 export type Power = { title: string; body?: string; shown: string; args: string[] };

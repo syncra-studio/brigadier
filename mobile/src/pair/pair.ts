@@ -1,7 +1,7 @@
-// Pairing and signing in, as msgs/remote-wire.md has them; the keys never leave the native module.
+// Pairing and signing in, as crates/daemon/src/remote/pair.rs has them; the keys never leave the native module.
 import Link, { type Mac } from "../../modules/link";
 import { ask, close, closeCount, connect, next, send } from "../link";
-import { PROTO } from "../../vendor/brigadier-shared/proto";
+import { PROTO } from "../../../app/shared/proto";
 
 export type Problem =
   | "expired" | "reused" | "denied" | "unreachable" | "noOffer" | "wrongCode"

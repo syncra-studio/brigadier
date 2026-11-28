@@ -1,7 +1,7 @@
-// Fresh signatures (msgs/remote-wire.md; design §4.2, D51): a lasting answer, a start and each power is signed with
+// Fresh signatures (D51, crates/daemon/src/remote/fresh.rs): a lasting answer, a start and each power is signed with
 // Face ID over the exact command, once, with a nonce the Mac gave this stream.
 import Link from "../../modules/link";
-import type { Frame } from "../../vendor/brigadier-shared/client";
+import type { Frame } from "../../../app/shared/client";
 import { ask, streamNow } from "../link";
 
 /** What the signature names: an answer's session, request and answer; any other command's session (or new id) and verb. */

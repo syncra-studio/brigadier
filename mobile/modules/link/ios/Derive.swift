@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-/// The keys and codes the phone derives exactly as the Mac does (msgs/remote-wire.md): HKDF-SHA256 with no salt.
+/// The keys and codes the phone derives exactly as the Mac does (crates/daemon/src/remote/pair.rs): HKDF-SHA256 with no salt.
 enum Derive {
     static func hkdf(_ ikm: [UInt8], _ info: String) -> [UInt8] {
         HKDF<SHA256>.deriveKey(inputKeyMaterial: SymmetricKey(data: ikm), info: Array(info.utf8), outputByteCount: 32)
@@ -24,7 +24,7 @@ enum Derive {
         return String(format: "%06u", n)
     }
 
-    /// What an action's signature covers after its label `brigadier/act/v1` (msgs/remote-wire.md, fresh signatures):
+    /// What an action's signature covers after its label `brigadier/act/v1`, as crates/daemon/src/remote/fresh.rs checks it:
     /// this stream's `h`, the Mac's nonce, session, request and action each as a 4-byte big-endian length then UTF-8,
     /// then SHA-256 of the command's argv exactly as sent (compact JSON).
     static func act(h: [UInt8], nonce: [UInt8], names: [String], argv: String) -> [UInt8] {

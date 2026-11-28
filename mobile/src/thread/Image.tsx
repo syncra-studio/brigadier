@@ -1,4 +1,4 @@
-// An image the thread names, read from the Mac with `attachment` in 256 KiB pieces (msgs/remote-wire.md, M4): a
+// An image the thread names, read from the Mac with `attachment` in 256 KiB pieces (crates/daemon/src/remote/files.rs): a
 // session's sent and viewed images, and this phone's own unsent files. A grey square until it is in.
 import { File, Paths } from "expo-file-system";
 import * as MediaLibrary from "expo-media-library/legacy";
