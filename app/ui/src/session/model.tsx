@@ -4,6 +4,7 @@ import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
 import type { ModelChoice, ModelGroup } from "../components/composer/model-picker";
 import { asGroups, choiceOf, loadModels, type ModelRow, modelState, pickLine, setArgs } from "../../../shared/session/model";
+import { afterTurn, couldntSwitch, MODEL_WORDS } from "../../../shared/session/composer";
 import { ModelPill } from "../components/composer/model-pill";
 import { SwitchDivider } from "../components/thread/cards";
 import { ChangeLine } from "../components/thread/line";
@@ -194,15 +195,15 @@ function SwitchAfter({ id, name, now }: { id: string; name: string; now: boolean
     setAsked(true);
     run(["set", id, "--now", "--op", newId()]).catch((cause) => {
       setAsked(false);
-      showToast(`Couldn't switch now: ${errorText(cause)}`, { tone: "error" });
+      showToast(couldntSwitch(errorText(cause)), { tone: "error" });
     });
   };
   return (
     <span className="flex min-w-0 items-center gap-1 text-sm text-muted-foreground">
-      <span className="truncate">{going ? `Switching to ${name}…` : `${name} after this turn`}</span>
+      <span className="truncate">{afterTurn(name, going)}</span>
       {!going && (
         <Button size="xs" variant="ghost" onClick={go}>
-          Switch now
+          {MODEL_WORDS.switchNow}
         </Button>
       )}
     </span>

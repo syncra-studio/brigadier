@@ -5,7 +5,7 @@ import { useState } from "react";
 import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { Draft } from "../../../app/shared/draft";
 import { preview, type QueuedMessage } from "../../../app/shared/session/queued";
-import { attached } from "../../../app/shared/session/composer";
+import { attached, QUEUE_WORDS } from "../../../app/shared/session/composer";
 import { color, spacing, radius, text, opacity, mono } from "../theme";
 import { ArrowCurvedRight, DotsHorizontal, Play, QueueGlyph, Spinner, Trash } from "../../../app/ui/src/icons";
 import { Terminal } from "../../../app/ui/src/icons/thread";
@@ -61,7 +61,7 @@ export function QueueCard({ items, running, paused, resuming, steer, canEdit, er
       {paused ? (
         <View style={st.line}>
           <View style={st.dot} />
-          <Text style={st.muted} numberOfLines={1}>Queue paused because you interrupted</Text>
+          <Text style={st.muted} numberOfLines={1}>{QUEUE_WORDS.paused}</Text>
           {onResume ? <Small title="Resume" icon={Play} disabled={resuming} onPress={onResume} /> : null}
         </View>
       ) : null}
@@ -119,15 +119,15 @@ export function QueueCard({ items, running, paused, resuming, steer, canEdit, er
                 </Text>
                 {item.peer ? <Text style={st.note} numberOfLines={1}>From {item.peer.title ?? "another session"}</Text> : null}
                 {lost ? (
-                  <Text style={st.note} numberOfLines={1}>{unadded ? "Not added" : "May not have been added"}</Text>
+                  <Text style={st.note} numberOfLines={1}>{unadded ? QUEUE_WORDS.notAdded : QUEUE_WORDS.maybeNotAdded}</Text>
                 ) : deciding ? (
-                  <Shimmer style={st.note}>Deciding</Shimmer>
+                  <Shimmer style={st.note}>{QUEUE_WORDS.deciding}</Shimmer>
                 ) : item.waits ? (
                   <Text style={st.note} numberOfLines={1}>{item.waits}</Text>
                 ) : item.to ? (
                   <Text style={st.note} numberOfLines={1}>To {item.to.name ?? "a worker"}</Text>
                 ) : null}
-                {lost ? <Small title="Add again" onPress={() => onAddAgain(item.id)} /> : null}
+                {lost ? <Small title={QUEUE_WORDS.addAgain} onPress={() => onAddAgain(item.id)} /> : null}
                 {/* One for a worker steers into that worker's turn, while it has one. */}
                 {(steer || item.to) && !item.to?.ended && !item.shell && !lost ? <Small title="Steer" icon={ArrowCurvedRight} accessibilityLabel="Steer: submit without interrupting the model" disabled={local} onPress={() => onSteer(item.id)} /> : null}
                 <Icon accessibilityLabel={item.shell ? "Delete queued command" : "Delete queued message"} disabled={local || (item.state === "delivered" && !item.refused)} onPress={() => onRemove(item.id)}>

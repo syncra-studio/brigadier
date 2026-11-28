@@ -20,6 +20,7 @@ import { urlOf } from "../../session/files";
 import { useSettings } from "../../settings/api";
 import { SaveAsNote } from "../../note/save";
 import { datedAfter, datedMessages, datedWords, sentAt } from "../../../../shared/words";
+import { failedWords } from "../../../../shared/session/composer";
 export { datedAfter, datedMessages, sentAt };
 
 
@@ -191,7 +192,7 @@ export function UserBubble({
           <ErrorLine
             size="sm"
             wrap
-            error={failed && `${maybe ? "May have been sent" : "Not sent"} · ${failed}`}
+            error={failed && failedWords(maybe, failed)}
             className={side === "items-end" ? "text-end" : undefined}
             actions={
               <>

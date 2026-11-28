@@ -11,7 +11,8 @@ import { KeyboardAvoidingView, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { type Draft, EMPTY_DRAFT, isEmpty, plainText } from "../../../app/shared/draft";
-import { inThread, type QueuedMessage, queuedOf } from "../../../app/shared/session/queued";
+import { inThread, queueShown } from "../../../app/shared/session/queued";
+import { turnState } from "../../../app/shared/session/turn";
 import { sends } from "../../../app/shared/session/sent";
 import type { Frame } from "../../../app/shared/client";
 import { COMPACTION } from "../../../app/shared/words";
@@ -23,7 +24,7 @@ import { color, spacing, opacity, touch } from "../theme";
 import { LevelPill } from "../powers/Level";
 import { NightReady, OvernightPill, OvernightStrip, StartNight, useNight } from "../powers/Overnight";
 import { backgroundPower, type Power, refusal } from "../powers/powers";
-import { shellLine } from "../../../app/shared/shell";
+import { isEscaped, shellLine } from "../../../app/shared/shell";
 import { ImageSigns } from "../powers/View";
 import { composerSample } from "../mac/sample";
 import { ArrowUp, PlayTriangle, Plus, Stop } from "../../../app/ui/src/icons";
@@ -57,6 +58,8 @@ export function Composer({ id }: { id: string }) {
   const [initial] = useState(() => drafts.draftOf(id) ?? EMPTY_DRAFT);
   const [words, setWords] = useState(() => plainText(initial.parts));
   const named$ = useRef<Named[]>(initial.parts.filter(named));
+  // Words the desktop escaped (`!` typed as text): a message, never a command, till the field is emptied.
+  const escaped$ = useRef(isEscaped(initial.parts));
   const words$ = useRef(words);
   const cursor = useRef(words.length);
   const [menu, setMenu] = useState<{ kind: "/" | "@"; query: string; from: number } | null>(null);
@@ -77,14 +80,18 @@ export function Composer({ id }: { id: string }) {
   const toWorker = to && { id: to.id, name: toRow?.title || to.name };
   const toGone = to !== null && !toRow;
   const worker = Boolean(row?.worker);
-  const partsNow = () => partsOf(words$.current, named$.current);
+  // Escaped, the field keeps its empty first part, a chip in it too, so the saved draft stays a message.
+  const fieldParts = (w: string) => (escaped$.current ? ["", ...partsOf(w, named$.current)] : partsOf(w, named$.current));
+  const partsNow = () => fieldParts(words$.current);
   // A `!` first makes the field a shell command, shown without its `!` [D316]: never a worker's, nor with a To:.
-  const shell = !worker && !toWorker && shellLine(partsOf(words, named$.current)) !== null;
-  const empty = isEmpty({ parts: shell ? [words.slice(1)] : partsOf(words, named$.current), attachmentIds: files.tiles.filter((each) => files.all.get(each)?.state !== "failed") });
+  const shell = !worker && !toWorker && shellLine(fieldParts(words)) !== null;
+  const empty = isEmpty({ parts: shell ? [words.slice(1)] : fieldParts(words), attachmentIds: files.tiles.filter((each) => files.all.get(each)?.state !== "failed") });
   /** Keeps what the field holds, its files' ids too, as this phone's draft on the Mac. */
   const keep = (parts: Draft["parts"]) => drafts.keepDraft(run, id, { parts, attachmentIds: [...tilesNow()] });
   /** Puts `parts` in the field; `save`, kept as the draft too, as a change typed is. */
   const setField = (parts: Draft["parts"], save = true) => {
+    // One given back above an escaped draft keeps its escape: its empty part is still in there.
+    escaped$.current = isEscaped(parts) || (escaped$.current && parts.includes(""));
     words$.current = plainText(parts);
     named$.current = parts.filter(named);
     cursor.current = words$.current.length;
@@ -135,7 +142,8 @@ export function Composer({ id }: { id: string }) {
       setField(parts, false);
       fileStore.restore(id, tilesOf(back));
       if (back.error) setError(back.error);
-      return { parts, attachmentIds: [...new Set([...tilesOf(back), ...tilesNow()])] };
+      // Kept escaped, its empty part first again.
+      return { parts: escaped$.current ? partsNow() : parts, attachmentIds: [...new Set([...tilesOf(back), ...tilesNow()])] };
     }),
   );
   // Each connection: what waits above the field, read again; messages Rust may not hold handed to it, a Delete told instead (the desktop's sent.tsx `useHanding`).
@@ -148,11 +156,7 @@ export function Composer({ id }: { id: string }) {
     if (unsaved.delete(id)) drafts.resyncDraft(run, id);
   }, [conn]);
   useEffect(() => {
-    if (!connected) return;
-    for (const each of going.filter((one) => (!one.booked || one.removing) && sending.asked.get(one.cid) !== conn)) {
-      sending.asked.set(each.cid, conn);
-      void (each.removing ? uncertain.tellDrops(run, id) : sending.adopt(run, id, each));
-    }
+    if (connected) sending.handOver(run, id, going, conn);
   });
   // In the thread now: it leaves the messages on their way, and the queue [D30].
   const delivered = inThread(session);
@@ -163,10 +167,7 @@ export function Composer({ id }: { id: string }) {
   // The turn as the thread shows it, Rust's row until the thread is this session's (the desktop's session/turn.ts).
   const turn = session?.after == null ? session?.turns.at(-1) : undefined;
   const onItsWay = sends(going).some((each) => each.stuck === undefined);
-  const holds = row === undefined || row.holding === true || row.running === true;
-  const running = turn ? turn.status === "running" || (turn.held === true && holds) : row?.running === true || row?.holding === true;
-  const resumable = !onItsWay && (turn ? turn.status === "cancelled" && (row?.resumable === true || row?.running === true) : row?.resumable === true);
-  const busy = running || onItsWay;
+  const { running, busy, resumable } = turnState(turn, row, onItsWay);
   useEffect(() => {
     if (!busy) setStopping(false);
   }, [busy]);
@@ -191,18 +192,7 @@ export function Composer({ id }: { id: string }) {
   });
   const queueGoing = going.filter((each) => each.kind === "queue" && !each.removing);
   const lost = (qid: string) => queueGoing.find((each) => each.cid === qid);
-  let paused = row?.queue?.paused === true;
-  const queued = (row?.queue?.items ?? []).filter((each) => (each.shell === "ended" ? paused || each.error : !delivered.has(each.id)));
-  let items: QueuedMessage[] = queuedOf(queued, lists.get().rows);
-  for (const op of live) {
-    if (op.kind === "remove") items = items.filter((each) => each.id !== op.qid);
-    if (op.kind === "resume") paused = false;
-    if (op.kind === "add" && !delivered.has(op.qid) && !items.some((each) => each.id === op.qid)) {
-      items = [...items];
-      items.splice(op.slot ?? items.length, 0, { id: op.qid, draft: { parts: [op.text ?? ""], attachmentIds: [] }, state: "local" });
-    }
-  }
-  items = [...items, ...queueGoing.filter((each) => !delivered.has(each.cid) && !items.some((one) => one.id === each.cid)).map((each): QueuedMessage => ({ id: each.cid, draft: each.draft, state: each.stuck === undefined ? "local" : each.reached === false ? "unadded" : "uncertain" }))];
+  const { items, paused } = queueShown(row, lists.get().rows, delivered, live, queueGoing);
   const textOf = (qid: string) => row?.queue?.items.find((each) => each.id === qid)?.text ?? live.find((op) => op.qid === qid)?.text ?? "";
   const commands = (row?.queue?.running?.length ?? 0) > 0;
   const runningCommands = (row?.queue?.running ?? []).map((cmd) => {
@@ -220,12 +210,13 @@ export function Composer({ id }: { id: string }) {
     if (tiles.some((each) => each.state === "ready" && each.mime.startsWith("image/")) && !mac.models.takesImages(((toRow as typeof row) ?? row)?.backend, ((toRow as typeof row) ?? row)?.model)) return W.noImages;
     return undefined;
   };
-  const { act, steerQueued, edit, submit, toAgain, toEdit, toDiscard, stop, resume, move } = sendActions({ id, mac, row, connected, worker, to, toWorker, toSending, toGone, inProject, running, canSteer, commands, paused, items, editing, lost, textOf, readyNow, tilesNow, partsNow, setField, waitsFor, words$, named$, setOps, setError, setPowerError, setPower, setToSending, setTo, setStopping });
+  const { act, steerQueued, edit, submit, toAgain, toEdit, toDiscard, stop, resume, move } = sendActions({ id, mac, row, connected, worker, to, toWorker, toSending, toGone, inProject, running, canSteer, commands, paused, items, editing, lost, textOf, readyNow, tilesNow, partsNow, fieldParts, setField, waitsFor, words$, setOps, setError, setPowerError, setPower, setToSending, setTo, setStopping });
   const resuming = live.some((op) => op.kind === "resume");
   const stuck = row?.queue?.items.find((each) => each.error);
 
   /** Typed: kept as the draft; emptied while a queued message was pulled back, that message goes back to its place. */
   const typed = (next: string) => {
+    if (!next) escaped$.current = false;
     words$.current = next;
     setWords(next);
     setPlus(false);
@@ -254,6 +245,7 @@ export function Composer({ id }: { id: string }) {
     const now = words$.current;
     const next = now.slice(0, menu.from) + put + now.slice(cursor.current);
     if (chip) named$.current = [...named$.current, chip];
+    if (!next) escaped$.current = false;
     words$.current = next;
     cursor.current = menu.from + put.length;
     setWords(next);

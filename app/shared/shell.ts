@@ -15,3 +15,5 @@ export const asWords = (parts: Parts): Parts => (isShell(parts) ? ["", ...parts]
 export const shellLine = (parts: Parts): string | null => (isShell(parts) ? bare(parts).join("").trim() : null);
 /** The command `parts` hold, trimmed; null for a message, or with nothing to run. */
 export const commandOf = (parts: Parts): string | null => shellLine(parts) || null;
+/** A message escaped from being a command: the empty part `asWords` puts first, kept while it's edited. */
+export const isEscaped = (parts: Parts): boolean => parts.length > 1 && parts[0] === "";

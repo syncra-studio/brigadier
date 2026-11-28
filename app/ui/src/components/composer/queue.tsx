@@ -16,7 +16,7 @@ import { ToWorker } from "../../workers/to-chip";
 import { RailItem } from "./rail";
 
 import { preview, type QueuedMessage } from "../../../../shared/session/queued";
-import { attached } from "../../../../shared/session/composer";
+import { attached, QUEUE_WORDS } from "../../../../shared/session/composer";
 export type { QueuedMessage };
 
 
@@ -85,7 +85,7 @@ export function QueueCard({
       {paused && (
         <div className="flex min-h-control-md items-center gap-2 px-3 text-sm text-muted-foreground">
           <span className="size-2 shrink-0 rounded-capsule bg-warning" />
-          <span className="min-w-0 flex-1 truncate">Queue paused because you interrupted</span>
+          <span className="min-w-0 flex-1 truncate">{QUEUE_WORDS.paused}</span>
           <Button size="xs" variant="ghost" disabled={resuming} onClick={onResume}>
             <Play />
             Resume
@@ -233,10 +233,10 @@ function QueueRow({
       <Words draft={item.draft} shell={item.shell} />
       {item.peer && <FromPeer title={item.peer.title} />}
       {lost ? (
-        <span className="shrink-0 text-xs text-muted-foreground">{unadded ? "Not added" : "May not have been added"}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">{unadded ? QUEUE_WORDS.notAdded : QUEUE_WORDS.maybeNotAdded}</span>
       ) : deciding ? (
         <span title="The session is checking whether this belongs to the work in progress" className="shrink-0 text-xs shimmer">
-          Deciding
+          {QUEUE_WORDS.deciding}
         </span>
       ) : item.waits ? (
         <span className="shrink-0 text-xs text-muted-foreground">{item.waits}</span>
@@ -246,7 +246,7 @@ function QueueRow({
       {/* One for a worker steers into that worker's turn, while it has one. */}
       {lost && onAddAgain && (
         <Button size="xs" variant="ghost" className="text-muted-foreground" onClick={() => onAddAgain(item.id)}>
-          Add again
+          {QUEUE_WORDS.addAgain}
         </Button>
       )}
       {(steer || item.to) && !item.to?.ended && !item.shell && !lost && (

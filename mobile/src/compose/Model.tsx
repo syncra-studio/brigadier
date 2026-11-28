@@ -13,7 +13,7 @@ import { fuzzyMatch, MatchedText } from "./Menus";
 import { Pill } from "./Pill";
 import type { Runner } from "../../../app/shared/session/run";
 import { forMac, newId } from "./state";
-import { effortLabel } from "../../../app/shared/session/composer";
+import { afterTurn, couldntSwitch, effortLabel, MODEL_WORDS, noFast, noMatch, notSetUp, showOlder } from "../../../app/shared/session/composer";
 
 
 const FAVORITES = "favorite-models";
@@ -92,15 +92,15 @@ function SwitchAfter({ id, name, now, onError }: { id: string; name: string; now
     void run(["set", id, "--op", newId(), "--now"]).then((reply) => {
       if (reply.ok) return;
       setAsked(false);
-      onError(`Couldn't switch now: ${failure(reply)}`);
+      onError(couldntSwitch(failure(reply)));
     });
   };
-  if (now || asked) return <Text style={st.muted} numberOfLines={1}>Switching to {name}…</Text>;
+  if (now || asked) return <Text style={st.muted} numberOfLines={1}>{afterTurn(name, true)}</Text>;
   return (
     <View style={st.switch}>
-      <Text style={st.muted} numberOfLines={1}>{name} after this turn</Text>
+      <Text style={st.muted} numberOfLines={1}>{afterTurn(name, false)}</Text>
       <Pressable accessibilityRole="button" onPress={go} hitSlop={12}>
-        <Text style={st.link}>Switch now</Text>
+        <Text style={st.link}>{MODEL_WORDS.switchNow}</Text>
       </Pressable>
     </View>
   );
@@ -158,7 +158,7 @@ function Sheet({ group, value, onPick, onClose }: { group: ModelGroup | undefine
       <ScrollView style={st.page} contentContainerStyle={{ padding: 24, gap: 2 }} keyboardShouldPersistTaps="handled">
         <Text style={st.title}>Model</Text>
         {!group || group.unavailable ? (
-          <Text style={st.muted}>{group ? (group.unavailable === "install" ? `${group.label} isn't installed. Install it and its models show here.` : `${group.label} isn't signed in. Sign in and its models show here.`) : "No models listed yet"}</Text>
+          <Text style={st.muted}>{group ? notSetUp(group.label, group.unavailable) : MODEL_WORDS.noneListed}</Text>
         ) : (
           <>
             <View style={st.search}>
@@ -168,7 +168,7 @@ function Sheet({ group, value, onPick, onClose }: { group: ModelGroup | undefine
             {needle ? (
               <>
                 {found.map((model) => row(model, true))}
-                {found.length === 0 ? <Text style={st.note}>No models match “{needle}”</Text> : null}
+                {found.length === 0 ? <Text style={st.note}>{noMatch(needle)}</Text> : null}
               </>
             ) : (
               <>
@@ -181,17 +181,17 @@ function Sheet({ group, value, onPick, onClose }: { group: ModelGroup | undefine
                     <View style={older && { transform: [{ rotate: "180deg" }] }}>
                       <ChevronDown className="size-icon-md text-muted-foreground" />
                     </View>
-                    <Text style={st.muted}>{older ? "Show less" : `Show ${hidden} more`}</Text>
+                    <Text style={st.muted}>{showOlder(older, hidden)}</Text>
                   </Pressable>
                 ) : null}
-                {models.length === 0 ? <Text style={st.note}>No models listed yet</Text> : null}
+                {models.length === 0 ? <Text style={st.note}>{MODEL_WORDS.noneListed}</Text> : null}
               </>
             )}
             {used ? (
               <>
                 <Text style={st.heading}>Effort</Text>
                 <Text style={st.faint}>{used.name}</Text>
-                {used.efforts.length === 0 ? <Text style={st.note}>No effort levels</Text> : null}
+                {used.efforts.length === 0 ? <Text style={st.note}>{MODEL_WORDS.noEfforts}</Text> : null}
                 {used.efforts.map((level) => (
                   <Pressable key={level} accessibilityRole="radio" accessibilityState={{ checked: value.effort === level }} onPress={() => pick(used, { effort: level })} style={({ pressed }) => [st.option, pressed && { backgroundColor: color.fill }]}>
                     <Text style={st.optionText}>{effortLabel(level)}</Text>
@@ -202,7 +202,7 @@ function Sheet({ group, value, onPick, onClose }: { group: ModelGroup | undefine
                   <Bolt className={value.fast && used.fast ? "size-icon-sm text-glyph-5" : "size-icon-sm text-placeholder"} />
                   <View style={{ flex: 1 }}>
                     <Text style={[st.optionText, !used.fast && { color: color.placeholder }]}>Fast</Text>
-                    <Text style={st.muted}>{used.fast ?? `${used.name} has no fast tier`}</Text>
+                    <Text style={st.muted}>{used.fast ?? noFast(used.name)}</Text>
                   </View>
                   <Switch accessibilityLabel="Fast" value={Boolean(value.fast && used.fast)} disabled={!used.fast} onValueChange={(fast) => pick(used, { fast }, true)} />
                 </View>

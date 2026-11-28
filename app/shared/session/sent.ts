@@ -16,6 +16,16 @@ import { type Going, UNCONFIRMED, type Uncertain } from "./uncertain";
 export const draftArgs = (draft: Draft | undefined, rev: number | null) => (draft ? ["--draft", JSON.stringify(draft), ...(rev === null ? [] : ["--draft-rev", String(rev)])] : []);
 /** The chips a message takes as it goes. */
 export const chipArgs = (chips: readonly Chip[] = []) => (chips.length > 0 ? ["--chips", chips.map((chip) => chip.id).join(",")] : []);
+/** A queue add's command after `queue <id>`: at `slot`, with its draft's parts and its chips. */
+export const addArgs = (message: string, qid: string, slot: number | undefined, parts: string | undefined, chips?: readonly Chip[]) => [
+  "add",
+  message,
+  "--qid",
+  qid,
+  ...(slot === undefined ? [] : ["--at", String(slot)]),
+  ...(parts ? ["--parts", parts] : []),
+  ...chipArgs(chips),
+];
 /** A send's command, as Rust keeps it to try again. */
 export const sendOp = (id: string, text: string, cid: string, how: { parts?: string; steer?: boolean; retryOf?: string; chips?: readonly Chip[] }) =>
   ["send", id, text, "--cid", cid, ...(how.retryOf ? ["--retry-of", how.retryOf] : []), ...(how.parts ? ["--parts", how.parts] : []), ...(how.steer ? ["--steer"] : []), ...chipArgs(how.chips)];
@@ -97,7 +107,22 @@ export function sendState(uncertain: Uncertain, drafts: Drafts, { connection, se
     const peer = origin !== "user" || undefined;
     return go(run, id, { cid, kind: "send", op, draft: draft ?? { parts: [text], attachmentIds: [] }, at: Date.now(), peer }, null);
   }
-  return { asked, keep, go, answered, adopt, again, discard, sendMessage };
+  /**
+   * Session `id`'s messages Rust may not hold (`mine`), handed to it on connection `on`, a Delete told instead. Another
+   * session's brief stays the app's alone: unconfirmed, with Try again under its id.
+   */
+  function handOver(run: Runner, id: string, mine: readonly Going[], on: unknown): void {
+    for (const each of mine.filter((one) => (!one.booked || one.removing) && asked.get(one.cid) !== on)) {
+      asked.set(each.cid, on);
+      if (each.peer && !each.removing) {
+        if (each.stuck === undefined) markGoing(id, each.cid, { stuck: UNCONFIRMED });
+        continue;
+      }
+      void (each.removing ? tellDrops(run, id) : adopt(run, id, each));
+    }
+  }
+
+  return { asked, keep, go, answered, adopt, again, discard, sendMessage, handOver };
 }
 
 export const sends = (list: readonly Going[]) => list.filter((each) => each.kind === "send" && !each.removing);

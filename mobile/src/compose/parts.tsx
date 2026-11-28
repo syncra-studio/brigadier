@@ -4,10 +4,8 @@ import { Animated, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimen
 import { SafeAreaView } from "react-native-safe-area-context";
 import { agentChipWords, type Chip as PanelChip, commentAt } from "../../../app/shared/chips";
 import { type Chip, type Draft, plainText } from "../../../app/shared/draft";
-import type { ModelRow } from "../../../app/shared/session/model";
-import type { RustQueued } from "../../../app/shared/session/queued";
 import type { Going } from "../../../app/shared/session/uncertain";
-import { baseName, COMPOSER_WORDS, kindOf } from "../../../app/shared/session/composer";
+import { baseName, COMPOSER_WORDS, failedWords, kindOf } from "../../../app/shared/session/composer";
 import { color, spacing, radius, text, shadow, opacity, mono, night } from "../theme";
 import { Comment, FileDocument, FileImage, Paperclip, Spinner, Warning, X } from "../../../app/ui/src/icons";
 import { Terminal } from "../../../app/ui/src/icons/thread";
@@ -17,22 +15,7 @@ import { chipTone, NEW_SESSION } from "./Menus";
 import { ThreadImage } from "../thread/Image";
 import { type Attachment, forMac } from "./state";
 
-/** A session's row with what the composer needs from Rust, as the desktop's ComposerRow. */
-export type ComposerRow = ModelRow & {
-  /** `editing`: the message pulled back to edit, kept by Rust; any device's. */
-  queue?: { paused: boolean; items: RustQueued[]; editing?: { id: string; text: string; parts?: Draft; slot: number; to?: string; shell?: string } | null; running?: string[] } | null;
-  steer?: boolean;
-  /** The last turn was the user's Stop: Resume carries it on [D373]. */
-  resumable?: boolean;
-  holding?: boolean;
-  /** A rebirth under way: its turn being stopped, or its fresh conversation not yet started [D88, D112]. */
-  optimizing?: boolean;
-};
-
-/** One queue action, shown at once until its reply is in and Rust's row has caught up with it (`touched`). */
-export type Op = { key: string; kind: "add" | "remove" | "resume" | "move"; qid: string; text?: string; slot?: number; at?: number; done?: () => void };
-/** The field's draft a message was sent from, its revision then, and its chips: what Rust gives back if it's refused. */
-export type Sub = { draft: Draft; rev: number | null; chips: readonly PanelChip[] };
+export type { ComposerRow, Op, Sub } from "../../../app/shared/session/queued";
 export type Pulled = { qid: string; slot: number; text: string } | null;
 
 /** A chip in the text, which shows there as its label. */
@@ -237,7 +220,7 @@ export function OnItsWay({ id, entry }: { id: string; entry: Going }) {
   return (
     <View style={st.going}>
       <Text style={st.goingText} numberOfLines={3}>{entry.op[2] ?? plainText(entry.draft.parts)}</Text>
-      <Text style={failed ? st.error : st.muted}>{failed ? `${maybe ? "May have been sent" : "Not sent"} · ${failed}` : "Sending…"}</Text>
+      <Text style={failed ? st.error : st.muted}>{failed ? failedWords(maybe, failed) : "Sending…"}</Text>
       {failed ? (
         <View style={st.actions}>
           {entry.op.length > 0 ? <Link title="Try again" onPress={() => void sending.again(run, id, entry)} /> : null}

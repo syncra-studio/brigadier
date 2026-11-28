@@ -9,29 +9,19 @@ import type { Source } from "../thread/thread";
 import { daemonRun, type Runner } from "./composer";
 import { drafts } from "./draft";
 import { inThread } from "./queued";
-import { flagOf, forget, type Going, markGoing, tellDrops, UNCONFIRMED, uncertain, useGoingOf } from "./uncertain";
+import { flagOf, forget, type Going, uncertain, useGoingOf } from "./uncertain";
 
-export { chipArgs, draftArgs, sendOp } from "../../../shared/session/sent";
+export { addArgs, chipArgs, draftArgs, sendOp } from "../../../shared/session/sent";
 
 /** This Mac's sends (app/shared/session/sent.ts), each on the connection it went on. */
 const sending = sendState(uncertain, drafts, { connection: () => view.daemon, sendFailed });
 export const { keep, go, answered, adopt, again, discard, sendMessage } = sending;
-const { asked } = sending;
 
-/** Session `id`'s messages Rust may not hold, handed to it on each new connection, a Delete told instead. */
+/** Session `id`'s messages Rust may not hold, handed to it on each new connection (app/shared/session/sent.ts). */
 export function useHanding(id: string, daemon: unknown, run: Runner): void {
   const mine = useGoingOf(id);
   useEffect(() => {
-    if (!daemon) return;
-    for (const each of mine.filter((one) => (!one.booked || one.removing) && asked.get(one.cid) !== daemon)) {
-      asked.set(each.cid, daemon);
-      // Another session's brief stays the app's alone: unconfirmed, with Try again under its id.
-      if (each.peer && !each.removing) {
-        if (each.stuck === undefined) markGoing(id, each.cid, { stuck: UNCONFIRMED });
-        continue;
-      }
-      void (each.removing ? tellDrops(run, id) : adopt(run, id, each));
-    }
+    if (daemon) sending.handOver(run, id, mine, daemon);
   });
 }
 

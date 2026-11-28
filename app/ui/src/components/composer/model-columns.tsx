@@ -13,6 +13,7 @@ import { fuzzyMatch, MatchedText } from "./menus";
 import { favorites, star } from "./model-keys";
 import { effortLabel, type Model, type ModelGroup, type PickerProps, ProviderMark } from "./model-picker";
 import { effortOf } from "../../../../shared/session/model";
+import { MODEL_WORDS, noFast, noMatch, notSetUp, showOlder } from "../../../../shared/session/composer";
 import { type Quota, QuotaLeft } from "./quota-lines";
 import { SwitchAgentDialog } from "./switch-agent";
 
@@ -202,12 +203,12 @@ function Models({ picker, onSetUp }: ColumnsProps & { picker: Picker }) {
       {picker.hidden > 0 && (
         <button type="button" onClick={() => picker.setOlder(!picker.older)} className={cx(itemBase, "shrink-0 pe-2 text-start text-muted-foreground hover:bg-fill focus-visible:focus-ring")}>
           <ChevronDown aria-hidden className={cx(picker.older && "rotate-180")} />
-          {picker.older ? "Show less" : `Show ${picker.hidden} more`}
+          {showOlder(picker.older, picker.hidden)}
         </button>
       )}
       {!needle && group?.unavailable && <NotSetUp group={group} onSetUp={onSetUp} />}
-      {!needle && group && !group.unavailable && shown.length === 0 && <p className={note}>No models listed yet</p>}
-      {needle && shown.length === 0 && <p className={note}>No models match “{needle}”</p>}
+      {!needle && group && !group.unavailable && shown.length === 0 && <p className={note}>{MODEL_WORDS.noneListed}</p>}
+      {needle && shown.length === 0 && <p className={note}>{noMatch(needle)}</p>}
       {!needle && tab === FAVORITES && shown.length === 0 && <p className={note}>Star a model and it shows here.</p>}
     </div>
   );
@@ -219,7 +220,7 @@ function NotSetUp({ group, onSetUp }: { group: ModelGroup; onSetUp?: (provider: 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center text-label text-muted-foreground">
       <ProviderMark mark={group.mark} className="size-icon-mark opacity-picker-dim" />
-      <p>{group.unavailable === "install" ? `${group.label} isn't installed. Install it and its models show here.` : `${group.label} isn't signed in. Sign in and its models show here.`}</p>
+      <p>{notSetUp(group.label, group.unavailable)}</p>
       {onSetUp && (
         <button type="button" aria-label={`Set up ${group.label}`} className={SETUP_BUTTON} onClick={() => onSetUp(group.provider)}>
           Set up
@@ -233,7 +234,7 @@ function NotSetUp({ group, onSetUp }: { group: ModelGroup; onSetUp?: (provider: 
 function EffortRows({ picker, row, value }: ColumnsProps & { picker: Picker; row: Row }) {
   const { model } = row;
   const used = picker.inUse(row);
-  if (model.efforts.length === 0) return <p className="px-2 py-1.5 text-label text-muted-foreground">No effort levels</p>;
+  if (model.efforts.length === 0) return <p className="px-2 py-1.5 text-label text-muted-foreground">{MODEL_WORDS.noEfforts}</p>;
   return (
     <div data-part="effort" role="radiogroup" aria-label="Effort" onKeyDown={picker.columnKeys("ArrowLeft")} className="flex flex-col gap-px">
       {model.efforts.map((level, index) => {
@@ -311,7 +312,7 @@ function FastSwitch({ picker, value, row, className }: ColumnsProps & { picker: 
   const { model } = row;
   const on = Boolean(value.fast && model.fast && picker.inUse(row));
   return (
-    <label title={model.fast ?? `${model.name} has no fast tier`} className={cx("flex items-center gap-1.5 text-label", model.fast ? "cursor-pointer" : "text-placeholder", className)}>
+    <label title={model.fast ?? noFast(model.name)} className={cx("flex items-center gap-1.5 text-label", model.fast ? "cursor-pointer" : "text-placeholder", className)}>
       <Bolt aria-hidden className={cx("size-icon-sm", on ? "text-glyph-5" : "text-placeholder")} />
       <span className="flex-1">Fast</span>
       <Switch aria-label="Fast" checked={on} disabled={!model.fast} onCheckedChange={(fast) => picker.pick(row, { fast }, true)} />

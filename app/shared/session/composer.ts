@@ -57,6 +57,28 @@ export const COMPOSER_WORDS = {
 export const sendTo = (name: string) => `Send to ${name}`;
 export const messageTo = (name: string) => `Message ${name}`;
 
+/** The queue card's lines. */
+export const QUEUE_WORDS = {
+  paused: "Queue paused because you interrupted",
+  notAdded: "Not added",
+  maybeNotAdded: "May not have been added",
+  deciding: "Deciding",
+  addAgain: "Add again",
+} as const;
+
+/** The model picker's notes; its agent not set up, by why. */
+export const MODEL_WORDS = { noneListed: "No models listed yet", noEfforts: "No effort levels", switchNow: "Switch now" } as const;
+export const notSetUp = (label: string, unavailable?: string | null) =>
+  unavailable === "install" ? `${label} isn't installed. Install it and its models show here.` : `${label} isn't signed in. Sign in and its models show here.`;
+export const noMatch = (needle: string) => `No models match “${needle}”`;
+export const noFast = (name: string) => `${name} has no fast tier`;
+export const showOlder = (older: boolean, hidden: number) => (older ? "Show less" : `Show ${hidden} more`);
+/** Another agent picked while a turn runs: it takes over as the turn ends, or now. */
+export const afterTurn = (name: string, going: boolean) => (going ? `Switching to ${name}…` : `${name} after this turn`);
+export const couldntSwitch = (why: string) => `Couldn't switch now: ${why}`;
+
+/** A message on its way that failed: `maybe`, a host was asked, so it may have gone. */
+export const failedWords = (maybe: boolean, why: string) => `${maybe ? "May have been sent" : "Not sent"} · ${why}`;
 /** A queued message Rust couldn't send; one to a worker can go to the session instead. */
 export const stuckWords = (error: string, toWorker: boolean) => `Not sent: ${error}. ${toWorker ? "Edit it, delete it or send it to the session instead." : "Edit or delete it to go on."}`;
 

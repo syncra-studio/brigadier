@@ -4,14 +4,14 @@ import { SharedComposer } from "../components/composer/composer";
 import { body, type Draft, isEmpty, plainText, sendMode, swapWords } from "../components/composer/draft";
 import { asShell, asWords, commandOf, isShell } from "../../../shared/shell";
 import { ComposerField, type ComposerFieldHandle } from "../components/composer/field";
-import { QueueCard, type QueuedMessage } from "../components/composer/queue";
+import { QueueCard } from "../components/composer/queue";
 import { PausedSendDialog } from "../components/composer/rail";
 import { openWorker, SessionWorkersStrip, useWorkers } from "../workers/live";
 import { ToWorkerChip } from "../workers/to-chip";
 import { SendButton } from "../components/composer/send-button";
 import { useSettings } from "../settings/api";
 import { ErrorLine } from "../components/error-line";
-import { ask, type Row, showStop, threadSource, useDaemon } from "../daemon";
+import { ask, showStop, threadSource, useDaemon } from "../daemon";
 import { sessionId } from "../home/start";
 import { type Chip, chipsWritten, dropChips, handOff, leaveChips, useChips, withChips } from "../panel/chips";
 import { AgentChipTile } from "../landing/agent-chip";
@@ -27,24 +27,13 @@ import { useComposerCommands } from "./commands";
 import { payload, useComposerFiles } from "./files";
 import { NEW_SESSION, sendAsNew, usePutBack } from "./side";
 import { newId } from "./store";
-import { inThread, queuedOf, type RustQueued, toArgs } from "./queued";
-import { again, answered, chipArgs, discard, draftArgs, go, keep, sendOp, useHanding, useOnItsWay } from "./sent";
+import { type ComposerRow, editedParts, inThread, type Op, queueShown, type Sub, toArgs } from "./queued";
+export type { ComposerRow };
+import { addArgs, again, answered, discard, draftArgs, go, keep, sendOp, useHanding, useOnItsWay } from "./sent";
 import { useGoingOf } from "./uncertain";
 import { useTurn } from "./turn";
 import { OVERNIGHT, overnight, useOvernight } from "../sessions/overnight";
 import { NightReady, nightLook, OvernightStrip, SessionOvernight, StartNight } from "../sessions/overnight-parts";
-
-/** A session's row with what the composer needs from Rust: its queue, whether its agent can steer, whether a turn is open. */
-export type ComposerRow = Row & {
-  /** `error`: why Rust couldn't send it; the queue waits on it. `editing`: the message pulled back to edit, kept by Rust. */
-  queue?: { paused: boolean; items: RustQueued[]; editing?: { id: string; text: string; parts?: Draft; slot: number; to?: string; shell?: string } | null; /** The `!` commands what waits here goes after. */ running?: string[] } | null;
-  steer?: boolean;
-  running?: boolean;
-  model?: string | null;
-  /** The last turn was the user's Stop: Resume carries it on, from Send or the queue [D373]. */
-  resumable?: boolean;
-  /** A rebirth under way: its turn being stopped, or its fresh conversation not yet started [D88, D112]. */ optimizing?: boolean;
-};
 
 /** Runs a brigadier command and answers its whole reply, a refusal included. */
 import type { Runner } from "../../../shared/session/run";
@@ -59,12 +48,6 @@ const blank = (parts: Draft["parts"]) => isEmpty({ parts: isShell(parts) ? [plai
 
 /** The composer being left had the keyboard: the session opened in its place takes it. */
 let hadKeyboard = false;
-
-/** One queue action, shown at once until its reply is in and Rust's row has caught up with it (`touched`). */
-/** The field's draft a message was sent from, its revision then, and its chips: what Rust gives back if it's refused. */
-type Sub = { draft: Draft; rev: number | null; chips: readonly Chip[] };
-
-type Op = { key: string; kind: "add" | "command" | "remove" | "resume" | "move"; qid: string; text?: string; slot?: number; shell?: boolean; at?: number; done?: () => void };
 
 /**
  * The composer under a session's thread [D183, D188]: ⏎ sends, or while a turn runs queues (the fixed default until
@@ -153,18 +136,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   useHanding(id, daemon, run);
   const onItsWay = useGoingOf(id).filter((each) => each.kind === "queue" && !each.removing); // Queue adds Rust may not hold, or holds unsettled (uncertain.ts).
   const lost = (qid: string) => onItsWay.find((each) => each.cid === qid);
-  let paused = row?.queue?.paused === true;
-  // A `!` command that ended shows only while its report can't go.
-  const queued = (row?.queue?.items ?? []).filter((each) => (each.shell === "ended" ? paused || each.error : !delivered.has(each.id)));
-  let items: QueuedMessage[] = queuedOf(queued, rows);
-  for (const op of live) {
-    if (op.kind === "remove") items = items.filter((each) => each.id !== op.qid);
-    if (op.kind === "resume") paused = false;
-    if (op.kind === "add" && !delivered.has(op.qid) && !items.some((each) => each.id === op.qid)) {
-      items = items.toSpliced(op.slot ?? items.length, 0, { id: op.qid, draft: { parts: [op.text ?? ""], attachmentIds: [] }, state: "local", shell: op.shell });
-    }
-  }
-  items = [...items, ...onItsWay.filter((each) => !delivered.has(each.cid) && !items.some((one) => one.id === each.cid)).map((each): QueuedMessage => ({ id: each.cid, draft: each.draft, state: each.stuck === undefined ? "local" : each.reached === false ? "unadded" : "uncertain" }))];
+  const { items, paused } = queueShown(row, rows, delivered, live, onItsWay);
   const text = (qid: string) => row?.queue?.items.find((each) => each.id === qid)?.text ?? live.find((op) => op.qid === qid)?.text ?? "";
 
   const act = (op: Omit<Op, "key">, args: string[], fail?: (reply: Record<string, any>) => void, then?: (reply: Record<string, any>) => void) => {
@@ -181,7 +153,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
   };
   /** With `sub`, the field's own message: kept first, it takes its chips as it goes, and Rust gives it back if it's refused. */
   const queue = (message: string, qid = newId(), slot?: number, fail?: (reply: Record<string, any>) => void, parts?: string, sub?: Sub) => {
-    const args = ["add", message, "--qid", qid, ...(slot === undefined ? [] : ["--at", String(slot)]), ...(parts ? ["--parts", parts] : []), ...chipArgs(sub?.chips)];
+    const args = addArgs(message, qid, slot, parts, sub?.chips);
     const entry = sub && keep(id, { cid: qid, kind: "queue", op: ["queue", id, ...args], draft: sub.draft, rev: sub.rev, chips: sub.chips, at: Date.now() });
     act({ kind: "add", qid, text: message, slot }, [...args, ...draftArgs(sub?.draft, sub?.rev ?? null)], fail, entry && ((reply) => answered(run, id, entry, reply)));
   };
@@ -228,11 +200,12 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     if (mine) return discard(run, id, mine, true);
     const slot = items.findIndex((each) => each.id === qid);
     const message = text(qid);
-    const { parts: draft, to: worker, shell: command } = row?.queue?.items.find((each) => each.id === qid) ?? {};
+    const item = row?.queue?.items.find((each) => each.id === qid);
+    const { parts: draft, to: worker, shell: command } = item ?? {};
     editing.current = { qid, slot: Math.max(slot, 0), text: message, to: worker, shell: command !== undefined };
     // One for a worker comes back with its To, as the old app's [D3050].
     if (worker) setTo(worker);
-    field.current?.set(command ? asShell([message]) : (draft?.parts ?? asWords([message])));
+    field.current?.set(editedParts(item, message));
     files.restore(draft?.attachmentIds ?? []);
     setEmpty(!message.trim());
     act({ kind: "remove", qid }, ["edit", qid], () => {

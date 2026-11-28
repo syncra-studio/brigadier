@@ -1,6 +1,10 @@
+import type { Chip } from "../chips";
 import type { Draft } from "../draft";
 import type { Row } from "../rows";
+import { asShell, asWords } from "../shell";
 import type { Session } from "../thread";
+import type { ModelRow } from "./model";
+import type { Going } from "./uncertain";
 
 // Rust's queue as a session's rows show it, for both apps [D58].
 
@@ -88,3 +92,44 @@ export const preview = (draft: Draft): string =>
     .join("")
     .replace(/\s+/g, " ")
     .trim();
+
+/** A session's row with what the composer needs from Rust: its queue, whether its agent can steer, whether a turn is open. */
+export type ComposerRow = ModelRow & {
+  /** `error`: why Rust couldn't send it; the queue waits on it. `editing`: the message pulled back to edit, kept by Rust; any device's. */
+  queue?: { paused: boolean; items: RustQueued[]; editing?: { id: string; text: string; parts?: Draft; slot: number; to?: string; shell?: string } | null; /** The `!` commands what waits here goes after. */ running?: string[] } | null;
+  steer?: boolean;
+  running?: boolean;
+  /** The last turn was the user's Stop: Resume carries it on, from Send or the queue [D373]. */
+  resumable?: boolean;
+  holding?: boolean;
+  /** A rebirth under way: its turn being stopped, or its fresh conversation not yet started [D88, D112]. */
+  optimizing?: boolean;
+};
+
+/** One queue action, shown at once until its reply is in and Rust's row has caught up with it (`touched`). */
+export type Op = { key: string; kind: "add" | "command" | "remove" | "resume" | "move"; qid: string; text?: string; slot?: number; shell?: boolean; at?: number; done?: () => void };
+/** The field's draft a message was sent from, its revision then, and its chips: what Rust gives back if it's refused. */
+export type Sub = { draft: Draft; rev: number | null; chips: readonly Chip[] };
+
+/**
+ * The queue as the card shows it: Rust's (a `!` command that ended only while its report can't go), this app's
+ * actions on it at once (`live`), then its adds Rust may not hold (`going`); none the thread already shows.
+ */
+export function queueShown(row: ComposerRow | undefined, rows: readonly Row[], delivered: ReadonlySet<string | undefined>, live: readonly Op[], going: readonly Going[]) {
+  let paused = row?.queue?.paused === true;
+  const queued = (row?.queue?.items ?? []).filter((each) => (each.shell === "ended" ? paused || each.error : !delivered.has(each.id)));
+  let items: QueuedMessage[] = queuedOf(queued, rows);
+  for (const op of live) {
+    if (op.kind === "remove") items = items.filter((each) => each.id !== op.qid);
+    if (op.kind === "resume") paused = false;
+    if (op.kind === "add" && !delivered.has(op.qid) && !items.some((each) => each.id === op.qid)) {
+      items = [...items];
+      items.splice(op.slot ?? items.length, 0, { id: op.qid, draft: { parts: [op.text ?? ""], attachmentIds: [] }, state: "local", shell: op.shell });
+    }
+  }
+  items = [...items, ...going.filter((each) => !delivered.has(each.cid) && !items.some((one) => one.id === each.cid)).map((each): QueuedMessage => ({ id: each.cid, draft: each.draft, state: each.stuck === undefined ? "local" : each.reached === false ? "unadded" : "uncertain" }))];
+  return { items, paused };
+}
+
+/** A queued message's parts as the field takes it back to edit: a command with its `!`, a message's words escaped. */
+export const editedParts = (item: RustQueued | undefined, text: string): Draft["parts"] => (item?.shell ? asShell([text]) : (item?.parts?.parts ?? asWords([text])));

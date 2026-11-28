@@ -5,17 +5,17 @@ import type { Chip as PanelChip } from "../../../app/shared/chips";
 import { body, type Draft, isEmpty, payload, plainText, sendMode } from "../../../app/shared/draft";
 import { withChips } from "../../../app/shared/chips";
 import { sessionId, sideArgs } from "../../../app/shared/session/side";
-import { type QueuedMessage, toArgs } from "../../../app/shared/session/queued";
+import { editedParts, type QueuedMessage, toArgs } from "../../../app/shared/session/queued";
 import { pausedWords } from "../../../app/shared/session/composer";
 import { failure } from "../../../app/shared/session/run";
-import { chipArgs, draftArgs, sendOp } from "../../../app/shared/session/sent";
+import { addArgs, draftArgs, sendOp } from "../../../app/shared/session/sent";
 import type { Going } from "../../../app/shared/session/uncertain";
 import type { Frame } from "../../../app/shared/client";
 import { lists } from "../mac/mac";
 import { type Power, refusal, shellPower } from "../powers/powers";
 import { shellLine } from "../../../app/shared/shell";
 import { NEW_SESSION } from "./Menus";
-import { type ComposerRow, isNew, lostReply, type Named, type Op, partsOf, type Pulled, type Sub, type To, unsigned, unsure } from "./parts";
+import { type ComposerRow, isNew, lostReply, type Op, type Pulled, type Sub, type To, unsigned, unsure } from "./parts";
 import { type forMac, newId, type ToLost } from "./state";
 
 /** What the composer's actions read from its render, each render's own. */
@@ -41,10 +41,11 @@ type Scope = {
   readyNow: () => string[];
   tilesNow: () => readonly string[];
   partsNow: () => Draft["parts"];
+  /** Words as the field's parts, its escaped `!` kept. */
+  fieldParts: (words: string) => Draft["parts"];
   setField: (parts: Draft["parts"], save?: boolean) => void;
   waitsFor: () => string | undefined;
   words$: RefObject<string>;
-  named$: RefObject<Named[]>;
   setOps: Dispatch<SetStateAction<Op[]>>;
   setError: Dispatch<SetStateAction<string | null>>;
   setPowerError: Dispatch<SetStateAction<string | null>>;
@@ -54,7 +55,7 @@ type Scope = {
   setStopping: Dispatch<SetStateAction<boolean>>;
 };
 
-export function sendActions({ id, mac, row, connected, worker, to, toWorker, toSending, toGone, inProject, running, canSteer, commands, paused, items, editing, lost, textOf, readyNow, tilesNow, partsNow, setField, waitsFor, words$, named$, setOps, setError, setPowerError, setPower, setToSending, setTo, setStopping }: Scope) {
+export function sendActions({ id, mac, row, connected, worker, to, toWorker, toSending, toGone, inProject, running, canSteer, commands, paused, items, editing, lost, textOf, readyNow, tilesNow, partsNow, fieldParts, setField, waitsFor, words$, setOps, setError, setPowerError, setPower, setToSending, setTo, setStopping }: Scope) {
   const { run, drafts, sends: sending, chips: waitingChips, files: fileStore } = mac;
   const act = (op: Omit<Op, "key">, args: string[], fail?: (reply: Record<string, any>) => void, then?: (reply: Record<string, any>) => void) => {
     const key = newId();
@@ -70,7 +71,7 @@ export function sendActions({ id, mac, row, connected, worker, to, toWorker, toS
   };
   /** With `sub`, the field's own message: kept first, it takes its chips as it goes, and Rust gives it back if it's refused. */
   const queue = (message: string, qid: string, slot: number | undefined, fail: ((reply: Record<string, any>) => void) | undefined, parts: string | undefined, sub: Sub) => {
-    const args = ["add", message, "--qid", qid, ...(slot === undefined ? [] : ["--at", String(slot)]), ...(parts ? ["--parts", parts] : []), ...chipArgs(sub.chips)];
+    const args = addArgs(message, qid, slot, parts, sub.chips);
     const entry = sending.keep(id, { cid: qid, kind: "queue", op: ["queue", id, ...args], draft: sub.draft, rev: sub.rev, chips: sub.chips, at: Date.now() });
     act({ kind: "add", qid, text: message, slot }, [...args, ...draftArgs(sub.draft, sub.rev)], fail, (reply) => sending.answered(run, id, entry, reply));
   };
@@ -103,7 +104,7 @@ export function sendActions({ id, mac, row, connected, worker, to, toWorker, toS
     if (mine) return sending.discard(run, id, mine, true);
     const slot = items.findIndex((each) => each.id === qid);
     const message = textOf(qid);
-    const parts = row?.queue?.items.find((each) => each.id === qid)?.parts?.parts ?? [message];
+    const parts = editedParts(row?.queue?.items.find((each) => each.id === qid), message);
     editing.set({ qid, slot: Math.max(slot, 0), text: message });
     setField(parts);
     const put = words$.current;
@@ -145,7 +146,7 @@ export function sendActions({ id, mac, row, connected, worker, to, toWorker, toS
           // Only the command leaves the field: a message given back above it while the sheet was open stays.
           const now = words$.current;
           if (now === typed) setField([]);
-          else if (now.endsWith(`\n\n${typed}`)) setField(partsOf(now.slice(0, -typed.length - 2), named$.current));
+          else if (now.endsWith(`\n\n${typed}`)) setField(fieldParts(now.slice(0, -typed.length - 2)));
         },
       });
     }
@@ -273,7 +274,7 @@ export function sendActions({ id, mac, row, connected, worker, to, toWorker, toS
         // Only the message leaves the field: one given back above it while the sheet was open stays.
         const now = words$.current;
         if (now === was) setField([]);
-        else if (now.endsWith(`\n\n${was}`)) setField(partsOf(now.slice(0, -was.length - 2), named$.current));
+        else if (now.endsWith(`\n\n${was}`)) setField(fieldParts(now.slice(0, -was.length - 2)));
       },
     });
   };
