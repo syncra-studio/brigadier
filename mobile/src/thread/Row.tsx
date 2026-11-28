@@ -1,9 +1,9 @@
 // The one place a line becomes a row, as the desktop's thread/rows.tsx LineRow: the list owns the column, the row its content.
 import { Component, memo, type ReactNode } from "react";
 import { Text, View } from "react-native";
-import { sentAt } from "../../vendor/brigadier-shared/words";
+import { sentAt } from "../../../app/shared/words";
 import { color, text } from "../theme";
-import type { Gap, Line } from "../../vendor/brigadier-shared/lines";
+import type { Gap, Line } from "../../../app/shared/lines";
 import { Body } from "./rows/body";
 import { AnswerMarks } from "./rows/message";
 import { ErrorLine } from "./rows/parts";

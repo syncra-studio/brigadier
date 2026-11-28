@@ -2,8 +2,8 @@
 // answered from here: one-time answers straight through, lasting ones through the Face ID sheet; without, read only.
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import type { PendingApproval, PendingQuestion } from "../../vendor/brigadier-shared/cards";
-import type { Frame } from "../../vendor/brigadier-shared/client";
+import type { PendingApproval, PendingQuestion } from "../../../app/shared/cards";
+import type { Frame } from "../../../app/shared/client";
 import { Confirm } from "../act/Confirm";
 import { answering, forget, send, settle } from "../cards/answers";
 import { ask } from "../link";

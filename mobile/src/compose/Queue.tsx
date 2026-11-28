@@ -3,8 +3,8 @@
 // drag), the list scrolling past 30% of the screen; over them, each `!` command they wait for, with Run in background.
 import { useState } from "react";
 import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import type { Draft } from "../../vendor/brigadier-shared/draft";
-import type { QueuedMessage } from "../../vendor/brigadier-shared/session/queued";
+import type { Draft } from "../../../app/shared/draft";
+import type { QueuedMessage } from "../../../app/shared/session/queued";
 import { color, mono, size, text } from "../theme";
 import { Boxed, FadeIn, Glyph, type GlyphName, Shimmer, Spinner, Trash } from "./Glyph";
 

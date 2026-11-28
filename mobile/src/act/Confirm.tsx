@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, View } from "react-native";
-import type { Frame } from "../../vendor/brigadier-shared/client";
+import type { Frame } from "../../../app/shared/client";
 import { Button } from "../Button";
 import { color, text } from "../theme";
 import { signed } from "./act";

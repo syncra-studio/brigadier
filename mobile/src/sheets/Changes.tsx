@@ -2,7 +2,7 @@
 // opened to its hunks. Rust sends each side whole and where its hunks sit; the lines of a hunk are matched here.
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
-import { failure } from "../../vendor/brigadier-shared/session/run";
+import { failure } from "../../../app/shared/session/run";
 import { forMac } from "../compose/state";
 import { color, mono } from "../theme";
 import { Sheet, st } from "./Sheet";

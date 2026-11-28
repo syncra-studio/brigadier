@@ -2,9 +2,9 @@
 // everything that ran, as the desktop's card and panel/background-history.tsx show them [D105, D200].
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Pressable, Text, View } from "react-native";
-import type { Job } from "../../vendor/brigadier-shared/rows";
-import { failure } from "../../vendor/brigadier-shared/session/run";
-import { duration, sentAt } from "../../vendor/brigadier-shared/words";
+import type { Job } from "../../../app/shared/rows";
+import { failure } from "../../../app/shared/session/run";
+import { duration, sentAt } from "../../../app/shared/words";
 import { forMac } from "../compose/state";
 import { lists, thread } from "../mac/mac";
 import { ShellOutput } from "./Shell";

@@ -1,8 +1,8 @@
 // Answers on their way, as the desktop's session/decisions.tsx keeps them: the card goes at once; a refusal brings it
 // back with its words; one the Mac took stays hidden until Rust no longer lists it. Nothing is ever resent by itself.
-import type { PendingApproval, PendingQuestion } from "../../vendor/brigadier-shared/cards";
-import type { Frame } from "../../vendor/brigadier-shared/client";
-import { store } from "../../vendor/brigadier-shared/store";
+import type { PendingApproval, PendingQuestion } from "../../../app/shared/cards";
+import type { Frame } from "../../../app/shared/client";
+import { store } from "../../../app/shared/store";
 import { ask } from "../link";
 
 export type Card = PendingApproval | PendingQuestion;

@@ -1,6 +1,6 @@
 // The stream to the Mac as JS sees it: the shared client (D58) over the native module's decrypted bytes.
 import Link from "../modules/link";
-import { client, type Frame } from "../vendor/brigadier-shared/client";
+import { client, type Frame } from "../../app/shared/client";
 
 
 const fromBase64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));

@@ -1,9 +1,9 @@
 // The signed-in Mac's lists and the open thread, as the desktop's daemon.ts keeps them: a snapshot, then numbered
 // pushes naming what changed by id; a gap asks for a fresh snapshot.
-import type { Frame } from "../../vendor/brigadier-shared/client";
-import type { Project, Row } from "../../vendor/brigadier-shared/rows";
-import { store } from "../../vendor/brigadier-shared/store";
-import type { Item, Session, Turn, Work } from "../../vendor/brigadier-shared/thread";
+import type { Frame } from "../../../app/shared/client";
+import type { Project, Row } from "../../../app/shared/rows";
+import { store } from "../../../app/shared/store";
+import type { Item, Session, Turn, Work } from "../../../app/shared/thread";
 import { onPush, request } from "../link";
 
 export const lists = store<{ rows: Row[]; projects: Project[]; ready: boolean }>({ rows: [], projects: [], ready: false });

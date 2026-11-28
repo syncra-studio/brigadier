@@ -3,11 +3,11 @@
 // message back in the composer; after an undo, Redo file changes puts them back.
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import type { Draft } from "../../vendor/brigadier-shared/draft";
-import { REWIND_CANT } from "../../vendor/brigadier-shared/words";
+import type { Draft } from "../../../app/shared/draft";
+import { REWIND_CANT } from "../../../app/shared/words";
 import { Button } from "../Button";
 import { forMac, newId } from "../compose/state";
-import { store } from "../../vendor/brigadier-shared/store";
+import { store } from "../../../app/shared/store";
 import { macNow } from "../link";
 import { lists, thread } from "../mac/mac";
 import { color } from "../theme";

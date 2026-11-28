@@ -2,15 +2,15 @@
 // the session's own agent's models only, as a phone may set no other [allow.rs `set`]; a worker's shown but fixed [D293].
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
-import { asGroups, choiceOf, loadModels, type Model, type ModelChoice, type ModelGroup, type ModelRow, setArgs } from "../../vendor/brigadier-shared/session/model";
-import { failure } from "../../vendor/brigadier-shared/session/run";
-import { store } from "../../vendor/brigadier-shared/store";
+import { asGroups, choiceOf, loadModels, type Model, type ModelChoice, type ModelGroup, type ModelRow, setArgs } from "../../../app/shared/session/model";
+import { failure } from "../../../app/shared/session/run";
+import { store } from "../../../app/shared/store";
 import { Button } from "../Button";
 import { color, size, text } from "../theme";
 import { Glyph } from "./Glyph";
 import { fuzzyMatch, MatchedText } from "./Menus";
 import { Pill } from "./Pill";
-import type { Runner } from "../../vendor/brigadier-shared/session/run";
+import type { Runner } from "../../../app/shared/session/run";
 import { forMac, newId } from "./state";
 
 /** "xhigh" → "Extra high", "medium" → "Medium". */

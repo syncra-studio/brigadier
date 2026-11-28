@@ -1,8 +1,8 @@
 // Changed files, after the desktop's components/thread/file-change.tsx.
 import { StyleSheet, Text, View } from "react-native";
-import type { PendingApproval } from "../../../vendor/brigadier-shared/cards";
-import type { FileChange, Item, Progress } from "../../../vendor/brigadier-shared/thread";
-import { FILE_VERBS } from "../../../vendor/brigadier-shared/words";
+import type { PendingApproval } from "../../../../app/shared/cards";
+import type { FileChange, Item, Progress } from "../../../../app/shared/thread";
+import { FILE_VERBS } from "../../../../app/shared/words";
 import { color } from "../../theme";
 import { Capped, Glyph, Line, Opening, s, Words } from "./parts";
 import { Allowed } from "./tool";

@@ -1,5 +1,5 @@
 // One item's row by its kind, after the desktop's components/thread/body.tsx and thread/rows.tsx.
-import type { Item, Turn } from "../../../vendor/brigadier-shared/thread";
+import type { Item, Turn } from "../../../../app/shared/thread";
 import { ApprovalRow, QuestionRow } from "./asks";
 import { FileChangeItem } from "./file-change";
 import { AssistantMessage, PeerBubble, ThinkingLine, ThoughtRow, UserBubble } from "./message";

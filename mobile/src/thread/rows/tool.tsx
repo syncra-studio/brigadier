@@ -1,10 +1,10 @@
 // A tool call and a `!` command, after the desktop's components/thread/tool.tsx and session/bang-row.tsx.
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import type { PendingApproval } from "../../../vendor/brigadier-shared/cards";
-import type { Item, Progress, StepKind, Turn } from "../../../vendor/brigadier-shared/thread";
-import { connectorName, VERBS } from "../../../vendor/brigadier-shared/words";
-import { running, type Group } from "../../../vendor/brigadier-shared/lines";
+import type { PendingApproval } from "../../../../app/shared/cards";
+import type { Item, Progress, StepKind, Turn } from "../../../../app/shared/thread";
+import { connectorName, VERBS } from "../../../../app/shared/words";
+import { running, type Group } from "../../../../app/shared/lines";
 import { thread } from "../../mac/mac";
 import { sheet } from "../../sheets/Sheets";
 import { color } from "../../theme";

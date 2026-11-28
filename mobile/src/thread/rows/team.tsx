@@ -1,6 +1,6 @@
 // Subagents and workers in the thread, after the desktop's workers/{subagents,sentence,live}.tsx.
 import { Text, View } from "react-native";
-import type { Item, Progress } from "../../../vendor/brigadier-shared/thread";
+import type { Item, Progress } from "../../../../app/shared/thread";
 import { Glyph, Line, OnMac, Opening, s, useKept, Toggle, Words } from "./parts";
 
 type Agent = Extract<Item, { kind: "childAgent" }>;

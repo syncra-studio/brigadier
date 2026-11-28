@@ -1,7 +1,7 @@
 // A worktree's setup under its launch's message, after the desktop's components/thread/setup.tsx.
 import { Text, View } from "react-native";
-import type { Setup, SetupStep } from "../../../vendor/brigadier-shared/thread";
-import { SETUP_TITLES } from "../../../vendor/brigadier-shared/words";
+import type { Setup, SetupStep } from "../../../../app/shared/thread";
+import { SETUP_TITLES } from "../../../../app/shared/words";
 import { color } from "../../theme";
 import { ErrorLine, Glyph, Line, Opening, s, Words } from "./parts";
 

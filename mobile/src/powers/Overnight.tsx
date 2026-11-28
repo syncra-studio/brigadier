@@ -4,9 +4,9 @@
 // once once the Mac takes it, till the row has it [D30].
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import type { Overnight, Row } from "../../vendor/brigadier-shared/rows";
-import { store } from "../../vendor/brigadier-shared/store";
-import { duration } from "../../vendor/brigadier-shared/words";
+import type { Overnight, Row } from "../../../app/shared/rows";
+import { store } from "../../../app/shared/store";
+import { duration } from "../../../app/shared/words";
 import { Confirm } from "../act/Confirm";
 import { Glyph } from "../compose/Glyph";
 import { Pill, PillDivider } from "../compose/Pill";

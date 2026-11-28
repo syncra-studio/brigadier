@@ -1,7 +1,7 @@
 // A `!` command's output, as the desktop's session/bang-row.tsx reads it: whole every 2 s while it runs, with Stop.
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Text } from "react-native";
-import { failure } from "../../vendor/brigadier-shared/session/run";
+import { failure } from "../../../app/shared/session/run";
 import { Button } from "../Button";
 import { forMac } from "../compose/state";
 import { color } from "../theme";

@@ -3,8 +3,8 @@
 // fingerprint along, so Rust refuses if the answer changed meanwhile. Another agent is the Mac's.
 import { useEffect, useState } from "react";
 import { Alert } from "react-native";
-import { failure } from "../../vendor/brigadier-shared/session/run";
-import { FORK_FILES, FORK_REPO_FILES } from "../../vendor/brigadier-shared/words";
+import { failure } from "../../../app/shared/session/run";
+import { FORK_FILES, FORK_REPO_FILES } from "../../../app/shared/words";
 import { Confirm } from "../act/Confirm";
 import { forMac } from "../compose/state";
 import { lists } from "../mac/mac";

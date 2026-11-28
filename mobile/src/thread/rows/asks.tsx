@@ -1,8 +1,8 @@
 // Approvals and questions in the thread, after the desktop's components/thread/cards.tsx and composer/approval.tsx's describe.
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
-import type { PendingApproval, PendingQuestion, QuestionItem } from "../../../vendor/brigadier-shared/cards";
-import type { ApprovalAction, Item, SentFile, Turn } from "../../../vendor/brigadier-shared/thread";
+import type { PendingApproval, PendingQuestion, QuestionItem } from "../../../../app/shared/cards";
+import type { ApprovalAction, Item, SentFile, Turn } from "../../../../app/shared/thread";
 import { color } from "../../theme";
 import { Box, Glyph, Line, Opening, s, Words } from "./parts";
 

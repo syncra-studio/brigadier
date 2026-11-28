@@ -3,8 +3,8 @@
 // sessions/overnight-row.tsx and peers/{live,rows,words}.ts(x).
 import type { ReactNode } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
-import type { Item } from "../../../vendor/brigadier-shared/thread";
-import { duration, hhmm } from "../../../vendor/brigadier-shared/words";
+import type { Item } from "../../../../app/shared/thread";
+import { duration, hhmm } from "../../../../app/shared/words";
 import { color, text } from "../../theme";
 import { ThreadImage } from "../Image";
 import { Markdown } from "../Markdown";

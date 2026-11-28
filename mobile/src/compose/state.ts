@@ -2,14 +2,14 @@
 // app/ui/src/session/{draft,uncertain,sent}.ts and panel/chips.ts wire it.
 import { File, Paths } from "expo-file-system";
 import { uuid } from "expo-modules-core";
-import type { Chip as PanelChip } from "../../vendor/brigadier-shared/chips";
-import type { Draft } from "../../vendor/brigadier-shared/draft";
-import { draftState } from "../../vendor/brigadier-shared/session/draft";
-import { modelState } from "../../vendor/brigadier-shared/session/model";
-import type { Runner } from "../../vendor/brigadier-shared/session/run";
-import { sendState } from "../../vendor/brigadier-shared/session/sent";
-import { uncertainState } from "../../vendor/brigadier-shared/session/uncertain";
-import { store } from "../../vendor/brigadier-shared/store";
+import type { Chip as PanelChip } from "../../../app/shared/chips";
+import type { Draft } from "../../../app/shared/draft";
+import { draftState } from "../../../app/shared/session/draft";
+import { modelState } from "../../../app/shared/session/model";
+import type { Runner } from "../../../app/shared/session/run";
+import { sendState } from "../../../app/shared/session/sent";
+import { uncertainState } from "../../../app/shared/session/uncertain";
+import { store } from "../../../app/shared/store";
 import { macNow, request, streamNow } from "../link";
 import { keepImage } from "../thread/Image";
 

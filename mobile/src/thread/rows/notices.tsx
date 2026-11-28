@@ -1,7 +1,7 @@
 // Notices, lines across the thread, compaction and the limit's switch, after the desktop's components/thread/{body,cards,line}.tsx.
 import { Text } from "react-native";
-import type { Item, Progress } from "../../../vendor/brigadier-shared/thread";
-import { COMPACTION, duration, FAILED_CAUSE, hhmm, TURN_FAILED } from "../../../vendor/brigadier-shared/words";
+import type { Item, Progress } from "../../../../app/shared/thread";
+import { COMPACTION, duration, FAILED_CAUSE, hhmm, TURN_FAILED } from "../../../../app/shared/words";
 import { color } from "../../theme";
 import { Divider, ErrorState, s } from "./parts";
 

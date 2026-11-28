@@ -2,8 +2,8 @@
 // rewind to a message) or a `!` command's row (its output). A held message selects its text, so nothing hangs on that.
 import { useSyncExternalStore } from "react";
 import { ActionSheetIOS, Alert, Pressable, Text } from "react-native";
-import type { Draft } from "../../vendor/brigadier-shared/draft";
-import { store } from "../../vendor/brigadier-shared/store";
+import type { Draft } from "../../../app/shared/draft";
+import { store } from "../../../app/shared/store";
 import { Fork } from "../fork/Fork";
 import { thread } from "../mac/mac";
 import { macNow } from "../link";

@@ -1,17 +1,17 @@
 // Sample lists and a thread for `-screen sessions`, `-screen thread`, the powers', P4a's sheets and the composer's
 // (simulator screenshots: no Mac, no network).
 import Link from "../../modules/link";
-import type { Row } from "../../vendor/brigadier-shared/rows";
-import type { ModelGroup } from "../../vendor/brigadier-shared/session/model";
-import approvals from "../../vendor/brigadier-shared/samples/approval-cards.json";
-import questions from "../../vendor/brigadier-shared/samples/question-cards.json";
-import type { PendingApproval, PendingQuestion } from "../../vendor/brigadier-shared/cards";
-import file from "../../vendor/brigadier-shared/samples/file-change.json";
-import group from "../../vendor/brigadier-shared/samples/group.json";
-import message from "../../vendor/brigadier-shared/samples/message.json";
-import shell from "../../vendor/brigadier-shared/samples/shell.json";
-import tool from "../../vendor/brigadier-shared/samples/tool.json";
-import type { Item } from "../../vendor/brigadier-shared/thread";
+import type { Row } from "../../../app/shared/rows";
+import type { ModelGroup } from "../../../app/shared/session/model";
+import approvals from "../../../app/shared/samples/approval-cards.json";
+import questions from "../../../app/shared/samples/question-cards.json";
+import type { PendingApproval, PendingQuestion } from "../../../app/shared/cards";
+import file from "../../../app/shared/samples/file-change.json";
+import group from "../../../app/shared/samples/group.json";
+import message from "../../../app/shared/samples/message.json";
+import shell from "../../../app/shared/samples/shell.json";
+import tool from "../../../app/shared/samples/tool.json";
+import type { Item } from "../../../app/shared/thread";
 import { canned, forMac } from "../compose/state";
 import { sessionMenu, sheet } from "../sheets/Sheets";
 import { keepImage } from "../thread/Image";

@@ -1,7 +1,7 @@
 // The messages, after the desktop's components/thread/message.tsx, peers/message.tsx and thread/tidy.ts.
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import type { Item } from "../../../vendor/brigadier-shared/thread";
-import { sentAt } from "../../../vendor/brigadier-shared/words";
+import type { Item } from "../../../../app/shared/thread";
+import { sentAt } from "../../../../app/shared/words";
 import { ReplyImages } from "../../powers/View";
 import { color } from "../../theme";
 import { ThreadImage } from "../Image";

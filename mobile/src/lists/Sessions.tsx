@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { Pressable, SectionList, StyleSheet, Text, View } from "react-native";
-import type { Project, Row } from "../../vendor/brigadier-shared/rows";
-import { sentAt } from "../../vendor/brigadier-shared/words";
+import type { Project, Row } from "../../../app/shared/rows";
+import { sentAt } from "../../../app/shared/words";
 import { lists, needsYou, shown } from "../mac/mac";
 import { color, text } from "../theme";
 

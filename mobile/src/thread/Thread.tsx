@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
-import type { Session } from "../../vendor/brigadier-shared/thread";
-import { datedMessages } from "../../vendor/brigadier-shared/words";
+import type { Session } from "../../../app/shared/thread";
+import { datedMessages } from "../../../app/shared/words";
 import { lists, older, openThread, thread } from "../mac/mac";
 import { request, streamNow } from "../link";
 import { Composer } from "../compose/Composer";
@@ -10,7 +10,7 @@ import type { Screens } from "../mac/MacScreens";
 import { Sheets } from "../sheets/Sheets";
 import { color, text } from "../theme";
 import { Cards } from "./Cards";
-import { type Line, lineMaker, workKey } from "../../vendor/brigadier-shared/lines";
+import { type Line, lineMaker, workKey } from "../../../app/shared/lines";
 import { Row } from "./Row";
 
 /** The open session's thread, read only: its rows as the desktop draws them, its waiting cards under them. */

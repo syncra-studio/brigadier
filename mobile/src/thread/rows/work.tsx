@@ -1,9 +1,9 @@
 // A turn's work header and its group lines, after the desktop's components/thread/work.tsx and body.tsx's GroupLine.
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
-import type { Item, Turn, Work } from "../../../vendor/brigadier-shared/thread";
-import { duration, groupWords, workWords } from "../../../vendor/brigadier-shared/words";
-import { type Group, running, shutKey, type StepLine, workKey } from "../../../vendor/brigadier-shared/lines";
+import type { Item, Turn, Work } from "../../../../app/shared/thread";
+import { duration, groupWords, workWords } from "../../../../app/shared/words";
+import { type Group, running, shutKey, type StepLine, workKey } from "../../../../app/shared/lines";
 import { color } from "../../theme";
 import { Body } from "./body";
 import { ThinkingLine } from "./message";

@@ -4,7 +4,7 @@
 // `level`), Full access with the desktop's confirm words.
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import type { ModelRow } from "../../vendor/brigadier-shared/session/model";
+import type { ModelRow } from "../../../app/shared/session/model";
 import { Confirm } from "../act/Confirm";
 import { Button } from "../Button";
 import { Glyph, Shield } from "../compose/Glyph";
