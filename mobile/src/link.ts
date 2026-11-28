@@ -63,7 +63,10 @@ Link.addListener("closed", ({ n }) => {
 
 export async function connect(...args: Parameters<typeof Link.connect>) {
   const mine = ++attempt;
+  const was = live;
   lost();
+  // The stream this replaces ends here, as in `close`: its signed-in pushes stop catching the new stream's frames.
+  if (was) for (const f of closed) f();
   mac = args[1];
   const r = await Link.connect(...args);
   if (mine !== attempt) return { error: "closed" as const };

@@ -21,9 +21,8 @@ export function UserBubble({ item }: { item: Message }) {
   const [more, setMore] = useKept(`${item.id}:more`);
   const lines = words.split("\n");
   const folds = lines.length > FOLD_LINES;
-  // An image or paste in the text is its chip there, not above as well [D2107].
-  const inline = new Set(item.draft?.parts.flatMap((part) => (typeof part !== "string" && "attachmentId" in part ? [part.attachmentId] : [])));
-  const files = (item.files ?? []).filter((file) => !inline.has(file.id));
+  // The desktop shows an image or paste chip in the text instead [D2107]; the phone draws no chips, so all go above.
+  const files = item.files ?? [];
   const fix = item.draft?.parts.some((part) => typeof part !== "string" && part.kind === "paste" && PR_FIX.test(part.preview ?? ""));
   return (
     <View style={st.user}>

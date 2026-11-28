@@ -57,6 +57,8 @@ type Pulled = { qid: string; slot: number; text: string } | null;
 /** A chip in the text, which shows there as its label. */
 type Named = Extract<Chip, { label: string }>;
 const named = (part: Draft["parts"][number]): part is Named => typeof part !== "string" && "label" in part;
+/** A draft's files: its tiles, and its image and paste chips as tiles too, since the field shows no chip without a label. */
+const tilesOf = (draft: Draft) => [...new Set([...draft.attachmentIds, ...draft.parts.flatMap((part) => (typeof part !== "string" && "attachmentId" in part ? [part.attachmentId] : []))])];
 
 /** The field's text as a draft's parts: each chip still whole in it is a chip again, the rest words. */
 function partsOf(words: string, chips: readonly Named[]): Draft["parts"] {
@@ -187,12 +189,12 @@ export function Composer({ id }: { id: string }) {
   // After a restart the draft is Rust's alone: it comes back unless something was typed first. One given back while
   // the session was closed brings its tiles; its files' names are read from Rust's folder.
   useEffect(() => {
-    fileStore.restore(id, initial.attachmentIds);
+    fileStore.restore(id, tilesOf(initial));
     fileStore.load(id);
     void drafts.loadDraft(run, id).then((saved) => {
       if (!saved || !isEmpty({ parts: partsNow(), attachmentIds: [] })) return;
       setField(saved.parts, false);
-      fileStore.restore(id, saved.attachmentIds);
+      fileStore.restore(id, tilesOf(saved));
     });
   }, []);
   // The tiles changed: the draft keeps them.
@@ -208,9 +210,9 @@ export function Composer({ id }: { id: string }) {
       const typed = partsNow();
       const parts = isEmpty({ parts: typed, attachmentIds: [] }) ? back.parts : [...back.parts, "\n\n", ...typed];
       setField(parts, false);
-      fileStore.restore(id, back.attachmentIds);
+      fileStore.restore(id, tilesOf(back));
       if (back.error) setError(back.error);
-      return { parts, attachmentIds: [...new Set([...back.attachmentIds, ...tilesNow()])] };
+      return { parts, attachmentIds: [...new Set([...tilesOf(back), ...tilesNow()])] };
     }),
   );
   // Each connection: what waits above the field, read again; messages Rust may not hold handed to it, a Delete told instead (the desktop's sent.tsx `useHanding`).
