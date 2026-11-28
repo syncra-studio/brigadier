@@ -449,11 +449,27 @@ pub fn identity(
             )?;
         }
     }
-    // Git needs the gitdir's parent to exist even for `var`; leave no repository or empty folders.
+    // Branch-scoped includes need HEAD; leave no repository or empty folders from this check.
     let missing: Vec<_> = at.ancestors().take_while(|p| !p.exists()).collect();
-    let created = fs::create_dir_all(&at);
+    let temporary = at
+        .join(".git")
+        .symlink_metadata()
+        .is_err_and(|e| e.kind() == io::ErrorKind::NotFound);
+    let created = fs::create_dir_all(&at).and_then(|()| {
+        if temporary {
+            ran(
+                tool("git").arg("-C").arg(&at).args(["init", "--quiet"]),
+                INIT_SECS,
+            )
+        } else {
+            Ok(())
+        }
+    });
     let set = created.is_ok() && configured(&at);
     let (mut name, mut email) = (config(&at, "user.name"), config(&at, "user.email"));
+    if temporary {
+        let _ = fs::remove_dir_all(at.join(".git"));
+    }
     for dir in missing {
         let _ = fs::remove_dir(dir);
     }

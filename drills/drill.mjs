@@ -2393,7 +2393,16 @@ async function noIdentity() {
   const splitMade = await cliAsync(['projects', 'init', `${work}/e`, '--id', 'p-drill-e'], split)
   const fourth = { known: splitKnown, author: splitMade.ok ? author(`${work}/e`) : splitMade.error, committer: splitMade.ok ? committer(`${work}/e`) : splitMade.error, unchanged: fs.readFileSync(split.GIT_CONFIG_GLOBAL, 'utf8') === identities }
   const fourthOk = splitKnown.set === true && fourth.author === 'Author Person <author@example.invalid>' && fourth.committer === 'Committer Person <committer@example.invalid>' && fourth.unchanged
-  log({ summary: 'noidentity', pass: firstOk && secondOk && thirdOk && fourthOk, first, second, third, fourth })
+  const branch = env(`${home}/branch.gitconfig`)
+  const onbranch = '[init]\n\tdefaultBranch = main\n[includeIf "onbranch:main"]\n\tpath = included.gitconfig\n'
+  fs.writeFileSync(branch.GIT_CONFIG_GLOBAL, onbranch)
+  const branchPath = `${work}/branch/deep/f`
+  const branchKnown = await cliAsync(['projects', 'identity', '--to', branchPath], branch)
+  const branchLeft = fs.existsSync(`${work}/branch`)
+  const branchMade = await cliAsync(['projects', 'init', branchPath, '--id', 'p-drill-f'], branch)
+  const fifth = { known: branchKnown, left: branchLeft, author: branchMade.ok ? author(branchPath) : branchMade.error, unchanged: fs.readFileSync(branch.GIT_CONFIG_GLOBAL, 'utf8') === onbranch && fs.readFileSync(`${home}/included.gitconfig`, 'utf8') === included }
+  const fifthOk = branchKnown.set === true && !branchLeft && fifth.author === 'Scoped Person <scoped@example.invalid>' && fifth.unchanged
+  log({ summary: 'noidentity', pass: firstOk && secondOk && thirdOk && fourthOk && fifthOk, first, second, third, fourth, fifth })
   if (process.env.KEEP !== '1') [DATA, work].forEach(drop)
 }
 
