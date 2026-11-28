@@ -140,6 +140,12 @@ found="$(git log --format='%h %B' | grep -E '[Cc][Hh][Aa][Tt][ _-]?[Gg][Pp][Tt]|
   fail "a commit message names a product or another app: say what the behaviour or look is"
   echo "$found"
 }
+# Push and payment keys live only as the relay's secrets, which the owner sets [beat-competitors D90].
+check "a private key or a payment key in a file" '[-]----BEGIN ([A-Z]+ )?PRIVATE KEY-----|creem_[A-Za-z0-9_]{16,}' . ':!scripts/limits'
+found="$(files | grep -iE '\.p8$|(^|/)\.dev\.vars$|(^|/)\.env$')" && {
+  fail "a key or secrets file in the tree"
+  echo "$found"
+}
 found="$(files | grep -iE '\.md$' | grep -vxE 'README\.md|SECURITY\.md|CODE_OF_CONDUCT\.md|AGENTS\.md|CLAUDE\.md|CONTRIBUTING\.md|ARCHITECTURE\.md|THIRD_PARTY_NOTICES\.md')" && {
   fail ".md file not on the allowed list"
   echo "$found"

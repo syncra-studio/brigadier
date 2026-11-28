@@ -4,3 +4,7 @@ dist/
 .DS_Store
 .claude/settings.local.json
 out/
+# Keys and local secrets never enter the tree [beat-competitors D90].
+.dev.vars
+.env
+*.p8
