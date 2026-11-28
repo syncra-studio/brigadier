@@ -380,6 +380,8 @@ export function Composer({ id }: { id: string }) {
     }
     if (waitsFor()) return;
     if (toWorker && !isEmpty({ parts, attachmentIds: tiles })) return sendTo(toWorker, parts, tiles, other);
+    // With a To:, nothing falls to this session's own send: what waits above the field is this session's.
+    if (to) return void (sent.length > 0 && setError("Clear the To: to send what waits to this session"));
     if (inProject && parts.some(isNew)) return submitNew(parts, tiles);
     if (isEmpty({ parts, attachmentIds: tiles }) && sent.length === 0) {
       // Held with nothing typed, it steers the first queued message [D183].
@@ -589,7 +591,7 @@ export function Composer({ id }: { id: string }) {
     if (tiles.some((each) => each.state === "uploading")) return "Files uploading…";
     // Kept in the draft, not read from Rust's folder yet.
     if (tiles.length < now.tiles.length) return "Files loading…";
-    if (tiles.some((each) => each.state === "ready" && each.mime.startsWith("image/")) && !mac.models.takesImages(row?.backend, row?.model)) return "This model does not support image inputs. Try a different model";
+    if (tiles.some((each) => each.state === "ready" && each.mime.startsWith("image/")) && !mac.models.takesImages(((toRow as typeof row) ?? row)?.backend, ((toRow as typeof row) ?? row)?.model)) return "This model does not support image inputs. Try a different model";
     return undefined;
   };
   const waits = waitsFor();
