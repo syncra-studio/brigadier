@@ -12,7 +12,7 @@ import { useDaemon } from "../daemon";
 import { Archive } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
 import { keysOf, matches } from "../shortcuts";
-import { ARCHIVE_LOSES, archiveAsk, closed, deleting as underWay, type Lost, lostLead, lostText, unchecked, workingLine } from "../../../shared/session/actions";
+import { ARCHIVE_LOSES, archiveAsk, archivedOf, closed, deleting as underWay, type Lost, lostLead, lostText, unchecked, workingLine } from "../../../shared/session/actions";
 import { archive, restore } from "../sidebar/actions";
 import type { SessionRow } from "../sidebar/words";
 
@@ -289,5 +289,5 @@ export const hideDeleting = (id: string, on: boolean) => {
 export function useArchiveSplit(rows: SessionRow[] | undefined): { live: SessionRow[] | undefined; archived: SessionRow[] } {
   const gone = deleting.use();
   const shown = rows?.filter((row) => !gone.has(row.id) && !underWay(row));
-  return { live: shown?.filter((row) => !closed(row)), archived: (shown ?? []).filter(closed).toSorted((a, b) => (b.archived ?? 0) - (a.archived ?? 0)) };
+  return { live: shown?.filter((row) => !closed(row)), archived: archivedOf(shown ?? []) };
 }

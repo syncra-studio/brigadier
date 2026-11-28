@@ -459,7 +459,7 @@ export function mockupWords(moment: MockupMoment, name: string): [string, string
 }
 
 /** The sidebar's words: an untitled row, its sections, an empty project's line, a folded list's dot, a project's pencil. */
-export const SIDEBAR_WORDS = { untitled: "New session", pinned: "Pinned", projects: "Projects", chats: "Chats", noChats: "No chats", noChatsYet: "No chats yet", attention: "A session needs your attention" } as const;
+export const SIDEBAR_WORDS = { untitled: "New session", pinned: "Pinned", projects: "Projects", chats: "Chats", archived: "Archived", noChats: "No chats", noChatsYet: "No chats yet", attention: "A session needs your attention" } as const;
 export const newSessionIn = (project: string) => `New session in ${project}`;
 
 /** A chat's own tab, the title over its thread: untitled, and its "…" [D45]. */

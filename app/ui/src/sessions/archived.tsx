@@ -13,6 +13,7 @@ import { Archive, Trash, Unarchive } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
 import type { Project } from "../sidebar/words";
 import { deleteAsk, deleteFailed } from "../../../shared/session/actions";
+import { SIDEBAR_WORDS } from "../../../shared/words";
 import { restore } from "../sidebar/actions";
 import { ArchivedActions } from "../sidebar/flyout";
 import { SessionRowItem } from "../sidebar/row";
@@ -45,7 +46,7 @@ export function ArchivedSection({
   return (
     <div className="flex max-h-2/5 min-h-0 shrink-0 flex-col px-2 pt-1 pb-2">
       <NavSection
-        title="Archived"
+        title={SIDEBAR_WORDS.archived}
         open={open}
         onOpenChange={setOpen}
         scrollList

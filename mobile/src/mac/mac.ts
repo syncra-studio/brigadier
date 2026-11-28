@@ -2,7 +2,7 @@
 // pushes naming what changed by id; a gap asks for a fresh snapshot.
 import type { Frame } from "../../../app/shared/client";
 import { applyListFrame, type Project, type Row } from "../../../app/shared/rows";
-import { deleting } from "../../../app/shared/session/actions";
+import { closed } from "../../../app/shared/session/actions";
 import { store } from "../../../app/shared/store";
 import { applyThreadFrame, mergePage, type Session } from "../../../app/shared/thread";
 import { macNow, onPush, request } from "../link";
@@ -126,6 +126,6 @@ function applyThread(frame: Frame) {
   thread.set({ ...open, session: applyThreadFrame(open.session, frame, open.session.before ?? null, null) });
 }
 
-/** The rows the lists show: not archived (search reaches those), not a note's side chat, not a worker (those sit in their lead's thread), no delete under way. */
-export const shown = (row: Row) => !row.archived && !row.noteChat && !row.worker && !deleting(row);
+/** The live rows the lists show: not closed (archived, or a delete under way or left unfinished: the Archived dock's), not a note's side chat, not a worker (those sit in their lead's thread). */
+export const shown = (row: Row) => !closed(row) && !row.noteChat && !row.worker;
 export const needsYou = (row: Row) => row.mark === "needs" || row.mark === "amber";

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { KeyboardAvoidingView, StyleSheet, Text, View } from "react-native";
+import { KeyboardAvoidingView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { DialogButton } from "./Button";
 import type { Problem } from "./pair/pair";
 import { color, fontWeight, space, text } from "./theme";
@@ -37,18 +37,21 @@ export const PROBLEMS: Record<Problem, { title: string; body: string }> = {
 /**
  * A pairing step as the whole screen: the desktop's Add dialog (settings/connections.tsx) without its card, as the
  * screen is the dialog: an icon, its Head, what the step shows, then its buttons, centred and 20 apart (gap-5 p-6
- * text-center). A field in it stays above the keyboard.
+ * text-center). A field in it stays above the keyboard; at a Larger Text size it scrolls, clear of the status bar, and its
+ * buttons wrap.
  */
 export function Screen({ icon, title, line, children, actions }: { icon?: ReactNode; title: string; line?: string; children?: ReactNode; /** The dialog's buttons, secondary first. */ actions?: ReactNode }) {
   return (
-    <KeyboardAvoidingView behavior="padding" style={st.page}>
-      {icon ? <View style={st.icon}>{icon}</View> : null}
-      <View style={st.head}>
-        <Text accessibilityRole="header" style={st.title}>{title}</Text>
-        {line ? <Text style={st.line}>{line}</Text> : null}
-      </View>
-      {children}
-      {actions ? <View style={st.actions}>{actions}</View> : null}
+    <KeyboardAvoidingView behavior="padding" style={st.fill}>
+      <ScrollView contentContainerStyle={st.page} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
+        {icon ? <View style={st.icon}>{icon}</View> : null}
+        <View style={st.head}>
+          <Text accessibilityRole="header" style={st.title}>{title}</Text>
+          {line ? <Text style={st.line}>{line}</Text> : null}
+        </View>
+        {children}
+        {actions ? <View style={st.actions}>{actions}</View> : null}
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -59,7 +62,8 @@ export function Notice({ icon, title, body, action, onPress }: { icon?: ReactNod
 }
 
 export const st = StyleSheet.create({
-  page: { flex: 1, justifyContent: "center", gap: space(5), padding: space(6), backgroundColor: color.background },
+  fill: { flex: 1, backgroundColor: color.background },
+  page: { flexGrow: 1, justifyContent: "center", gap: space(5), padding: space(6), backgroundColor: color.background },
   icon: { alignSelf: "center" },
   // Head: the DialogTitle's px-6 text-lg leading-none medium, its DialogDescription text-sm muted, 8 apart.
   head: { gap: space(2) },
@@ -67,5 +71,5 @@ export const st = StyleSheet.create({
   line: { ...text.sm, color: color.mutedForeground, textAlign: "center" },
   // A warning over what the step shows (text-label text-warning).
   warning: { ...text.label, color: color.warning, textAlign: "center" },
-  actions: { flexDirection: "row", justifyContent: "center", gap: space(2) },
+  actions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: space(2) },
 });

@@ -5,7 +5,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { request } from "../link";
 import { color, fontWeight, mono, opacity, radius, shadow, space, spacing, text, touch } from "../theme";
-import { MenuLabel } from "../sheets/Sheet";
+import { Blur, MenuLabel } from "../sheets/Sheet";
 import { FileImage, Paperclip } from "../../../app/ui/src/icons";
 import { CommandIcon, MentionIcon } from "./KindIcons";
 import { forMac } from "./state";
@@ -180,6 +180,7 @@ export function PlusMenu({ listed, chats, onPhotos, onFiles, onCommand, onChat }
   };
   return (
     <ScrollView style={[st.panel, st.menu]} contentContainerStyle={st.gutter} keyboardShouldPersistTaps="always">
+      <Blur />
       <MenuLabel>Add</MenuLabel>
       <MenuRow icon={<FileImage className="size-icon-md text-muted-foreground" />} title="Photo Library" onPress={onPhotos} />
       <MenuRow icon={<Paperclip className="size-icon-md text-muted-foreground" />} title="Files" onPress={onFiles} />
@@ -191,7 +192,7 @@ export function PlusMenu({ listed, chats, onPhotos, onFiles, onCommand, onChat }
 }
 
 // The desktop's ComposerMenu (max-h-command-list, rounded-menu, a border hairline, bg-popover, p-1), its MenuHeading
-// (px-2 pt-2 pb-1) and MenuNote (min-h-menu-item px-2); the + is a DropdownMenuContent (bg-menu, shadow-overlay).
+// (px-2 pt-2 pb-1) and MenuNote (min-h-menu-item px-2); the + is a DropdownMenuContent (bg-menu over a blur, shadow-overlay).
 const st = StyleSheet.create({
   // 4 over the card: the column's gap, less 4.
   panel: { flexGrow: 0, maxHeight: spacing.commandList, marginBottom: -space(1), borderRadius: radius.menu, borderWidth: 1, borderColor: color.border, backgroundColor: color.popover },

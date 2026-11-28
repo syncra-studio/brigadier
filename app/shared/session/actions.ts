@@ -96,6 +96,8 @@ export function laidOver<R extends Marked>(list: R[] | undefined, pending: Map<s
 
 /** Archived, or a delete that left something: among the archived, not the live rows [D35]. */
 export const closed = (row: Pick<Row, "archived" | "lifecycle">) => Boolean(row.archived) || row.lifecycle?.op === "delete";
+/** The docked Archived section's rows: the closed ones, the latest archived first [D198]. */
+export const archivedOf = <T extends Pick<Row, "archived" | "lifecycle">>(rows: T[]) => rows.filter(closed).sort((a, b) => (b.archived ?? 0) - (a.archived ?? 0));
 /** A delete under way: hidden; one that left something comes back among the archived with what stayed. */
 export const deleting = (row: Pick<Row, "lifecycle">) => row.lifecycle?.op === "delete" && !row.lifecycle.left;
 

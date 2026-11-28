@@ -1,10 +1,12 @@
 // The Mac's sessions as the desktop's sidebar lists them by projects (sidebar/sidebar.tsx, project-row.tsx, row.tsx,
 // components/nav.tsx): Pinned projects, Projects by name, each folding its chats under it, then Chats, the sessions in
-// no project; rows by the user's last send, newest first, each with its one trailing mark [D30 D31 D63 D173].
+// no project; rows by the user's last send, newest first, each with its one trailing mark [D30 D31 D63 D173]; and
+// Archived docked below the list (sessions/archived.tsx) [D198].
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Alert, Pressable, SectionList, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, SectionList, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { attentionOf, hueOf, type Hit, type Project, projectInitials, type Row, statusWords } from "../../../app/shared/rows";
-import { deleteAsk, deleteFailed, laidOver } from "../../../app/shared/session/actions";
+import { archivedOf, closed, deleteAsk, deleteFailed, deleting as underWay, laidOver } from "../../../app/shared/session/actions";
 import { store } from "../../../app/shared/store";
 import { CONNECTION_WORDS, newSessionIn, SIDEBAR_WORDS } from "../../../app/shared/words";
 import { Chat, ChevronDown, ComposeEditSquare, MagnifyingGlassSearch, SidebarSpinner } from "../../../app/ui/src/icons";
@@ -81,6 +83,8 @@ export function Sessions({ onOpen, onSamples, onNew }: { onOpen: (row: Row) => v
   const [folded, setFolded] = useState<string[]>([]);
   const isOpen = (key: string) => !folded.includes(key);
   const toggle = (key: string) => setFolded(isOpen(key) ? [...folded, key] : folded.filter((each) => each !== key));
+  // The dock's fold, folded at first as the desktop's.
+  const [dockOpen, setDockOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<{ q: string; hits: Hit[] }>({ q: "", hits: [] });
   const needle = query.trim();
@@ -91,6 +95,8 @@ export function Sessions({ onOpen, onSamples, onNew }: { onOpen: (row: Row) => v
   }, [needle]);
 
   const live = rows.filter(shown).sort(byLastSend);
+  const archived = archivedOf(rows.filter((row) => !row.noteChat && !row.worker && !underWay(row)));
+  const projectOf = new Map(projects.map((project) => [project.id, project]));
   const chatsIn = (id: string) => live.filter((row) => row.project === id);
   const homeless = live.filter((row) => !row.project || !projects.some((p) => p.id === row.project));
   const byName = [...projects].filter((p) => !p.removing || chatsIn(p.id).length > 0).sort((a, b) => a.name.localeCompare(b.name));
@@ -150,7 +156,7 @@ export function Sessions({ onOpen, onSamples, onNew }: { onOpen: (row: Row) => v
         item.kind === "project" ? (
           <ProjectRow project={item.project} open={item.open} dot={item.dot} onToggle={() => toggle(`project:${item.project.id}`)} onNew={() => onNew(item.project)} />
         ) : item.kind === "row" ? (
-          <SessionRow row={item.row} indent={item.indent} snippet={item.snippet} onPress={stale ? undefined : () => onOpen(item.row)} onLongPress={stale ? undefined : () => rowMenu(item.row, mac)} />
+          <SessionRow row={item.row} indent={item.indent} mac={stale ? undefined : mac} snippet={item.snippet} onOpen={onOpen} />
         ) : (
           <Text style={[st.empty, item.indent && st.indent, !item.indent && { color: color.quietForeground }]}>{item.words}</Text>
         )
@@ -162,6 +168,24 @@ export function Sessions({ onOpen, onSamples, onNew }: { onOpen: (row: Row) => v
         </Pressable>
       }
     />
+    {/* The desktop's ArchivedSection: by the desktop's Settings › Archived arrow, which a phone has no Settings for. */}
+    {/* A search already lists archived rows, so the dock steps aside. */}
+    {archived.length > 0 && !needle && (
+      <SafeAreaView edges={["bottom"]} style={st.dock}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`${SIDEBAR_WORDS.archived}, ${archived.length}`} accessibilityState={{ expanded: dockOpen }} onPress={() => setDockOpen(!dockOpen)} style={[st.head, st.dockHead]}>
+          <Text style={st.sectionTitle} numberOfLines={1}>{SIDEBAR_WORDS.archived}</Text>
+          <View style={!dockOpen && { transform: [{ rotate: "-90deg" }] }}><ChevronDown className="size-icon-sm text-faint-foreground" /></View>
+          <Text style={st.count}>{archived.length}</Text>
+        </Pressable>
+        {dockOpen && (
+          <ScrollView contentContainerStyle={st.dockList}>
+            {archived.map((row) => (
+              <SessionRow key={row.id} row={row.lifecycle?.left ? { ...row, mark: "amber" } : row} badged project={row.project ? projectOf.get(row.project) : undefined} indent={false} mac={stale ? undefined : mac} onOpen={onOpen} />
+            ))}
+          </ScrollView>
+        )}
+      </SafeAreaView>
+    )}
     {asked && words && asked.mac === macNow() && (
       <Confirm
         mac={asked.mac}
@@ -203,17 +227,24 @@ function ProjectRow({ project, open, dot, onToggle, onNew }: { project: Project;
   );
 }
 
-/** A session on one line, the desktop's SessionRowItem: its title and its mark; under its project, at the name's x. A search's hit has its message under the title. */
-function SessionRow({ row, indent, snippet, onPress, onLongPress }: { row: Row; indent: boolean; snippet?: string; onPress?: () => void; onLongPress?: () => void }) {
+/**
+ * A session on one line, the desktop's SessionRowItem: with `badged` (the dock's) its project's badge first; its title and
+ * its mark; under its project, at the name's x. A search's hit has its message under the title. `mac`, the Mac its list
+ * came from; none, a stale list's, it is inert.
+ */
+function SessionRow({ row, badged, project, indent, snippet, mac, onOpen }: { row: Row; badged?: boolean; project?: Project; indent: boolean; snippet?: string; mac?: string; onOpen: (row: Row) => void }) {
+  const onPress = mac === undefined ? undefined : () => onOpen(row);
+  const onLongPress = mac === undefined ? undefined : () => rowMenu(row, mac);
   const title = row.title || SIDEBAR_WORDS.untitled;
   const words = statusWords(row);
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={[title, words].filter(Boolean).join(", ")} accessibilityHint={onLongPress && "Hold for its actions"} accessibilityActions={onLongPress && [{ name: "longpress", label: "Actions" }]} onAccessibilityAction={onLongPress} onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [st.row, indent && st.indent, pressed && st.pressed]}>
+      {badged && <ProjectBadge project={project} />}
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={[st.chatTitle, row.archived ? { color: color.markerForeground } : null]} numberOfLines={1}>{title}</Text>
         {snippet ? <Text style={st.snippet} numberOfLines={1}>{snippet}</Text> : null}
       </View>
-      <View style={{ marginRight: space(0.5) }}>
+      <View style={!closed(row) && { marginRight: space(0.5) }}>
         <SidebarMark mark={row.mark} label={words ?? ""} />
       </View>
     </Pressable>
@@ -228,7 +259,7 @@ const st = StyleSheet.create({
   search: { flexDirection: "row", alignItems: "center", gap: space(2), height: spacing.navSearch, paddingHorizontal: space(3), borderRadius: radius.capsule, borderWidth: 1, borderColor: color.fillActive, backgroundColor: color.fill },
   searchText: { ...text.sm, color: color.foreground, flex: 1, padding: 0 },
   // NavSection's title row, a section's gap (gap-4) over it.
-  head: { flexDirection: "row", alignItems: "center", gap: space(1), height: spacing.sectionTitle, marginTop: space(4), marginBottom: space(1), paddingLeft: space(2), paddingRight: space(1.5) },
+  head: { flexDirection: "row", alignItems: "center", gap: space(1), minHeight: spacing.sectionTitle, marginTop: space(4), marginBottom: space(1), paddingLeft: space(2), paddingRight: space(1.5) },
   sectionTitle: { ...text.sm, fontWeight: fontWeight.medium, color: color.faintForeground, flexShrink: 1 },
   // NavRow: r10, ps-2 pe-1.5, gap-2; as tall as a finger needs, where the desktop's is 30.
   row: { flexDirection: "row", alignItems: "center", gap: space(2), minHeight: touch, borderRadius: radius.row, paddingLeft: space(2), paddingRight: space(1.5) },
@@ -249,5 +280,11 @@ const st = StyleSheet.create({
   badgeAt: { position: "absolute", top: 0, bottom: 0, left: space(1.25), width: space(5.5), alignItems: "center", justifyContent: "center" },
   empty: { ...text.sm, color: color.faintForeground, minHeight: spacing.navRow, paddingHorizontal: space(2), lineHeight: spacing.navRow },
   footer: { padding: space(5), alignItems: "center" },
+  // The dock: px-2 pt-1 pb-2, at most 2/5 of the list's height; its title row has no section gap over it; rows 4 apart.
+  dock: { maxHeight: "40%", backgroundColor: color.background, paddingHorizontal: space(2), paddingTop: space(1), paddingBottom: space(2) },
+  dockHead: { marginTop: 0 },
+  dockList: { gap: space(1) },
+  // ArchivedActions' count: text-xs, faint, tabular, me-1.
+  count: { ...text.xs, color: color.faintForeground, fontVariant: ["tabular-nums"], marginLeft: "auto", marginRight: space(1) },
   faint: { ...text.sm, color: color.faintForeground },
 });

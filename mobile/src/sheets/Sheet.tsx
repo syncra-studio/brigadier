@@ -1,6 +1,8 @@
 // A sheet over the thread: the desktop's dialog card (components/dialog.tsx, confirm-dialog.tsx) as a phone's bottom
 // sheet: its title and line, what it shows scrolling under them, its buttons at the end, ✕ in the corner. And a menu
-// (components/menu.tsx) as a bottom sheet: the desktop's menu surface, its rows a finger tall.
+// (components/menu.tsx) as a bottom sheet: the desktop's menu surface, its rows a finger tall. Both see-through over a
+// blur, as the desktop's [D109].
+import { BlurView } from "expo-blur";
 import type { ReactNode } from "react";
 import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -13,6 +15,7 @@ export function Sheet({ title, description, footer, onClose, children }: { title
       <Pressable accessibilityLabel="Close" style={[StyleSheet.absoluteFill, st.backdrop]} onPress={onClose} />
       <KeyboardAvoidingView behavior="padding" style={st.sheetArea} pointerEvents="box-none">
         <SafeAreaView edges={["bottom"]} style={st.dialog}>
+          <Blur />
           <ScrollView style={st.page} contentContainerStyle={st.card} keyboardShouldPersistTaps="handled">
             <View style={st.header}>
               <Text style={st.title}>{title}</Text>
@@ -41,11 +44,20 @@ export function MenuSheet({ visible = true, onClose, onDismiss, children }: { vi
       <Pressable accessibilityLabel="Close" style={[StyleSheet.absoluteFill, st.backdrop]} onPress={onClose} />
       <SafeAreaView edges={["bottom"]} style={st.menuArea} pointerEvents="box-none">
         {/* A long one (the rewind list at a large text size) scrolls rather than leaving rows off screen. */}
-        <ScrollView style={[st.menu, { maxHeight: height * 0.7 }]} contentContainerStyle={st.menuIn} bounces={false}>{children}</ScrollView>
+        <ScrollView style={[st.menu, { maxHeight: height * 0.7 }]} contentContainerStyle={st.menuIn} bounces={false}>
+          <Blur />
+          {children}
+        </ScrollView>
       </SafeAreaView>
     </Modal>
   );
 }
+
+/**
+ * The blur under a see-through surface, filling it; the surface's own fill is the tint (bg-material, bg-menu).
+ * UIKit takes no radius (theme.css's --blur-material, --blur-popover): its thinnest dark material in full is the nearest.
+ */
+export const Blur = () => <BlurView intensity={100} tint="systemUltraThinMaterialDark" style={StyleSheet.absoluteFill} />;
 
 /** A menu's row, the desktop's DropdownMenuItem with its MenuRow: a 16 icon in grey, its title, a hint at its end. */
 export function MenuItem({ icon, title, hint, disabled, onPress }: { icon?: ReactNode; title: string; hint?: string; disabled?: boolean; onPress: () => void }) {
@@ -83,9 +95,9 @@ export function Line({ icon, end, onPress, label, children }: { icon?: ReactNode
 const CLOSE_AT = space(4) - (touch - spacing.iconMd) / 2;
 
 export const st = StyleSheet.create({
-  // The desktop's dialog-card from the bottom, as tall as it needs: rounded-sheet, shadow-material, solid (nothing to blur).
+  // The desktop's dialog-card from the bottom, as tall as it needs: rounded-sheet, shadow-material, bg-material over a blur.
   sheetArea: { flex: 1, justifyContent: "flex-end", padding: space(2) },
-  dialog: { maxHeight: "92%", borderRadius: radius.sheet, backgroundColor: color.popover, boxShadow: shadow.material, overflow: "hidden" },
+  dialog: { maxHeight: "92%", borderRadius: radius.sheet, backgroundColor: color.material, boxShadow: shadow.material, overflow: "hidden" },
   page: { flexGrow: 0 },
   card: { padding: space(5), gap: space(4) },
   header: { gap: space(2), paddingEnd: touch },
@@ -102,8 +114,8 @@ export const st = StyleSheet.create({
   link: { ...text.sm, color: color.link },
   backdrop: { backgroundColor: color.dialogBackdrop },
   menuArea: { flex: 1, justifyContent: "flex-end", padding: space(2) },
-  // Solid, where the desktop's bg-menu is 90% under a blur: the phone has no blur to keep it legible.
-  menu: { flexGrow: 0, borderRadius: radius.menu, backgroundColor: color.popover, boxShadow: shadow.overlay },
+  // bg-menu over a blur.
+  menu: { flexGrow: 0, borderRadius: radius.menu, backgroundColor: color.menu, boxShadow: shadow.overlay },
   menuIn: { padding: space(1) },
   item: { flexDirection: "row", alignItems: "center", gap: space(2), minHeight: touch, paddingHorizontal: space(2), borderRadius: radius.menuItem },
   icon: { width: spacing.iconMd, alignItems: "center", justifyContent: "center" },
