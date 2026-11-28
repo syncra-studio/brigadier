@@ -1,6 +1,7 @@
 import CryptoKit
 import ExpoModulesCore
 import LocalAuthentication
+import Network
 import UIKit
 
 public class LinkModule: Module {
@@ -9,10 +10,24 @@ public class LinkModule: Module {
     private var channel: Channel?
     private var stream = 0
     private let lock = NSLock()
+    private let monitor = NWPathMonitor()
+    /// The network interfaces last seen, only on the monitor's queue.
+    private var interfaces: [String]?
 
     public func definition() -> ModuleDefinition {
         Name("Link")
-        Events("data", "closed")
+        Events("data", "closed", "path")
+
+        // A network change (joining Wi-Fi, leaving it): JS then tries the Mac again, the direct path first.
+        OnCreate {
+            self.monitor.pathUpdateHandler = { path in
+                let now = path.status == .satisfied ? path.availableInterfaces.map(\.name) : []
+                if let was = self.interfaces, was != now, !now.isEmpty { self.sendEvent("path", [:]) }
+                self.interfaces = now
+            }
+            self.monitor.start(queue: DispatchQueue(label: "sh.brigadier.path"))
+        }
+        OnDestroy { self.monitor.cancel() }
 
         Constant("screen") { UserDefaults.standard.string(forKey: "screen") }
         Constant("build") { Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "" }
@@ -25,21 +40,22 @@ public class LinkModule: Module {
 
         // mode "qr" (secret: the QR's `s`), "code" (secret: the normalised code) or "device" (the saved psk). Returns
         // `check`, the 6 digits, and `stream`, or `error`: "unreachable", "refused" (a Mac answered, but not with this
-        // psk) or "closed" (`close` or another `connect` came first).
+        // psk, or the relay refused it), "closed" (`close` or another `connect` came first), with `seen` when the relay
+        // knows when the Mac was last online.
         AsyncFunction("connect") { (mode: String, mac: String, targets: [String], secret: String?) -> [String: Any] in
             let n = self.drop()
             guard let macKey = Derive.base64url(mac), macKey.count == 32 else { throw Exception(name: "Mac", description: "bad key") }
-            let psk: [UInt8]
+            let psk: [UInt8], ticket: [UInt8]
             var payload: [String: Any] = ["mode": mode]
             switch mode {
             case "qr":
                 guard let s = secret.flatMap(Derive.base64url) else { throw Exception(name: "Mac", description: "bad secret") }
-                psk = Derive.qr(s)
+                (psk, ticket) = (Derive.qr(s), Derive.invite(s))
             case "code":
-                psk = Derive.code(secret ?? "")
+                (psk, ticket) = (Derive.code(secret ?? ""), Derive.invite(code: secret ?? ""))
             default:
                 guard let saved = try Keys.get("psk:" + mac) else { throw Exception(name: "Mac", description: "not paired") }
-                psk = Array(saved)
+                (psk, ticket) = (Array(saved), Derive.token(Array(saved)))
             }
             if mode != "device" {
                 // `name` is just "iPhone" since iOS 16; the Mac shows it in its Allow question.
@@ -53,11 +69,14 @@ public class LinkModule: Module {
             let channel: Channel
             do {
                 channel = try await Channel.open(targets, mac: macKey, psk: psk, static: try Self.staticKey(),
-                                                 payload: Array(try JSONSerialization.data(withJSONObject: payload)))
+                                                 payload: Array(try JSONSerialization.data(withJSONObject: payload)),
+                                                 ticket: Derive.hex(ticket))
             } catch Channel.Failure.refused {
                 return ["error": "refused"]
             } catch Channel.Failure.unreachable {
                 return ["error": "unreachable"]
+            } catch let Channel.Failure.offline(seen) {
+                return ["error": "unreachable", "seen": seen]
             }
             channel.onData = { data in self.sendEvent("data", ["b": data.base64EncodedString(), "n": n]) }
             // Strong: the stream's read task ends when it closes, and nothing else keeps the stream.
@@ -126,6 +145,18 @@ public class LinkModule: Module {
         }
 
         AsyncFunction("macs") { () -> [[String: Any]] in try Self.macs() }
+
+        AsyncFunction("find") { (relays: [String], code: String) in await Channel.find(relays, code: code) }
+
+        // The relay pass `hello` handed out, kept with its Mac for signing in away from home; nil drops it.
+        AsyncFunction("relay") { (pk: String, relay: [String: Any]?) in
+            try Self.putMacs(try Self.macs().map { mac in
+                guard mac["pk"] as? String == pk else { return mac }
+                var kept = mac
+                kept["relay"] = relay
+                return kept
+            })
+        }
 
         AsyncFunction("forget") { (pk: String) in
             try Self.putMacs(try Self.macs().filter { $0["pk"] as? String != pk })

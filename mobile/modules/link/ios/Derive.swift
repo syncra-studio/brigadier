@@ -17,6 +17,15 @@ enum Derive {
     /// The psk this phone signs in with from now on, from the pairing's handshake hash.
     static func device(_ h: [UInt8]) -> [UInt8] { hkdf(h, "brigadier/device/v1") }
 
+    /// What the relay is shown first (relay-wire "Derivations"): a paired phone's token, from its psk; a QR's invite, from
+    /// its `s`; a typed code's invite; and the id the code's offer is looked up by.
+    static func token(_ psk: [UInt8]) -> [UInt8] { hkdf(psk, "brigadier/relay/device/v1") }
+    static func invite(_ secret: [UInt8]) -> [UInt8] { hkdf(secret, "brigadier/relay/invite/v1") }
+    static func invite(code: String) -> [UInt8] { hkdf(Array(code.utf8), "brigadier/relay/invite/code/v1") }
+    static func lookup(_ code: String) -> [UInt8] { hkdf(Array(code.utf8), "brigadier/relay/lookup/v1") }
+
+    static func hex(_ b: [UInt8]) -> String { b.map { String(format: "%02x", $0) }.joined() }
+
     /// The 6 digits both sides show while pairing.
     static func check(_ h: [UInt8]) -> String {
         let d = Array(SHA256.hash(data: Array("brigadier/check/v1".utf8) + h))

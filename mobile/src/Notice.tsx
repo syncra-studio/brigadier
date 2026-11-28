@@ -12,7 +12,7 @@ export const PROBLEMS: Record<Problem, { title: string; body: string }> = {
   denied: { title: "Your Mac didn't allow this iPhone", body: "If that was a mistake, choose Add on your Mac and pair again." },
   unreachable: {
     title: "Can't reach your Mac",
-    body: "Make sure this iPhone is on the same Wi-Fi as your Mac, and that Brigadier may use the local network (Settings › Brigadier).",
+    body: "Check that your Mac is on with Brigadier open. On the same Wi-Fi, Brigadier needs the local network (Settings › Brigadier); away from it, your Mac needs Away from home on (Settings › Connections).",
   },
   noOffer: {
     title: "No Mac is waiting for a code",

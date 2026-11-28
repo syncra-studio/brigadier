@@ -75,7 +75,9 @@ export async function connect(...args: Parameters<typeof Link.connect>) {
   return r;
 }
 
-export function close() {
+/** Ends the open stream; given `n`, only if that is still the open one (a superseded attempt never ends a newer). */
+export function close(n?: number) {
+  if (n !== undefined && (n < 0 || n !== stream)) return;
   attempt++;
   closes++;
   const was = live;

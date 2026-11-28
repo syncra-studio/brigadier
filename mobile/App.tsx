@@ -64,12 +64,24 @@ export default function App() {
   const home = (list = macs): At => ({ at: list?.length ? "macs" : "connect" });
   // Each pairing attempt's number; Cancel moves it on, so the cancelled attempt's result is dropped.
   const attempt = useRef(0);
-  // The sign-in on opening runs once; later ones are the user's Try again.
+  // The sign-in on opening runs once; later ones are the user's Try again, or a network change.
   const opened = useRef(false);
+  // The Mac last signed in to or paired, whether a sign-in is running, whether a Mac or the list is shown, and whether
+  // the network changed while one ran or nothing was shown: what a network change reaches again, once it can.
+  const now = useRef({ mac: null as Mac | null, busy: false, shown: false, again: false });
+  now.current.shown = at.at === "mac" || at.at === "macs";
+  // Each sign-in's number: only the latest one's result counts.
+  const reaching = useRef(0);
 
   async function reach(mac: Mac) {
+    const mine = ++reaching.current;
+    now.current = { ...now.current, mac, busy: true, again: false };
     setStatus({ [mac.pk]: "connecting" });
     const r = await signIn(mac);
+    if (mine !== reaching.current) return;
+    now.current.busy = false;
+    // The network changed while this one ran: once more on the network there is now, direct first.
+    if (now.current.again && now.current.shown && now.current.mac) return void reach(now.current.mac);
     setStatus({ [mac.pk]: r === "ok" ? "connected" : r });
     if (r !== "ok") return;
     start();
@@ -78,6 +90,8 @@ export default function App() {
 
   async function run(how: { offer: Offer } | { code: string }) {
     const mine = ++attempt.current;
+    // This pairing's stream is on the network there is now.
+    now.current.again = false;
     setAt({ at: "finishing" });
     const r = await pair(how, (check) => mine === attempt.current && setAt({ at: "finishing", check }));
     if (mine !== attempt.current) return;
@@ -88,6 +102,7 @@ export default function App() {
         return setAt({ at: "notice", problem: r, retry: r === "unreachable" ? () => run(how) : undefined });
       }
       setMacs(await Link.macs());
+      now.current.mac = r;
       setStatus({ [r.pk]: "connected" });
       start();
       setAt({ at: "connected", mac: r });
@@ -102,11 +117,27 @@ export default function App() {
       setMacs(list);
       setAt(home(list));
     });
-    return onClosed(() => {
+    // Joining Wi-Fi or leaving it: sign in again, the direct path first, so the relay is used only while it must be.
+    const path = Link.addListener("path", () => {
+      const { mac, busy, shown } = now.current;
+      if (mac && shown && !busy) void reach(mac);
+      else now.current.again = true;
+    });
+    const unsubscribe = onClosed(() => {
       stop();
       setStatus((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, v === "connected" ? "lost" : v])));
     });
+    return () => {
+      path.remove();
+      unsubscribe();
+    };
   }, []);
+
+  // A network change kept while pairing or signing in: acted on once a Mac or the list shows.
+  useEffect(() => {
+    const { mac, busy, shown, again } = now.current;
+    if (mac && shown && again && !busy) void reach(mac);
+  }, [at.at]);
 
   // Once unlocked, sign in to the first Mac (one stream at a time in this step).
   useEffect(() => {
@@ -172,6 +203,7 @@ export default function App() {
           onAdd={() => setAt({ at: "connect" })}
           onForget={async (mac) => {
             if (status[mac.pk] === "connected" || status[mac.pk] === "connecting") close();
+            if (now.current.mac?.pk === mac.pk) now.current.mac = null;
             await Link.forget(mac.pk);
             const list = await Link.macs();
             setMacs(list);

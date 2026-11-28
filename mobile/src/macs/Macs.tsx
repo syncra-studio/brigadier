@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { sentAt } from "../../../app/shared/words";
 import type { Mac } from "../../modules/link";
 import { Button } from "../Button";
 import { page, PROBLEMS } from "../Notice";
@@ -6,10 +7,12 @@ import type { Problem } from "../pair/pair";
 import { StateDot } from "../StateDot";
 import { color, space, text, fontWeight } from "../theme";
 
-export type Status = "connecting" | "connected" | Problem | "cancelled";
+/** `seen`: the relay says the Mac is offline, and when it was last there (unix s, 0 if never). */
+export type Status = "connecting" | "connected" | Problem | "cancelled" | { seen: number };
 
 const said = (s: Status) =>
-  s === "connected" ? "Connected" : s === "connecting" ? "Connecting…" : s === "cancelled" ? "Not connected" : PROBLEMS[s].title;
+  typeof s === "object" ? (s.seen ? `Offline · last online ${sentAt(s.seen * 1000)}` : "Offline")
+  : s === "connected" ? "Connected" : s === "connecting" ? "Connecting…" : s === "cancelled" ? "Not connected" : PROBLEMS[s].title;
 
 /** The paired Macs: a dot and its name, how each stands, and Forget this Mac. */
 export function Macs({ macs, status, onConnect, onForget, onAdd }: {

@@ -1,12 +1,15 @@
 import { NativeModule, requireNativeModule } from "expo-modules-core";
 
-/** A Mac this phone has paired with. Its psk stays in the Keychain, on the Swift side. */
-export type Mac = { pk: string; name: string; device: string; addresses: string[] };
+/** A pass to a Mac's room on its relay (relay-wire "A phone's socket"): `key` and `sig` base64url, `until` unix s. */
+export type Pass = { url: string; key: string; until: number; sig: string };
+/** A Mac this phone has paired with, and the pass its last `hello` gave. Its psk stays in the Keychain, on the Swift side. */
+export type Mac = { pk: string; name: string; device: string; addresses: string[]; relay?: Pass };
 /** A Mac offering itself on this network: its Bonjour service name, its key, and "1" while it shows an offer. */
 export type Found = { name: string; pk: string; open: "0" | "1" };
 
 /** Events carry their stream's number, so a superseded stream's are dropped. */
-declare class Link extends NativeModule<{ data: (e: { b: string; n: number }) => void; closed: (e: { n: number }) => void }> {
+/** `path`: the network changed (Wi-Fi joined or left). */
+declare class Link extends NativeModule<{ data: (e: { b: string; n: number }) => void; closed: (e: { n: number }) => void; path: () => void }> {
   /** A screen to open at launch, from the `-screen` launch argument (simulator screenshots only). */
   screen: string | null;
   /** This app's build number. */
@@ -16,15 +19,16 @@ declare class Link extends NativeModule<{ data: (e: { b: string; n: number }) =>
   /** `denied` when this phone may not use the local network. */
   browse(ms: number): Promise<{ found: Found[]; denied: boolean }>;
   /**
-   * Opens the stream: targets are "ip:port" or "bonjour:<name>", tried in order. `secret` is the QR's `s` or the
-   * normalised code; "device" uses the saved psk.
+   * Opens the stream: targets are "ip:port", "bonjour:<name>" or a relay's phone socket URL, tried in order. `secret`
+   * is the QR's `s` or the normalised code; "device" uses the saved psk. `seen`: the relay has no Mac now, and last had
+   * it then (unix s, 0 if never).
    */
   connect(
     mode: "qr" | "code" | "device",
     mac: string,
     targets: string[],
     secret: string | null,
-  ): Promise<{ check?: string; stream?: number; error?: "unreachable" | "refused" | "closed" }>;
+  ): Promise<{ check?: string; stream?: number; error?: "unreachable" | "refused" | "closed"; seen?: number }>;
   /** Plain bytes into the stream, base64. */
   write(b64: string): void;
   close(): void;
@@ -38,6 +42,10 @@ declare class Link extends NativeModule<{ data: (e: { b: string; n: number }) =>
   /** Keeps the Mac this stream paired with; returns its key. */
   save(name: string, device: string, addresses: string[]): Promise<string>;
   macs(): Promise<Mac[]>;
+  /** The typed code's offer at the first relay ("ws(s)://host") that holds it: the Mac's Noise key `m` and a pass. */
+  find(relays: string[], code: string): Promise<(Pass & { m: string }) | null>;
+  /** Keeps `hello`'s pass with its Mac. */
+  relay(pk: string, pass: Pass): Promise<void>;
   forget(pk: string): Promise<void>;
 }
 
