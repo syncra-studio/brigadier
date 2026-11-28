@@ -6,6 +6,7 @@ import { Button } from "../button";
 import { cx } from "../cx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import type { FollowUp } from "./draft";
+import { COMPOSER_WORDS as W, sendTo } from "../../../../shared/session/composer";
 
 /** A second Esc within this long stops the run (the first one arms the button). */
 const ESC_WINDOW_MS = 2000;
@@ -115,15 +116,15 @@ export function SendButton({
   const modHeld = useModHeld(onSendNew !== undefined);
   const run = state === "send" && shell;
   const asNew = state === "send" && !shell && onSendNew !== undefined && modHeld && !empty;
-  const verb = running && !empty ? (followUp === "steer" ? "Steer" : "Queue") : onSendNew ? "Send" : "Send message";
+  const verb = running && !empty ? (followUp === "steer" ? W.steer : W.queue) : onSendNew ? "Send" : W.send;
   const tip =
     state === "stop"
       ? armed
         ? "Press Esc again to stop"
-        : "Stop"
+        : W.stop
       : state === "resume"
-        ? "Resume"
-        : (blocked ?? (run ? (running ? "Run when the turn ends" : "Run command") : to !== undefined ? `Send to ${to}` : asNew ? "Start as a new session" : onSendNew ? `${verb} ${keysOf("send")[0]} · Start as a new session ${keysOf("start-new")[0]}` : verb));
+        ? W.resume
+        : (blocked ?? (run ? (running ? W.runAfter : W.runNow) : to !== undefined ? sendTo(to) : asNew ? "Start as a new session" : onSendNew ? `${verb} ${keysOf("send")[0]} · Start as a new session ${keysOf("start-new")[0]}` : verb));
   // A circle, as the old app's: not the icon-button corner (D27-D29 are about ghost icons).
   return (
     <Tooltip>
@@ -140,7 +141,7 @@ export function SendButton({
             onClick={(event) => (state === "stop" ? onStop() : state === "resume" ? onResume?.() : onSendNew && !shell && (asNew || (MAC ? event.metaKey : event.ctrlKey)) ? onSendNew() : onSend())}
             className={cx("inline-flex rounded-capsule transition-all motion-safe:active:scale-press", run ? "h-control-sm gap-1 px-3 text-sm" : "size-control-sm")}
           >
-            {state === "stop" ? <Stop className="size-icon-sm" /> : state === "resume" ? <PlayTriangle /> : run ? "Run" : asNew ? <ArrowUpRight data-slot="send-new-session" /> : <ArrowUp />}
+            {state === "stop" ? <Stop className="size-icon-sm" /> : state === "resume" ? <PlayTriangle /> : run ? W.run : asNew ? <ArrowUpRight data-slot="send-new-session" /> : <ArrowUp />}
           </Button>
         }
       />

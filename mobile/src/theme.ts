@@ -24,6 +24,8 @@ export const opacity = strict("opacity", values.opacity);
 export const leading = strict("leading", values.leading);
 export const tracking = strict("tracking", values.tracking);
 export const duration = strict("duration", values.duration);
+/** Overnight's composer card, from the desktop's sessions/overnight.css. */
+export const night = values.night;
 
 /** A colour by its desktop name, as a class or a CSS variable writes it: "muted-foreground" is color.mutedForeground. */
 export const colorOf = (name: string) => color[name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())];

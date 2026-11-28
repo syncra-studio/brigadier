@@ -13,6 +13,7 @@ import { $putWithSpace, ChipNode } from "./chip";
 import type { Chip } from "./draft";
 import { PlusButton } from "./composer";
 import { ToolIcon } from "./tools";
+import { KIND_HEADINGS, MENU_NOTES } from "../../../../shared/session/composer";
 
 /**
  * A row of the `@` menu: what a mention names. `label` is what its chip keeps (a path, a chat's title, a worker's
@@ -190,7 +191,6 @@ const ANCHOR = "contents!";
 const MenuHeading = ({ children }: { children: ReactNode }) => <p className="px-2 pt-2 pb-1 text-label text-muted-foreground list-top:pt-1">{children}</p>;
 export const MenuNote = ({ children }: { children: ReactNode }) => <p className="flex min-h-menu-item items-center px-2 text-label text-muted-foreground">{children}</p>;
 
-const KIND_HEADINGS = { command: "Commands", tool: "Tools", skill: "Skills", mcp: "MCP servers", prompt: "MCP prompts" } as const;
 
 /** A mention's row: its kind's icon, the name (matched letters bright), its folder in grey after it; a chat, tagged. */
 function MentionRow({ item, query }: { item: Mention; query: string }) {
@@ -336,7 +336,7 @@ export function MentionPlugin({ results, onQuery, onDirect }: Mentions) {
               );
             })}
             {/* Until the first reply to the query comes, the last rows stay; with none yet, it's searching. */}
-            {empty && <MenuNote>{answered ? "No results" : "Searching…"}</MenuNote>}
+            {empty && <MenuNote>{answered ? MENU_NOTES.noResults : MENU_NOTES.searching}</MenuNote>}
           </Panel>
         );
       }}
@@ -395,7 +395,7 @@ export function SlashPlugin({ commands, onRun, onMenu }: Commands) {
                 </div>
               );
             })}
-            {props.options.length === 0 && <MenuNote>{commands ? "No commands" : "Loading…"}</MenuNote>}
+            {props.options.length === 0 && <MenuNote>{commands ? MENU_NOTES.noCommands : MENU_NOTES.loading}</MenuNote>}
           </Panel>
         )
       }

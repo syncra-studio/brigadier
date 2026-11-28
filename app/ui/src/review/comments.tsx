@@ -7,13 +7,12 @@ import { TooltipIconButton } from "../components/icon-button";
 import { Kbd } from "../components/kbd";
 import { keysOf, matches } from "../shortcuts";
 import type { DiffComment } from "./types";
+import { commentAt } from "../../../shared/chips";
 
 /**
  * Comments to the agent (D1040): select lines or press a line's +, write in the box under them, and the comment
  * becomes a chip above the composer with its excerpt. It stays marked on the diff until it's sent.
  */
-
-const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 /** "line 19", "lines 29–31". */
 export const lineWords = (start: number, end: number) => (start === end ? `line ${start}` : `lines ${start}–${end}`);
@@ -89,7 +88,7 @@ export function CommentNote({ comment, onRemove }: { comment: DiffComment; onRem
 
 /** A comment as a chip above the composer: the comment over its place and its first line's code (D1040). */
 export function CommentChip({ comment, onRemove }: { comment: DiffComment; onRemove: () => void }) {
-  const at = `${baseName(comment.path)}:${comment.start === comment.end ? comment.start : `${comment.start}–${comment.end}`}`;
+  const at = commentAt(comment);
   return (
     <Tile
       slot="composer-comment"

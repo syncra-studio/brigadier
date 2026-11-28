@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { Draft } from "../../../app/shared/draft";
 import type { QueuedMessage } from "../../../app/shared/session/queued";
+import { attached } from "../../../app/shared/session/composer";
 import { color, spacing, radius, text, opacity, mono } from "../theme";
 import { ArrowCurvedRight, DotsHorizontal, Play, QueueGlyph, Spinner, Trash } from "../../../app/ui/src/icons";
 import { Terminal } from "../../../app/ui/src/icons/thread";
@@ -17,19 +18,6 @@ const preview = (draft: Draft) =>
     .join("")
     .replace(/\s+/g, " ")
     .trim();
-
-const plural = (count: number, one: string, many: string) => (count === 1 ? one : `${count} ${many}`);
-
-/** What rides with the text: "Image attachment", "Pasted text", "3 images", "2 files"… or nothing. */
-function attached(draft: Draft): string | null {
-  const chips = draft.parts.filter((part) => typeof part !== "string" && (part.kind === "image" || part.kind === "paste"));
-  const images = chips.filter((chip) => typeof chip !== "string" && chip.kind === "image").length;
-  const total = chips.length + draft.attachmentIds.length;
-  if (total === 0) return null;
-  if (images === total) return plural(total, "Image attachment", "images");
-  if (total === 1 && chips.length === 1) return "Pasted text";
-  return plural(total, "1 file", "files");
-}
 
 /** A message with files, or a file or folder mention (a Mac path the phone may not send): not pulled back to edit here. */
 const hasFiles = (draft: Draft) =>

@@ -9,10 +9,8 @@ import { named, useClosesOnTyping } from "./model-keys";
 import type { Model, ModelChoice, ModelGroup } from "../../../../shared/session/model";
 export type { Model, ModelChoice, ModelGroup } from "../../../../shared/session/model";
 
-/** "xhigh" → "Extra high", "medium" → "Medium". */
-export function effortLabel(effort: string): string {
-  return effort === "xhigh" ? "Extra high" : effort.charAt(0).toUpperCase() + effort.slice(1);
-}
+import { effortLabel } from "../../../../shared/session/composer";
+export { effortLabel } from "../../../../shared/session/composer";
 
 /** An agent's mark, from its adapter (trusted, built in); without one, a terminal. */
 export function ProviderMark({ mark, className }: { mark: string | null; className?: string }) {

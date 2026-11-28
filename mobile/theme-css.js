@@ -10,6 +10,7 @@ const upstream = require("@expo/metro-config/babel-transformer");
 
 const THEME = path.resolve(__dirname, "../app/ui/src/theme.css");
 const STUB = path.resolve(__dirname, "src/theme-values.js");
+const NIGHT = path.resolve(__dirname, "../app/ui/src/sessions/overnight.css");
 const REM = 16;
 
 /** `--name: value` pairs of the `@theme static` block, comments dropped. */
@@ -67,7 +68,31 @@ const pxOf = (value) => {
   return m ? Number(m[1]) * (m[2] === "rem" ? REM : 1) : null;
 };
 
-function values(css) {
+/**
+ * Overnight's composer card (overnight.css `.night-sky`): its fill and ring, and its ::before glow and ::after stars as
+ * layers, each an opacity and a background image, the tokens resolved and lowered as the theme's are, rem in px.
+ */
+function night(css, resolve, raw) {
+  const sheet = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const rule = (pseudo) => {
+    const selector = `.night-sky [data-slot="composer-card"]${pseudo} {`;
+    const at = sheet.indexOf(selector);
+    if (at < 0) throw new Error(`overnight.css: no ${selector}`);
+    const body = sheet.slice(at + selector.length, sheet.indexOf("}", at)).replace(/var\(--([a-z0-9-]+)\)/g, (whole, name) => (raw.has(name) ? resolve(name) : whole));
+    const { code } = transform({ filename: "overnight.css", code: Buffer.from(`.n{${body}}`), minify: true, include: Features.Colors });
+    // The first of each property: lightningcss puts the sRGB fallback first.
+    const out = {};
+    // React Native reads a gradient's position only in px or %: lightningcss's bare 0 (`at 100% 0`) becomes 0%.
+    const native = (value) => inPx(value).replace(/\bat ([^,]+)/g, (place) => place.replace(/(^|\s)0(?=\s|$)/g, "$10%"));
+    for (const [, prop, value] of code.toString().matchAll(/([a-z-]+):([^;}]+)/g)) out[camel(prop)] ??= native(value);
+    return out;
+  };
+  const card = rule("");
+  const layer = ({ opacity, backgroundImage }) => ({ opacity: Number(opacity), backgroundImage });
+  return { card: { backgroundColor: card.backgroundColor, boxShadow: card.boxShadow }, glow: layer(rule("::before")), stars: layer(rule("::after")) };
+}
+
+function values(css, nightCss) {
   const raw = declarations(css);
   const resolve = resolver(raw);
   const names = [...raw.keys()].filter((name) => groupOf(name));
@@ -97,6 +122,7 @@ function values(css) {
     const lineHeight = line === undefined ? undefined : /(rem|px)$/.test(line) ? pxOf(line) : Number.parseFloat(line) * fontSize;
     theme.text[key] = lineHeight === undefined ? { fontSize } : { fontSize, lineHeight: Math.round(lineHeight * 100) / 100 };
   }
+  if (nightCss) theme.night = night(nightCss, resolve, raw);
   return theme;
 }
 
@@ -104,12 +130,12 @@ module.exports = {
   values,
   transform(args) {
     if (path.resolve(args.filename) !== STUB) return upstream.transform(args);
-    return upstream.transform({ ...args, src: `module.exports = ${JSON.stringify(values(fs.readFileSync(THEME, "utf8")))};` });
+    return upstream.transform({ ...args, src: `module.exports = ${JSON.stringify(values(fs.readFileSync(THEME, "utf8"), fs.readFileSync(NIGHT, "utf8")))};` });
   },
   // shortcut: Metro takes this key once per server, so a dev server keeps the old values after a theme.css edit until
   // it restarts (`npx expo start -c`); every Xcode bundle starts a new one. Upgrade if anyone styles live against it.
   getCacheKey(...args) {
-    const theme = crypto.createHash("sha1").update(fs.readFileSync(THEME)).update(fs.readFileSync(__filename)).digest("hex");
+    const theme = crypto.createHash("sha1").update(fs.readFileSync(THEME)).update(fs.readFileSync(NIGHT)).update(fs.readFileSync(__filename)).digest("hex");
     return `${upstream.getCacheKey ? upstream.getCacheKey(...args) : ""}${theme}`;
   },
 };

@@ -8,10 +8,11 @@ import type { SlashCommand } from "../components/composer/menus";
 
 export type { Overnight } from "../../../shared/rows";
 import type { Overnight } from "../../../shared/rows";
+import { OVERNIGHT_WORDS } from "../../../shared/session/composer";
 
 type Act = "on" | "start" | "off";
 
-export const OVERNIGHT: SlashCommand = { id: "overnight", kind: "command", label: "/overnight", description: "Finish the job while you’re away", instant: true };
+export const OVERNIGHT: SlashCommand = { id: "overnight", kind: "command", ...OVERNIGHT_WORDS, instant: true };
 
 const asked = store<ReadonlyMap<string, { op: string; act: Act; at: number }>>(new Map());
 function put(id: string, entry: { op: string; act: Act; at: number } | null): void {

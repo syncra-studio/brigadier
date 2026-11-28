@@ -8,14 +8,11 @@ import { Dialog, DialogContent } from "../dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../menu";
 import { ComposerPill } from "./composer";
 
-/** How the agent's actions are approved. The words are the UI's; the level is Rust's. */
-export type PermissionLevel = "ask" | "auto" | "full";
+import { LEVEL_WORDS, type PermissionLevel } from "../../../../shared/session/composer";
+export type { PermissionLevel } from "../../../../shared/session/composer";
 
-export const LEVELS: { level: PermissionLevel; label: string; detail: string; Icon: typeof HandRaised }[] = [
-  { level: "ask", label: "Ask", detail: "Asks before edits and commands", Icon: HandRaised },
-  { level: "auto", label: "Auto", detail: "Works on its own, asks before risky actions", Icon: ShieldTerminal },
-  { level: "full", label: "Full access", detail: "Unrestricted access to the internet and all your files", Icon: ShieldExclamation },
-];
+const LEVEL_ICONS = { ask: HandRaised, auto: ShieldTerminal, full: ShieldExclamation };
+export const LEVELS = LEVEL_WORDS.map((each) => ({ ...each, Icon: LEVEL_ICONS[each.level] }));
 
 const ALL_LEVELS = LEVELS.map((each) => each.level);
 

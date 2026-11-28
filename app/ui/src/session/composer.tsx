@@ -32,7 +32,7 @@ import { again, answered, chipArgs, discard, draftArgs, go, keep, sendOp, useHan
 import { useGoingOf } from "./uncertain";
 import { useTurn } from "./turn";
 import { OVERNIGHT, overnight, useOvernight } from "../sessions/overnight";
-import { NightReady, nightLook, nightPlaceholder, OvernightStrip, SessionOvernight, StartNight } from "../sessions/overnight-parts";
+import { NightReady, nightLook, OvernightStrip, SessionOvernight, StartNight } from "../sessions/overnight-parts";
 
 /** A session's row with what the composer needs from Rust: its queue, whether its agent can steer, whether a turn is open. */
 export type ComposerRow = Row & {
@@ -50,6 +50,7 @@ export type ComposerRow = Row & {
 import type { Runner } from "../../../shared/session/run";
 export type { Runner } from "../../../shared/session/run";
 import { failure } from "../../../shared/session/run";
+import { COMPOSER_WORDS, messageTo, NIGHT_WORDS, nightPlaceholder, stuckWords } from "../../../shared/session/composer";
 export { failure };
 export const daemonRun: Runner = (args) => new Promise((resolve) => ask({ op: "run", args }, resolve));
 
@@ -71,8 +72,8 @@ type Op = { key: string; kind: "add" | "command" | "remove" | "resume" | "move";
  * queued message. Rust keeps the queue and sends it in order; Stop (■, Esc Esc) pauses it until Resume [D159]. `!`
  * first makes it a command, which waits its turn in the queue and runs at once between turns [D316].
  */
-export function SessionComposer({ id, row, offline, blocked, onSent, run = daemonRun, source = answeringSource, placeholder = "Do anything", worker = false }: { id: string; row: ComposerRow | undefined; offline: boolean; /** Why sending waits (a start Rust hasn't made yet); the field stays usable. */ blocked?: string; onSent?: (id: string) => void; run?: Runner; source?: Source; placeholder?: string; /** A worker's own tab: its model shown but fixed, no permission picker, no Stop or Resume, no new session [D293]. */ worker?: boolean }) {
-  const held = offline ? "Reconnecting…" : blocked;
+export function SessionComposer({ id, row, offline, blocked, onSent, run = daemonRun, source = answeringSource, placeholder = COMPOSER_WORDS.placeholder, worker = false }: { id: string; row: ComposerRow | undefined; offline: boolean; /** Why sending waits (a start Rust hasn't made yet); the field stays usable. */ blocked?: string; onSent?: (id: string) => void; run?: Runner; source?: Source; placeholder?: string; /** A worker's own tab: its model shown but fixed, no permission picker, no Stop or Resume, no new session [D293]. */ worker?: boolean }) {
+  const held = offline ? COMPOSER_WORDS.reconnecting : blocked;
   const field = useRef<ComposerFieldHandle>(null);
   const model = useSessionModel(id, row, offline, worker);
   // An approval takes the composer's place [D199, D317].
@@ -383,7 +384,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
             resuming={resuming || stopping || offline}
             steer={canSteer && running}
             canEdit={empty}
-            error={(stuck ? `Not sent: ${stuck.error}. ${stuck.to ? "Edit it, delete it or send it to the session instead." : "Edit or delete it to go on."}` : null) ?? error}
+            error={(stuck ? stuckWords(String(stuck.error), Boolean(stuck.to)) : null) ?? error}
             onResume={resume}
             onSteer={steerQueued}
             onRemove={(qid) => (lost(qid) ? discard(run, id, lost(qid)!) : act({ kind: "remove", qid }, ["remove", qid]))}
@@ -392,7 +393,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
             onToSession={(qid) => queue(text(qid), qid, undefined, undefined, JSON.stringify(row?.queue?.items.find((each) => each.id === qid)?.parts))}
             onMove={move}
           />
-          <SessionQuestions id={id} run={run} source={source} backend={row?.backend} images={takesImages(row?.backend, row?.model)} night={night?.state === "asking" ? (round) => <StartNight id={id} label="Or start now: it picks what you skip and tells you in the morning" {...round} /> : undefined} />
+          <SessionQuestions id={id} run={run} source={source} backend={row?.backend} images={takesImages(row?.backend, row?.model)} night={night?.state === "asking" ? (round) => <StartNight id={id} label={NIGHT_WORDS.startNow} {...round} /> : undefined} />
         </>
       }
       above={<SessionApprovals id={id} run={run} source={source} />}
@@ -458,7 +459,7 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
       <ComposerField
         ref={field}
         initial={initial}
-        placeholder={toWorker ? `Message ${toWorker.name}` : (nightPlaceholder(night, busy, asked) ?? placeholder)}
+        placeholder={toWorker ? messageTo(toWorker.name) : (nightPlaceholder(night, busy, asked) ?? placeholder)}
         attachments={files.attachments}
         onAttach={files.attach}
         mentions={{ ...files.mentions, onDirect: setTo }}

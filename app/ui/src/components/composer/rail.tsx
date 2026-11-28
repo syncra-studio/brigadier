@@ -7,6 +7,7 @@ import { cx } from "../cx";
 import { Dialog, DialogContent } from "../dialog";
 import { ErrorLine } from "../error-line";
 import { TooltipIconButton } from "../icon-button";
+import { pausedWords } from "../../../../shared/session/composer";
 
 /**
  * How long after the rail appears its items are simply there rather than opening: a session's view is drawn
@@ -281,10 +282,10 @@ export function PausedSendDialog({
     <Dialog open={waiting !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent initialFocus={sendNow}>
         <ConfirmForm
-          title="Send message?"
-          description={`The queue is paused. ${count === 1 ? "One message waits" : `${count} messages wait`} until you resume it. Send this one now, or keep it in the queue with them.`}
-          cancel="Keep paused"
-          confirm="Send now"
+          title={pausedWords(count).title}
+          description={pausedWords(count).body}
+          cancel={pausedWords(count).cancel}
+          confirm={pausedWords(count).confirm}
           onCancel={onKeepPaused}
           onConfirm={onSendNow}
           confirmRef={sendNow}

@@ -20,5 +20,7 @@ declare const theme: {
   duration: Record<string, number>;
   ease: Record<string, string>;
   scale: Record<string, number>;
+  /** Overnight's composer card (sessions/overnight.css): its fill and ring, then its glow and stars as layers. */
+  night: { card: { backgroundColor: string; boxShadow: string }; glow: { opacity: number; backgroundImage: string }; stars: { opacity: number; backgroundImage: string } };
 };
 export default theme;

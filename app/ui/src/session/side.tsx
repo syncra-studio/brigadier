@@ -9,11 +9,12 @@ import type { Item } from "../thread/item";
 import { type Pending, sideState, type Swap } from "../../../shared/session/side";
 import { daemonRun } from "./composer";
 import { newId } from "./store";
+import { NEW_SESSION_WORDS } from "../../../shared/session/composer";
 
 // Send as new's logic is app/shared/session/side.ts [D58]; its lines and hooks are here.
 
 /** Brigadier's own `/` command, the only one until wave 3 [D164]: a chip in the text, so the message says where it goes. */
-export const NEW_SESSION: SlashCommand = { id: "new-session", kind: "command", label: "/new", description: "Send the message as a new session, and stay here", instant: false };
+export const NEW_SESSION: SlashCommand = { id: "new-session", kind: "command", ...NEW_SESSION_WORDS, instant: false };
 
 const side = sideState();
 const usePending = () => useSyncExternalStore(side.pending.subscribe, side.pending.get);

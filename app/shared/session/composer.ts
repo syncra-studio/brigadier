@@ -1,0 +1,114 @@
+import type { Draft } from "../draft";
+import type { Overnight } from "../rows";
+
+// The composer's words, and the small formatting that picks them, for both apps [D58, D103]; each app draws them.
+
+/** How the agent's actions are approved. The words are the apps'; the level is Rust's. */
+export type PermissionLevel = "ask" | "auto" | "full";
+export const LEVEL_WORDS: { level: PermissionLevel; label: string; detail: string }[] = [
+  { level: "ask", label: "Ask", detail: "Asks before edits and commands" },
+  { level: "auto", label: "Auto", detail: "Works on its own, asks before risky actions" },
+  { level: "full", label: "Full access", detail: "Unrestricted access to the internet and all your files" },
+];
+
+/** "xhigh" → "Extra high", "medium" → "Medium". */
+export function effortLabel(effort: string): string {
+  return effort === "xhigh" ? "Extra high" : effort.charAt(0).toUpperCase() + effort.slice(1);
+}
+
+/** Brigadier's own tools, in the `/` and + menus' order, each with its line. */
+export const TOOL_LINES: [id: string, line: string][] = [
+  ["computer", "Use the apps on your Mac"],
+  ["browser", "Open pages, click and type in Brigadier's browser"],
+  ["mockup", "Draw 3 looks to pick from before building"],
+  ["image", "Make or edit a picture"],
+  ["research", "Search and read the web, with sources"],
+  ["workers", "Split the job across workers in parallel"],
+];
+
+/** The `/` menu's headings by kind, and what the menus say while empty. */
+export const KIND_HEADINGS = { command: "Commands", tool: "Tools", skill: "Skills", mcp: "MCP servers", prompt: "MCP prompts" } as const;
+export const MENU_NOTES = { searching: "Searching…", noResults: "No results", loading: "Loading…", noCommands: "No commands" } as const;
+
+/** The /new and /overnight commands' words. */
+export const NEW_SESSION_WORDS = { label: "/new", description: "Send the message as a new session, and stay here" } as const;
+export const OVERNIGHT_WORDS = { label: "/overnight", description: "Finish the job while you’re away" } as const;
+
+/** The field, its footer and Send. */
+export const COMPOSER_WORDS = {
+  placeholder: "Do anything",
+  shell: "Shell command",
+  shellPlaceholder: "Run a command",
+  add: "Add files and more",
+  send: "Send message",
+  queue: "Queue",
+  steer: "Steer",
+  stop: "Stop",
+  resume: "Resume",
+  run: "Run",
+  runNow: "Run command",
+  runAfter: "Run when the turn ends",
+  reconnecting: "Reconnecting…",
+  uploading: "Files uploading…",
+  noImages: "This model does not support image inputs. Try a different model",
+  attaching: "Attaching…",
+  couldntAttach: "Couldn't attach this file",
+} as const;
+export const sendTo = (name: string) => `Send to ${name}`;
+export const messageTo = (name: string) => `Message ${name}`;
+
+/** A queued message Rust couldn't send; one to a worker can go to the session instead. */
+export const stuckWords = (error: string, toWorker: boolean) => `Not sent: ${error}. ${toWorker ? "Edit it, delete it or send it to the session instead." : "Edit or delete it to go on."}`;
+
+/** Send while the queue is paused. */
+export const pausedWords = (count: number) => ({
+  title: "Send message?",
+  body: `The queue is paused. ${count === 1 ? "One message waits" : `${count} messages wait`} until you resume it. Send this one now, or keep it in the queue with them.`,
+  cancel: "Keep paused",
+  confirm: "Send now",
+});
+
+const plural = (count: number, one: string, many: string) => (count === 1 ? one : `${count} ${many}`);
+
+/** What rides with a queued message's text: "Image attachment", "Pasted text", "3 images", "2 files"… or nothing. */
+export function attached(draft: Draft): string | null {
+  const chips = draft.parts.filter((part) => typeof part !== "string" && (part.kind === "image" || part.kind === "paste"));
+  const images = chips.filter((chip) => typeof chip !== "string" && chip.kind === "image").length;
+  const total = chips.length + draft.attachmentIds.length;
+  if (total === 0) return null;
+  if (images === total) return plural(total, "Image attachment", "images");
+  if (total === 1 && chips.length === 1) return "Pasted text";
+  return plural(total, "1 file", "files");
+}
+
+/** "PDF", "PNG image", "Text": what a file's tile says under its name. */
+export function kindOf(name: string, mime: string): string {
+  if (mime === "application/pdf") return "PDF";
+  const extension = name.includes(".") ? name.split(".").pop()?.toUpperCase() : undefined;
+  if (mime.startsWith("image/")) return extension ? `${extension} image` : "Image";
+  if (mime.startsWith("text/")) return extension ? `${extension} text` : "Text";
+  return extension ? `${extension} file` : "File";
+}
+
+export const baseName = (name: string) => name.slice(name.lastIndexOf("/") + 1);
+
+/** Overnight's pill, rail and Start night. */
+export const NIGHT_WORDS = {
+  pill: "Overnight",
+  on: "Overnight: it asks what it needs, then finishes the job while you’re away",
+  off: "Turn Overnight off",
+  back: "I’m back: end the night",
+  imBack: "I’m back",
+  start: "Start night",
+  startNow: "Or start now: it picks what you skip and tells you in the morning",
+  awake: "This Mac stays awake",
+  beforeYouGo: "Before you go",
+  ready: "That’s all I need",
+} as const;
+
+/** The field's words while Overnight is on; `asked`: its turn's questions are there already, waiting or answered. */
+export const nightPlaceholder = (now: Overnight | null, busy: boolean, asked: boolean) =>
+  now === null ? undefined : now.state === "night" ? "Working until you’re back" : now.state === "asking" && busy && !asked ? "It asks its last questions next" : "Anything else before you go?";
+
+/** The night strip's progress after its time: " · 2 of 5 parts done", " · 3 decided for you". */
+export const nightProgress = (night: Pick<Overnight, "total" | "done" | "decided">) => `${night.total ? ` · ${night.done ?? 0} of ${night.total} parts done` : ""}${night.decided ? ` · ${night.decided} decided for you` : ""}`;

@@ -15,12 +15,13 @@ import { inThread, type QueuedMessage, queuedOf } from "../../../app/shared/sess
 import { sends } from "../../../app/shared/session/sent";
 import type { Frame } from "../../../app/shared/client";
 import { COMPACTION } from "../../../app/shared/words";
+import { COMPOSER_WORDS as W, messageTo, NIGHT_WORDS, nightPlaceholder, sendTo, stuckWords } from "../../../app/shared/session/composer";
 import { Confirm } from "../act/Confirm";
 import { streamNow } from "../link";
 import { lists, thread } from "../mac/mac";
 import { color, spacing, opacity, touch } from "../theme";
 import { LevelPill } from "../powers/Level";
-import { NightReady, nightPlaceholder, OvernightPill, OvernightStrip, StartNight, useNight } from "../powers/Overnight";
+import { NightReady, OvernightPill, OvernightStrip, StartNight, useNight } from "../powers/Overnight";
 import { backgroundPower, type Power, refusal, shellOf } from "../powers/powers";
 import { ImageSigns } from "../powers/View";
 import { composerSample } from "../mac/sample";
@@ -31,7 +32,7 @@ import { type Command, Commands, Mentions, NEW_SESSION, OVERNIGHT, PlusMenu, use
 import { ModelPill } from "./Model";
 import { Pill, PillDivider } from "./Pill";
 import { QueueCard } from "./Queue";
-import { ChipTile, type ComposerRow, Field, Link, type Named, named, OnItsWay, type Op, partsOf, type Pulled, st, Tile, tilesOf, type To, useLatest, Viewer } from "./parts";
+import { ChipTile, type ComposerRow, Field, Link, type Named, named, NightSky, OnItsWay, type Op, partsOf, type Pulled, st, Tile, tilesOf, type To, useLatest, Viewer } from "./parts";
 import { sendActions } from "./send";
 import { type Attachment, forMac, type Picked } from "./state";
 
@@ -212,10 +213,10 @@ export function Composer({ id }: { id: string }) {
   const waitsFor = () => {
     const now = fileStore.of(id);
     const tiles = now.tiles.flatMap((each) => now.all.get(each) ?? []);
-    if (tiles.some((each) => each.state === "uploading")) return "Files uploading…";
+    if (tiles.some((each) => each.state === "uploading")) return W.uploading;
     // Kept in the draft, not read from Rust's folder yet.
     if (tiles.length < now.tiles.length) return "Files loading…";
-    if (tiles.some((each) => each.state === "ready" && each.mime.startsWith("image/")) && !mac.models.takesImages(((toRow as typeof row) ?? row)?.backend, ((toRow as typeof row) ?? row)?.model)) return "This model does not support image inputs. Try a different model";
+    if (tiles.some((each) => each.state === "ready" && each.mime.startsWith("image/")) && !mac.models.takesImages(((toRow as typeof row) ?? row)?.backend, ((toRow as typeof row) ?? row)?.model)) return W.noImages;
     return undefined;
   };
   const { act, steerQueued, edit, submit, toAgain, toEdit, toDiscard, stop, resume, move } = sendActions({ id, mac, row, connected, worker, to, toWorker, toSending, toGone, inProject, running, canSteer, commands, paused, items, editing, lost, textOf, readyNow, tilesNow, partsNow, setField, waitsFor, words$, named$, setOps, setError, setPowerError, setPower, setToSending, setTo, setStopping });
@@ -305,13 +306,13 @@ export function Composer({ id }: { id: string }) {
   // also a tap (a steer turns the button into Stop meanwhile).
   const steers = state === "send" && !shell && (toWorker !== null || (running && canSteer));
   const hold = () => (steers ? submit(true) : press());
-  const verb = running && !blank ? "Queue" : "Send message";
+  const verb = running && !blank ? W.queue : W.send;
   // Why Send waits, in the desktop's words: offline it says so, as it does.
-  const held = connected ? undefined : "Reconnecting…";
+  const held = connected ? undefined : W.reconnecting;
   const gone = toGone ? `${to.name} is no longer on your Mac` : undefined;
-  const blocked = held ?? waits ?? gone ?? (toSending ? `Send to ${toWorker?.name ?? "the worker"}` : undefined);
+  const blocked = held ?? waits ?? gone ?? (toSending ? sendTo(toWorker?.name ?? "the worker") : undefined);
   const runs = state === "send" && shell;
-  const tip = state === "stop" ? "Stop" : state === "resume" ? "Resume" : (blocked ?? (runs ? (running || commands ? "Run when the turn ends" : "Run command") : toWorker ? `Send to ${toWorker.name}` : verb));
+  const tip = state === "stop" ? W.stop : state === "resume" ? W.resume : (blocked ?? (runs ? (running || commands ? W.runAfter : W.runNow) : toWorker ? sendTo(toWorker.name) : verb));
   const off = (state === "send" && (blank || blocked !== undefined)) || (state === "stop" && stopping) || (state === "resume" && (resuming || !connected));
   const shownSends = sends(going).filter((each) => !delivered.has(each.cid));
   const pulled = foreign && !live.some((op) => op.qid === foreign.id) ? { text: foreign.parts ? plainText(foreign.parts.parts) : foreign.text, onPutBack: () => act({ kind: "add", qid: foreign.id, text: foreign.text, slot: foreign.slot }, ["restore"]) } : null;
@@ -320,7 +321,7 @@ export function Composer({ id }: { id: string }) {
     night.now?.state === "night" ? <OvernightStrip key="night" night={night} connected={connected} /> : null,
     night.now?.state === "ready" ? <NightReady key="ready" night={night} connected={connected} /> : null,
     // Under the turn's last questions on the desktop; here they're in the thread, so it waits on the rail meanwhile.
-    night.now?.state === "asking" && asked && session?.questions?.length ? <StartNight key="start" label="Or start now: it picks what you skip and tells you in the morning" night={night} connected={connected} /> : null,
+    night.now?.state === "asking" && asked && session?.questions?.length ? <StartNight key="start" label={NIGHT_WORDS.startNow} night={night} connected={connected} /> : null,
     items.length > 0 || runningCommands.length > 0 || pulled ? (
       <QueueCard
         key="queue"
@@ -330,7 +331,7 @@ export function Composer({ id }: { id: string }) {
         resuming={resuming || stopping || !connected}
         steer={canSteer && running}
         canEdit={empty}
-        error={(stuck ? `Not sent: ${stuck.error}. ${stuck.to ? "Edit it, delete it or send it to the session instead." : "Edit or delete it to go on."}` : null) ?? (items.length > 0 ? error : null)}
+        error={(stuck ? stuckWords(String(stuck.error), Boolean(stuck.to)) : null) ?? (items.length > 0 ? error : null)}
         onResume={worker ? undefined : resume}
         onBackground={(command) => setPower({ ...backgroundPower(id, command.id, command.line), then: (reply) => setPowerError(reply.ok ? null : refusal(reply)) })}
         onSteer={steerQueued}
@@ -349,7 +350,7 @@ export function Composer({ id }: { id: string }) {
   // The night's look, but not on a command [D316].
   const look = shell ? st.shell : night.now ? st.night : null;
   const shownError = useLatest([powerError, night.error, items.length === 0 ? error : null]);
-  const placeholder = shell ? "Run a command" : toWorker ? `Message ${toWorker.name}` : (nightPlaceholder(night.now, busy, asked) ?? "Do anything");
+  const placeholder = shell ? W.shellPlaceholder : toWorker ? messageTo(toWorker.name) : (nightPlaceholder(night.now, busy, asked) ?? W.placeholder);
   return (
     <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={header}>
       <SafeAreaView edges={{ bottom: "maximum" }} style={st.column}>
@@ -385,24 +386,26 @@ export function Composer({ id }: { id: string }) {
           <View style={st.rail}>{rail.map((item, at) => <View key={at} style={at > 0 && st.ruled}>{item}</View>)}</View>
         ) : null}
         <View style={[st.card, look]}>
-          {files.tiles.length > 0 || panel.length > 0 ? (
+          {look === st.night ? <NightSky /> : null}
+          {files.tiles.length > 0 ? (
             <View style={st.tiles}>
               {files.tiles.map((each) => {
                 const file = files.all.get(each);
                 return <Tile key={each} owner={id} file={file ?? { id: each, name: "Loading…", mime: "", state: "uploading" }} onOpen={() => setViewing(file ?? null)} onRemove={() => fileStore.remove(id, each)} />;
               })}
-              {panel.map((chip) => <ChipTile key={chip.id} chip={chip} />)}
             </View>
           ) : null}
+          {/* The chips' own row after the files', as the desktop's session/composer.tsx tiles. */}
+          {panel.length > 0 ? <View style={st.tiles}>{panel.map((chip) => <ChipTile key={chip.id} chip={chip} />)}</View> : null}
           <Field words={words} chips={named$.current} shell={shell} placeholder={placeholder} night={night.now !== null} onChange={typed} onCursor={lookAt} />
           <View style={st.footer}>
             {shell ? (
-              <Text style={st.shellWords} numberOfLines={1}>Shell command</Text>
+              <Text style={st.shellWords} numberOfLines={1}>{W.shell}</Text>
             ) : (
               <>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Add files and more"
+                  accessibilityLabel={W.add}
                   accessibilityState={{ expanded: plus }}
                   onPress={() => {
                     setMenu(null);
@@ -442,7 +445,7 @@ export function Composer({ id }: { id: string }) {
                 hitSlop={(touch - spacing.controlSm) / 2}
                 style={({ pressed }) => [runs ? st.run : st.send, off ? { opacity: opacity.disabled } : pressed && { opacity: 0.8 }]}
               >
-                {state === "stop" ? <Stop className="size-icon-sm text-primary-fg" /> : state === "resume" ? <PlayTriangle className="size-icon-md text-primary-fg" /> : runs ? <Text style={st.runText}>Run</Text> : <ArrowUp className="size-icon-md text-primary-fg" />}
+                {state === "stop" ? <Stop className="size-icon-sm text-primary-fg" /> : state === "resume" ? <PlayTriangle className="size-icon-md text-primary-fg" /> : runs ? <Text style={st.runText}>{W.run}</Text> : <ArrowUp className="size-icon-md text-primary-fg" />}
               </Pressable>
             </View>
           </View>

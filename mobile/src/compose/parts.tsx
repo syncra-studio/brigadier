@@ -2,12 +2,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Animated, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import type { Chip as PanelChip } from "../../../app/shared/chips";
+import { agentChipWords, type Chip as PanelChip, commentAt } from "../../../app/shared/chips";
 import { type Chip, type Draft, isEmpty, plainText } from "../../../app/shared/draft";
 import type { ModelRow } from "../../../app/shared/session/model";
 import type { RustQueued } from "../../../app/shared/session/queued";
 import type { Going } from "../../../app/shared/session/uncertain";
-import { color, spacing, radius, text, shadow, opacity, mono, space } from "../theme";
+import { baseName, COMPOSER_WORDS, kindOf } from "../../../app/shared/session/composer";
+import { color, spacing, radius, text, shadow, opacity, mono, night } from "../theme";
 import { Comment, FileDocument, FileImage, Paperclip, Spinner, Warning, X } from "../../../app/ui/src/icons";
 import { Terminal } from "../../../app/ui/src/icons/thread";
 import { Sparkles, XCircle } from "../../../app/ui/src/landing/icons";
@@ -133,16 +134,6 @@ export function segments(words: string, chips: readonly Named[]): [string, Named
   return partsOf(words, chips).map((part) => (typeof part === "string" ? [part, null] : [(part as Named).label, part as Named]));
 }
 
-/** "PDF", "PNG image", "Text": what a file's tile says under its name (the desktop's attachments.tsx `kindOf`). */
-export function kindOf(name: string, mime: string): string {
-  if (mime === "application/pdf") return "PDF";
-  const extension = name.includes(".") ? name.split(".").pop()?.toUpperCase() : undefined;
-  if (mime.startsWith("image/")) return extension ? `${extension} image` : "Image";
-  if (mime.startsWith("text/")) return extension ? `${extension} text` : "Text";
-  return extension ? `${extension} file` : "File";
-}
-
-export const baseName = (name: string) => name.slice(name.lastIndexOf("/") + 1);
 
 /**
  * A tile's ✕: a dark dot inside its corner. Its reach grows out to the corner, and on a card down and in too; on an
@@ -155,9 +146,9 @@ export const Remove = ({ label, onPress, image }: { label: string; onPress: () =
 );
 
 /** A card in the tiles row: an icon in its box, a title over a second line, and its ✕ where it has one. */
-export function Card({ icon, title, detail, invalid, children }: { icon: React.ReactNode; title: string; detail: string; invalid?: boolean; children?: React.ReactNode }) {
+export function Card({ icon, title, detail, label = detail, invalid, children }: { icon: React.ReactNode; title: string; detail: React.ReactNode; label?: React.ReactNode; invalid?: boolean; children?: React.ReactNode }) {
   return (
-    <View accessible accessibilityLabel={`${title}, ${detail}`} style={[st.fileCard, invalid && { borderColor: color.invalid }]}>
+    <View accessible accessibilityLabel={`${title}, ${label}`} style={[st.fileCard, invalid && { borderColor: color.invalid }]}>
       <View style={st.iconBox}>{icon}</View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={st.cardTitle} numberOfLines={1}>{title}</Text>
@@ -201,7 +192,7 @@ export function Tile({ owner, file, onOpen, onRemove }: { owner: string; file: A
   const Kind = file.mime.startsWith("image/") ? FileImage : file.mime.startsWith("text/") || file.mime === "application/pdf" ? FileDocument : Paperclip;
   const icon = failed ? <Warning aria-label="Upload failed" className="size-icon-md text-destructive" /> : file.state === "uploading" ? <Spin><Spinner aria-label="Uploading" className="size-icon-md" /></Spin> : <Kind className="size-icon-md" />;
   return (
-    <Card icon={icon} title={name} detail={failed ? (file.error ?? "Couldn't attach this file") : file.state === "uploading" ? "Attaching…" : kindOf(file.name, file.mime)} invalid={failed}>
+    <Card icon={icon} title={name} detail={failed ? (file.error ?? COMPOSER_WORDS.couldntAttach) : file.state === "uploading" ? COMPOSER_WORDS.attaching : kindOf(file.name, file.mime)} invalid={failed}>
       {remove}
     </Card>
   );
@@ -210,23 +201,24 @@ export function Tile({ owner, file, onOpen, onRemove }: { owner: string; file: A
 /** An image's box till its bytes are in. */
 export const Pulsing = () => <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: color.muted, opacity: usePulse() }]} />;
 
-export const plural = (n: number, one: string) => (n === 1 ? `1 ${one}` : `${n} ${one}s`);
-
 /**
  * What waits above the field for the agent, as the desktop's CommentChip and AgentChipTile: a diff comment, a Resolve or
  * a Fix with agent. A phone only reads them and sends them with its next message, so no ✕ [allow.rs `chips`].
  */
 export function ChipTile({ chip }: { chip: PanelChip }) {
   if (chip.kind === "comment") {
-    const { path, start, end, text: said, excerpt } = chip.comment;
-    return <Card icon={<Comment className="size-icon-md" />} title={said} detail={`${baseName(path)}:${start === end ? start : `${start}–${end}`}  ${excerpt}`} />;
+    const at = commentAt(chip.comment);
+    // The place, then the excerpt in mono, as the desktop's CommentChip.
+    const detail = (
+      <>
+        {at}
+        <Text style={{ fontFamily: mono }}>{`  ${chip.comment.excerpt}`}</Text>
+      </>
+    );
+    return <Card icon={<Comment className="size-icon-md" />} title={chip.comment.text} detail={detail} label={`${at} ${chip.comment.excerpt}`} />;
   }
-  const agent = chip.chip;
-  return agent.kind === "resolve" ? (
-    <Card icon={<Sparkles className="size-icon-md" />} title={`Resolve ${plural(agent.conflicts, "conflict")}`} detail={`${plural(agent.files, "file")} · ${agent.operation} ${agent.onto}`} />
-  ) : (
-    <Card icon={<XCircle className="size-icon-md text-destructive" />} title={`Fix ${agent.run}`} detail={agent.failed} />
-  );
+  const words = agentChipWords(chip.chip);
+  return <Card icon={chip.chip.kind === "resolve" ? <Sparkles className="size-icon-md" /> : <XCircle className="size-icon-md text-destructive" />} {...words} />;
 }
 
 /** An image tile opened whole, as the desktop's viewer; held, it saves to Photos. */
@@ -270,11 +262,14 @@ export const Link = ({ title, disabled, onPress }: { title: string; disabled?: b
   </Pressable>
 );
 
-// Overnight's sky (sessions/overnight.css .night-sky): violet from the top right, the ring's blue from the bottom left,
-// on a layer at 0.34; RN has no ::before, so the 0.34 goes on the gradients' stops (6-digit hex tokens, alpha appended).
-const NIGHT_OPACITY = 0.34;
-const faded = (hex: string) => `${hex}${Math.round(NIGHT_OPACITY * 255).toString(16).padStart(2, "0")}`;
-const NIGHT_SKY = `radial-gradient(ellipse at top right, ${faded(color.tileViolet)}, transparent ${space(90)}px), radial-gradient(ellipse at bottom left, ${faded(color.ring)}, transparent ${space(80)}px)`;
+/** Overnight's sky behind the card's words, as overnight.css's ::before glow and ::after stars: one layer each. */
+export const NightSky = () => (
+  <>
+    {[night.glow, night.stars].map((layer, at) => (
+      <View key={at} pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius.composer, opacity: layer.opacity, experimental_backgroundImage: layer.backgroundImage }]} />
+    ))}
+  </>
+);
 
 export const st = StyleSheet.create({
   // 12 under the card (pb-3), or the home indicator's inset where that's more.
@@ -283,8 +278,7 @@ export const st = StyleSheet.create({
   rail: { marginHorizontal: spacing.railInset, marginBottom: -spacing.railTuck - 8, paddingBottom: spacing.railTuck, borderTopLeftRadius: radius.overlay, borderTopRightRadius: radius.overlay, borderWidth: 1, borderBottomWidth: 0, borderColor: color.border, backgroundColor: color.codeSurface, overflow: "hidden" },
   ruled: { borderTopWidth: 1, borderTopColor: color.border },
   card: { gap: 4, padding: 8, borderRadius: radius.composer, backgroundColor: color.composer, boxShadow: shadow.composer },
-  // overnight.css `night-sky`: the page's darkest fill, a violet glow from the end corner and a blue one from the start.
-  night: { backgroundColor: color.surfaceUnder, boxShadow: `inset 0 0 0 ${space(0.25)}px ${color.picked}`, experimental_backgroundImage: NIGHT_SKY },
+  night: night.card,
   shell: { boxShadow: `${shadow.composer}, 0 0 0 1px ${color.link}` },
   input: { ...text.base, color: color.foreground, minHeight: spacing.composer, paddingHorizontal: 8, paddingTop: 10, paddingBottom: 10 },
   mono: { fontFamily: mono, paddingLeft: 36 },

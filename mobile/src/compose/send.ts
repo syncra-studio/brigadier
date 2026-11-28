@@ -4,6 +4,7 @@ import { Alert } from "react-native";
 import type { Chip as PanelChip } from "../../../app/shared/chips";
 import { type Draft, isEmpty, plainText, sendMode } from "../../../app/shared/draft";
 import { type QueuedMessage, toArgs } from "../../../app/shared/session/queued";
+import { pausedWords } from "../../../app/shared/session/composer";
 import { failure } from "../../../app/shared/session/run";
 import { chipArgs, draftArgs, sendOp } from "../../../app/shared/session/sent";
 import type { Going } from "../../../app/shared/session/uncertain";
@@ -163,10 +164,10 @@ export function sendActions({ id, mac, row, connected, worker, to, toWorker, toS
     // Queue or Steer is the Mac's setting; the phone takes its default, Queue [D188]. A paused worker's waits till Resume [D3041].
     const mode = chosen ?? (row?.worker?.kind === "paused" ? "queue" : sendMode(running || commands, "queue", other, canSteer && running));
     if (!chosen && mode === "now" && paused && items.length > 0) {
-      const count = items.length === 1 ? "One message waits" : `${items.length} messages wait`;
-      return Alert.alert("Send message?", `The queue is paused. ${count} until you resume it. Send this one now, or keep it in the queue with them.`, [
-        { text: "Keep paused", onPress: () => submit(other, "queue") },
-        { text: "Send now", style: "default", onPress: () => submit(other, "now") },
+      const words = pausedWords(items.length);
+      return Alert.alert(words.title, words.body, [
+        { text: words.cancel, onPress: () => submit(other, "queue") },
+        { text: words.confirm, style: "default", onPress: () => submit(other, "now") },
       ]);
     }
     const msg = (mode === "queue" && editing.get()?.qid) || newId();

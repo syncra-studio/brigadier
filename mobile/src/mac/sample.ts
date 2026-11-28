@@ -106,7 +106,8 @@ const IMAGE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAIAAABvFaq
 /**
  * The composer's screens over the sample thread: `composer-empty`; `composer-typing`, words with a tool's chip;
  * `composer-queue`, a turn running and two messages waiting; `composer-files`, an image's tile and a file's;
- * `composer-model`, the model menu open.
+ * `composer-model`, the model menu open; `composer-night`, Overnight's night; `composer-shell`, a `!` command typed;
+ * `composer-chips`, a diff comment and a Fix with agent waiting over the field.
  */
 export function loadComposerSample(name: string) {
   loadSample(false);
@@ -114,7 +115,14 @@ export function loadComposerSample(name: string) {
   mac.models.keep(GROUPS);
   const queue = name === "composer-queue" ? { paused: false, items: [{ id: "q1", text: "Then update the changelog" }, { id: "q2", text: "And add a test for the expired session" }] } : null;
   const s1 = { ...row("s1", "Fix the failing login test", "p1", name === "composer-queue" ? "working" : null, 2), model: "opus", effort: "high", fast: true, levels: ["ask", "auto", "full"], level: "auto", running: queue !== null, steer: true, queue } as Row;
+  if (name === "composer-night") Object.assign(s1, { overnight: { state: "night", since: Date.now() - 134 * 60_000, done: 2, total: 5, decided: 1 } });
   lists.set({ ...lists.get(), rows: [s1, ...lists.get().rows.slice(1)] });
+  if (name === "composer-shell") mac.drafts.keepDraft(mac.run, "s1", { parts: ["!pnpm test"], attachmentIds: [] });
+  if (name === "composer-chips") {
+    const comment = { id: "c1", path: "src/auth/login.ts", side: "additions", start: 12, end: 14, excerpt: "if (password === user.password) {", text: "Compare the hashes, not the passwords" };
+    const fix = { id: "f1", kind: "run", run: "CI / test", failed: "login.test.ts › logs in" };
+    canned.reply = (args) => (args.join(" ") === "chips s1" ? { ok: true, chips: [{ kind: "comment", id: "k1", on: "review", comment }, { kind: "agent", id: "k2", key: "run:ci", pr: null, chip: fix, text: "" }] } : undefined);
+  }
   if (name === "composer-typing") mac.drafts.keepDraft(mac.run, "s1", { parts: ["Find out why the login test fails on CI, then fix it ", { kind: "command", id: "research", type: "tool", label: "/research" }, " "], attachmentIds: [] });
   if (name === "composer-files") {
     keepImage("s1", "a1", IMAGE);

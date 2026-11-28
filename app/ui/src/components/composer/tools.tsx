@@ -7,6 +7,7 @@ import { TeamGlyph } from "../../icons/worker-glyphs";
 import { cx } from "../cx";
 import { COMMAND_TONES } from "./kind-icons";
 import type { SlashCommand } from "./menus";
+import { TOOL_LINES } from "../../../../shared/session/composer";
 
 /**
  * Brigadier's own tools, picked from the `/` or + menu or typed as `/<id>`: a chip in the text, which Rust
@@ -14,15 +15,11 @@ import type { SlashCommand } from "./menus";
  */
 export type Tool = { id: string; line: string; Icon: ComponentType<{ className?: string }> };
 
-export const TOOLS: Tool[] = [
+const TOOL_ICONS: Record<string, Tool["Icon"]> = { computer: Desktop, browser: Globe, mockup: Grid, image: ImageSquare, research: Search, workers: TeamGlyph };
+export const TOOLS: Tool[] = TOOL_LINES
   // Computer use is macOS's alone for now [D158].
-  ...(window.brigadier?.platform === "darwin" ? [{ id: "computer", line: "Use the apps on your Mac", Icon: Desktop }] : []),
-  { id: "browser", line: "Open pages, click and type in Brigadier's browser", Icon: Globe },
-  { id: "mockup", line: "Draw 3 looks to pick from before building", Icon: Grid },
-  { id: "image", line: "Make or edit a picture", Icon: ImageSquare },
-  { id: "research", line: "Search and read the web, with sources", Icon: Search },
-  { id: "workers", line: "Split the job across workers in parallel", Icon: TeamGlyph },
-];
+  .filter(([id]) => id !== "computer" || window.brigadier?.platform === "darwin")
+  .map(([id, line]) => ({ id, line, Icon: TOOL_ICONS[id]! }));
 
 /** The tools as the `/` and + menus list them, each typed as its chip like a skill. */
 export const TOOL_COMMANDS: SlashCommand[] = TOOLS.map((tool) => ({ id: tool.id, kind: "tool", label: `/${tool.id}`, description: tool.line, instant: false }));

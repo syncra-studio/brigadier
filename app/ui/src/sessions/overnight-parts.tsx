@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { Moon } from "../icons";
 import { duration, useSecond } from "../thread/words";
 import { type Overnight, overnight } from "./overnight";
+import { NIGHT_WORDS as N, nightProgress } from "../../../shared/session/composer";
 
 /** The composer's look while Overnight is on. */
 export const nightLook = (on: boolean) => (on ? "night-sky" : undefined);
@@ -21,9 +22,9 @@ export function OvernightPill({ on, tip, onChange }: { on: boolean; tip?: string
       <Tooltip>
         <TooltipTrigger render={<ComposerPill aria-pressed={on} data-slot="overnight-pill" className={cx("aria-pressed:bg-picked-row", on && "moonlit")} onClick={() => onChange(!on)} />}>
           <Moon />
-          <span>Overnight</span>
+          <span>{N.pill}</span>
         </TooltipTrigger>
-        <TooltipContent side="bottom">{tip ?? (on ? "Turn Overnight off" : "Overnight: it asks what it needs, then finishes the job while you’re away")}</TooltipContent>
+        <TooltipContent side="bottom">{tip ?? (on ? N.off : N.on)}</TooltipContent>
       </Tooltip>
     </>
   );
@@ -31,7 +32,7 @@ export function OvernightPill({ on, tip, onChange }: { on: boolean; tip?: string
 
 /** A session's pill: clicked in the night, the user is back. */
 export function SessionOvernight({ id, now }: { id: string; now: Overnight | null }) {
-  return <OvernightPill on={now !== null} tip={now?.state === "night" ? "I’m back: end the night" : undefined} onChange={(on) => overnight(id, on ? "on" : "off")} />;
+  return <OvernightPill on={now !== null} tip={now?.state === "night" ? N.back : undefined} onChange={(on) => overnight(id, on ? "on" : "off")} />;
 }
 
 /** Start night, under what is asked before the user goes, whose answers go first (`finish`). */
@@ -40,7 +41,7 @@ export function StartNight({ id, label, finish, waits, busy }: { id: string; lab
     <ActionCardActions leading={<span className="min-w-0 flex-1 text-xs text-muted-foreground">{label}</span>}>
       <Button size="sm" disabled={busy || waits !== undefined} title={waits} onClick={() => overnight(id, "start", finish?.())}>
         <Moon />
-        Start night
+        {N.start}
       </Button>
     </ActionCardActions>
   );
@@ -50,12 +51,12 @@ export function StartNight({ id, label, finish, waits, busy }: { id: string; lab
 export function NightReady({ id, now }: { id: string; now: Overnight | null }) {
   const shown = now?.state === "ready";
   return (
-    <RailItem variant="decision" label="Before you go" shown={shown}>
+    <RailItem variant="decision" label={N.beforeYouGo} shown={shown}>
       <div className="flex flex-col gap-1 px-4 pt-4">
-        <p className="text-sm font-medium">That’s all I need</p>
+        <p className="text-sm font-medium">{N.ready}</p>
         {now?.words && <p className="text-label text-muted-foreground">{now.words}</p>}
       </div>
-      <StartNight id={id} label="This Mac stays awake" />
+      <StartNight id={id} label={N.awake} />
     </RailItem>
   );
 }
@@ -65,24 +66,17 @@ export function OvernightStrip({ id, now }: { id: string; now: Overnight | null 
   const night = now?.state === "night" ? now : null;
   const tick = useSecond(night !== null);
   return (
-    <RailItem label="Overnight" shown={night !== null}>
+    <RailItem label={N.pill} shown={night !== null}>
       <div className="flex items-center gap-2 px-3.5 py-2 text-sm">
         <Moon className="moonlit size-icon-md shrink-0" />
         <span className="min-w-0 flex-1 truncate">
-          {night?.since ? `${duration(tick - night.since)} in` : "Overnight"}
-          <span className="text-muted-foreground">
-            {night?.total ? ` · ${night.done ?? 0} of ${night.total} parts done` : ""}
-            {night?.decided ? ` · ${night.decided} decided for you` : ""}
-          </span>
+          {night?.since ? `${duration(tick - night.since)} in` : N.pill}
+          <span className="text-muted-foreground">{night ? nightProgress(night) : ""}</span>
         </span>
         <Button size="xs" variant="soft" onClick={() => overnight(id, "off")}>
-          I’m back
+          {N.imBack}
         </Button>
       </div>
     </RailItem>
   );
 }
-
-/** `asked`: its turn's questions are there already, waiting or answered. */
-export const nightPlaceholder = (now: Overnight | null, busy: boolean, asked: boolean) =>
-  now === null ? undefined : now.state === "night" ? "Working until you’re back" : now.state === "asking" && busy && !asked ? "It asks its last questions next" : "Anything else before you go?";

@@ -16,6 +16,7 @@ import { ToWorker } from "../../workers/to-chip";
 import { RailItem } from "./rail";
 
 import type { QueuedMessage } from "../../../../shared/session/queued";
+import { attached } from "../../../../shared/session/composer";
 export type { QueuedMessage };
 
 /** The row's words: the text with each mention's and command's name in place. */
@@ -25,19 +26,6 @@ function preview(draft: Draft): string {
     .join("")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-const plural = (count: number, one: string, many: string) => (count === 1 ? one : `${count} ${many}`);
-
-/** What rides with the text: "Image attachment", "Pasted text", "3 images", "2 files"… or nothing. */
-function attached(draft: Draft): string | null {
-  const chips = draft.parts.filter((part) => typeof part !== "string" && (part.kind === "image" || part.kind === "paste"));
-  const images = chips.filter((chip) => typeof chip !== "string" && chip.kind === "image").length;
-  const total = chips.length + draft.attachmentIds.length;
-  if (total === 0) return null;
-  if (images === total) return plural(total, "Image attachment", "images");
-  if (total === 1 && chips.length === 1) return "Pasted text";
-  return plural(total, "1 file", "files");
 }
 
 /** The list with one item moved to `to`. */

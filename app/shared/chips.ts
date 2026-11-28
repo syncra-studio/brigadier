@@ -28,3 +28,12 @@ export type DiffComment = {
 export type AgentChip =
   | { id: string; kind: "resolve"; conflicts: number; files: number; operation: "merging" | "rebasing" | "pulling"; onto: string }
   | { id: string; kind: "run"; run: string; failed: string };
+
+const plural = (n: number, one: string) => (n === 1 ? `1 ${one}` : `${n} ${one}s`);
+
+/** An agent chip's tile words, for both apps. */
+export const agentChipWords = (chip: AgentChip): { title: string; detail: string } =>
+  chip.kind === "resolve" ? { title: `Resolve ${plural(chip.conflicts, "conflict")}`, detail: `${plural(chip.files, "file")} · ${chip.operation} ${chip.onto}` } : { title: `Fix ${chip.run}`, detail: chip.failed };
+
+/** Where a diff comment is: "auth.ts:12" or "auth.ts:12–14". */
+export const commentAt = (comment: DiffComment) => `${comment.path.slice(comment.path.lastIndexOf("/") + 1)}:${comment.start === comment.end ? comment.start : `${comment.start}–${comment.end}`}`;

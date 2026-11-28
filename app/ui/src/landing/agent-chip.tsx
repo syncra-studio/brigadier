@@ -2,18 +2,9 @@ import { Tile, TileRemove } from "../components/composer/attachments";
 import { Sparkles, XCircle } from "./icons";
 
 export type { AgentChip } from "../../../shared/chips";
-import type { AgentChip } from "../../../shared/chips";
+import { type AgentChip, agentChipWords } from "../../../shared/chips";
 
-const plural = (n: number, one: string) => (n === 1 ? `1 ${one}` : `${n} ${one}s`);
-
-function face(chip: AgentChip) {
-  switch (chip.kind) {
-    case "resolve":
-      return { icon: <Sparkles />, title: `Resolve ${plural(chip.conflicts, "conflict")}`, detail: `${plural(chip.files, "file")} · ${chip.operation} ${chip.onto}` };
-    case "run":
-      return { icon: <XCircle className="text-destructive" />, title: `Fix ${chip.run}`, detail: chip.failed };
-  }
-}
+const face = (chip: AgentChip) => ({ icon: chip.kind === "resolve" ? <Sparkles /> : <XCircle className="text-destructive" />, ...agentChipWords(chip) });
 
 /** One chip, in the composer's attachments row, the attachment tile's look [D1056]. */
 export function AgentChipTile({ chip, onRemove }: { chip: AgentChip; onRemove: () => void }) {

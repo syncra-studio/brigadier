@@ -13,9 +13,8 @@ import { fuzzyMatch, MatchedText } from "./Menus";
 import { Pill } from "./Pill";
 import type { Runner } from "../../../app/shared/session/run";
 import { forMac, newId } from "./state";
+import { effortLabel } from "../../../app/shared/session/composer";
 
-/** "xhigh" → "Extra high", "medium" → "Medium". */
-export const effortLabel = (effort: string) => (effort === "xhigh" ? "Extra high" : effort.charAt(0).toUpperCase() + effort.slice(1));
 
 const FAVORITES = "favorite-models";
 /** The starred models, "agent/model", as the desktop's model-keys.ts keeps them. */

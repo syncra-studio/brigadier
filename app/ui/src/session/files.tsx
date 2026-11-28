@@ -13,6 +13,7 @@ import { giveChipTabs } from "../browser/give";
 import type { SentFile } from "../thread/item";
 import type { Runner } from "./composer";
 import { draftOf, HOME_DRAFT } from "./draft";
+import { COMPOSER_WORDS } from "../../../shared/session/composer";
 
 /*
  * The composer's files: each gets its id here and is shown at once, while Rust stores it under its session's folder
@@ -189,9 +190,9 @@ export function useComposerFiles({ owner, draft = owner, run, field, backend, pr
   /** Why Send waits now, in the old app's words; none when it can go. */
   const hold = (parts: Draft["parts"]) => {
     const ids = [...parts.flatMap((part) => (typeof part !== "string" && "attachmentId" in part ? [part.attachmentId] : [])), ...files.tiles];
-    if (ids.some((id) => files.all.get(id)?.state === "uploading")) return "Files uploading…";
+    if (ids.some((id) => files.all.get(id)?.state === "uploading")) return COMPOSER_WORDS.uploading;
     const image = ids.some((id) => files.all.get(id)?.mime.startsWith("image/") && files.all.get(id)?.state === "ready");
-    if (image && !images) return "This model does not support image inputs. Try a different model";
+    if (image && !images) return COMPOSER_WORDS.noImages;
     return undefined;
   };
 

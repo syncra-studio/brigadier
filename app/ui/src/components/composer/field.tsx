@@ -50,6 +50,7 @@ import { registerArrowKeys } from "./arrow-keys";
 import { $caretItem, ITEM, MarkdownKeys, UrlNode } from "./markdown-keys";
 import { OVERLAYS } from "./decision-parts";
 import { type Commands, MentionPlugin, type Mentions, SlashPlugin } from "./menus";
+import { COMPOSER_WORDS } from "../../../../shared/session/composer";
 
 type Parts = Draft["parts"];
 
@@ -242,7 +243,7 @@ export function ComposerField({
   const [drawn, setDrawn] = useState(mode.current);
   const setMode = (on: boolean) => ((mode.current = on), setDrawn(on));
   const bang = drawn && props.shell === true;
-  const words = bang ? "Run a command" : placeholder;
+  const words = bang ? COMPOSER_WORDS.shellPlaceholder : placeholder;
   const { box, pad } = SIZES[size];
   // A one-line field stays plain text; the others draw lists.
   const TextPlugin = size === "line" ? PlainTextPlugin : RichTextPlugin;

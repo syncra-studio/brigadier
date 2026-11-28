@@ -5,6 +5,7 @@ import { formatBytes } from "../../files/viewer";
 import { cx } from "../cx";
 import { ImagePreview } from "../image-viewer";
 import { useSettings } from "../../settings/api";
+import { baseName, COMPOSER_WORDS, kindOf } from "../../../../shared/session/composer";
 
 /**
  * A file going with a message: an image or a long paste in the text (a chip), any other file as a tile beside
@@ -40,17 +41,6 @@ export function FileTypeIcon({ name, className }: { name: string; className?: st
         : FileCode;
   return <Icon aria-hidden className={className} />;
 }
-
-/** "PDF", "PNG image", "Text": what a file's tile says under its name. */
-function kindOf(name: string, mime: string): string {
-  if (mime === "application/pdf") return "PDF";
-  const extension = name.includes(".") ? name.split(".").pop()?.toUpperCase() : undefined;
-  if (mime.startsWith("image/")) return extension ? `${extension} image` : "Image";
-  if (mime.startsWith("text/")) return extension ? `${extension} text` : "Text";
-  return extension ? `${extension} file` : "File";
-}
-
-const baseName = (name: string) => name.slice(name.lastIndexOf("/") + 1);
 
 /**
  * The ✕ that takes an attachment out: a dark dot at a tile's corner (on an image only while hovered or
@@ -210,7 +200,7 @@ function FileTile({ attachment, remove, onOpen }: { attachment: Attachment; remo
   return (
     <Tile
       slot="attachment-file"
-      hint={failed ? (attachment.error ?? "Couldn't attach this file") : baseName(name)}
+      hint={failed ? (attachment.error ?? COMPOSER_WORDS.couldntAttach) : baseName(name)}
       invalid={failed}
       icon={
         failed ? (
@@ -222,7 +212,7 @@ function FileTile({ attachment, remove, onOpen }: { attachment: Attachment; remo
         )
       }
       title={baseName(name)}
-      detail={failed ? (attachment.error ?? "Couldn't attach this file") : state === "uploading" ? "Attaching…" : kindOf(name, mime)}
+      detail={failed ? (attachment.error ?? COMPOSER_WORDS.couldntAttach) : state === "uploading" ? COMPOSER_WORDS.attaching : kindOf(name, mime)}
       remove={remove}
       onOpen={state === "ready" ? onOpen : undefined}
     />

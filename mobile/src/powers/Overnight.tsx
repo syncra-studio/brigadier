@@ -7,6 +7,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Overnight, Row } from "../../../app/shared/rows";
 import { store } from "../../../app/shared/store";
 import { duration } from "../../../app/shared/words";
+import { NIGHT_WORDS as N, nightProgress } from "../../../app/shared/session/composer";
 import { Confirm } from "../act/Confirm";
 import { Moon } from "../../../app/ui/src/icons";
 import { Pill, PillDivider } from "../compose/Pill";
@@ -23,10 +24,6 @@ export const nightWords = (act: Act, night: boolean): { title: string; body?: st
     : act === "start"
       ? { title: "Start night?", body: "This Mac stays awake. It picks what you skip and tells you in the morning." }
       : { title: night ? "I’m back: end the night?" : "Turn Overnight off?" };
-
-/** The field's words while Overnight is on; `asked`: its turn's questions are there already, waiting or answered. */
-export const nightPlaceholder = (now: Overnight | null, busy: boolean, asked: boolean) =>
-  now === null ? undefined : now.state === "night" ? "Working until you’re back" : now.state === "asking" && busy && !asked ? "It asks its last questions next" : "Anything else before you go?";
 
 /** Each session's last act the Mac took, by its op id, till the row's `overnight_op` reaches it. */
 const taken = store<ReadonlyMap<string, { op: string; act: Act; at: number }>>(new Map());
@@ -89,9 +86,9 @@ export function OvernightPill({ night, connected }: { night: Night; connected: b
   return (
     <>
       <PillDivider />
-      <Pill label="Overnight" selected={on} disabled={!connected} onPress={() => night.ask(on ? "off" : "on")} style={on && { backgroundColor: color.pickedRow }}>
+      <Pill label={N.pill} selected={on} disabled={!connected} onPress={() => night.ask(on ? "off" : "on")} style={on && { backgroundColor: color.pickedRow }}>
         <Moon className="size-icon-md" color={on ? color.tileViolet : color.mutedForeground} />
-        <Text style={[st.pillText, on && { color: color.tileViolet }]} numberOfLines={1}>Overnight</Text>
+        <Text style={[st.pillText, on && { color: color.tileViolet }]} numberOfLines={1}>{N.pill}</Text>
       </Pill>
     </>
   );
@@ -108,17 +105,14 @@ export function OvernightStrip({ night, connected }: { night: Night; connected: 
   }, [now !== null]);
   if (!now) return null;
   return (
-    <View style={st.strip} accessibilityLabel="Overnight">
+    <View style={st.strip} accessibilityLabel={N.pill}>
       <Moon className="size-icon-md text-tile-violet" />
       <Text style={st.words} numberOfLines={1}>
-        {now.since ? `${duration(tick - now.since)} in` : "Overnight"}
-        <Text style={st.muted}>
-          {now.total ? ` · ${now.done ?? 0} of ${now.total} parts done` : ""}
-          {now.decided ? ` · ${now.decided} decided for you` : ""}
-        </Text>
+        {now.since ? `${duration(tick - now.since)} in` : N.pill}
+        <Text style={st.muted}>{nightProgress(now)}</Text>
       </Text>
       <Pressable accessibilityRole="button" disabled={!connected} onPress={() => night.ask("off")} hitSlop={10} style={({ pressed }) => [st.soft, (pressed || !connected) && { opacity: connected ? 0.7 : opacity.disabled }]}>
-        <Text style={st.softText}>I’m back</Text>
+        <Text style={st.softText}>{N.imBack}</Text>
       </Pressable>
     </View>
   );
@@ -131,7 +125,7 @@ export function StartNight({ label, night, connected }: { label: string; night: 
       <Text style={st.label}>{label}</Text>
       <Pressable accessibilityRole="button" disabled={!connected} onPress={() => night.ask("start")} hitSlop={6} style={({ pressed }) => [st.primary, (pressed || !connected) && { opacity: connected ? 0.8 : opacity.disabled }]}>
         <Moon className="size-icon-sm text-primary-fg" />
-        <Text style={st.primaryText}>Start night</Text>
+        <Text style={st.primaryText}>{N.start}</Text>
       </Pressable>
     </View>
   );
@@ -141,12 +135,12 @@ export function StartNight({ label, night, connected }: { label: string; night: 
 export function NightReady({ night, connected }: { night: Night; connected: boolean }) {
   if (night.now?.state !== "ready") return null;
   return (
-    <View accessibilityLabel="Before you go">
+    <View accessibilityLabel={N.beforeYouGo}>
       <View style={{ gap: 4, paddingHorizontal: 16, paddingTop: 16 }}>
-        <Text style={[st.words, { fontWeight: "500" }]}>That’s all I need</Text>
+        <Text style={[st.words, { fontWeight: "500" }]}>{N.ready}</Text>
         {night.now.words ? <Text style={[st.label, { flex: 0 }]}>{night.now.words}</Text> : null}
       </View>
-      <StartNight label="This Mac stays awake" night={night} connected={connected} />
+      <StartNight label={N.awake} night={night} connected={connected} />
     </View>
   );
 }

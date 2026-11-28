@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { ModelRow } from "../../../app/shared/session/model";
+import { LEVEL_WORDS, type PermissionLevel as Level } from "../../../app/shared/session/composer";
 import { Confirm } from "../act/Confirm";
 import { Button } from "../Button";
 import { Check, HandRaised, ShieldExclamation, ShieldTerminal } from "../../../app/ui/src/icons";
@@ -13,17 +14,12 @@ import { forMac, newId } from "../compose/state";
 import { color, radius, text, opacity, touch } from "../theme";
 import { refusal } from "./powers";
 
-type Level = "ask" | "auto" | "full";
-
 /** The desktop's Full Access confirm words. */
 export const FULL_ACCESS = { title: "Turn on Full Access?", body: "Agents can use all of these without asking.", shown: "Files · Commands · Internet" };
 
 /** The desktop's levels (composer/pickers.tsx), each with its icon. */
-const LEVELS: { level: Level; label: string; detail: string; Icon: typeof Check }[] = [
-  { level: "ask", label: "Ask", detail: "Asks before edits and commands", Icon: HandRaised },
-  { level: "auto", label: "Auto", detail: "Works on its own, asks before risky actions", Icon: ShieldTerminal },
-  { level: "full", label: "Full access", detail: "Unrestricted access to the internet and all your files", Icon: ShieldExclamation },
-];
+const LEVEL_ICONS = { ask: HandRaised, auto: ShieldTerminal, full: ShieldExclamation };
+const LEVELS = LEVEL_WORDS.map((each) => ({ ...each, Icon: LEVEL_ICONS[each.level] }));
 
 /** A session's row with what its next turn runs at; `level_op`, the last pick Rust took [D30]. */
 type LevelRow = ModelRow & { levels?: Level[]; level?: Level | null; level_refused?: string | null; held?: boolean; level_op?: string | null };

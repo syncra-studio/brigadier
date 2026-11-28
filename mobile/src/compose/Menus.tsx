@@ -8,6 +8,7 @@ import { color, spacing, radius, text, opacity, touch } from "../theme";
 import { FileImage, Paperclip } from "../../../app/ui/src/icons";
 import { CommandIcon, MentionIcon } from "./KindIcons";
 import { forMac } from "./state";
+import { KIND_HEADINGS, MENU_NOTES, NEW_SESSION_WORDS, OVERNIGHT_WORDS, TOOL_LINES } from "../../../app/shared/session/composer";
 
 /** A `/` list row: the agent's command, or Brigadier's own; `run`, one the composer runs itself (/overnight). */
 export type Command = { id: string; kind: "command" | "tool" | "skill" | "mcp" | "prompt"; label: string; description?: string; instant: boolean; /** Its own icon from Rust: an SVG mark or an image. */ icon?: string | null };
@@ -16,20 +17,12 @@ export type Mention = { id: string; type: string; label: string; name?: string; 
 type MentionGroup = { title: string | null; items: Mention[]; note?: string };
 
 /** Brigadier's own tools, as the desktop's tools.tsx. */
-export const TOOLS: Command[] = [
-  ["computer", "Use the apps on your Mac"],
-  ["browser", "Open pages, click and type in Brigadier's browser"],
-  ["mockup", "Draw 3 looks to pick from before building"],
-  ["image", "Make or edit a picture"],
-  ["research", "Search and read the web, with sources"],
-  ["workers", "Split the job across workers in parallel"],
-].map(([id, line]): Command => ({ id, kind: "tool", label: `/${id}`, description: line, instant: false }));
+export const TOOLS: Command[] = TOOL_LINES.map(([id, line]): Command => ({ id, kind: "tool", label: `/${id}`, description: line, instant: false }));
 
 /** The desktop's session/side.tsx NEW_SESSION and sessions/overnight.ts OVERNIGHT. */
-export const NEW_SESSION: Command = { id: "new-session", kind: "command", label: "/new", description: "Send the message as a new session, and stay here", instant: false };
-export const OVERNIGHT: Command = { id: "overnight", kind: "command", label: "/overnight", description: "Finish the job while you’re away", instant: true };
+export const NEW_SESSION: Command = { id: "new-session", kind: "command", ...NEW_SESSION_WORDS, instant: false };
+export const OVERNIGHT: Command = { id: "overnight", kind: "command", ...OVERNIGHT_WORDS, instant: true };
 
-const KIND_HEADINGS = { command: "Commands", tool: "Tools", skill: "Skills", mcp: "MCP servers", prompt: "MCP prompts" } as const;
 /** A command's colour by kind, for its icon and its chip's name (kind-icons.tsx COMMAND_TONES). */
 export const COMMAND_TONES = { command: color.link, tool: color.success, skill: color.ansiMagenta, mcp: color.ansiCyan, prompt: color.ansiCyan };
 /** A chip's colour in the text: a command's kind's; a note's orange; any other mention blue. */
@@ -147,7 +140,7 @@ export function Commands({ listed, extra, query, onPick }: { listed: Command[] |
           <MenuRow icon={<CommandIcon command={each} />} title={<MatchedText words={each.label} query={query} />} detail={each.description} onPress={() => onPick(each)} />
         </View>
       ))}
-      {shown.length === 0 ? <MenuNote>{listed ? "No commands" : "Loading…"}</MenuNote> : null}
+      {shown.length === 0 ? <MenuNote>{listed ? MENU_NOTES.noCommands : MENU_NOTES.loading}</MenuNote> : null}
     </Panel>
   );
 }
@@ -190,7 +183,7 @@ export function Mentions({ id, query, onPick, onDirect }: { id: string; query: s
           </View>
         ),
       )}
-      {empty ? <MenuNote>{answered ? "No results" : "Searching…"}</MenuNote> : null}
+      {empty ? <MenuNote>{answered ? MENU_NOTES.noResults : MENU_NOTES.searching}</MenuNote> : null}
     </Panel>
   );
 }

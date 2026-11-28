@@ -6,6 +6,7 @@ import { cx } from "../cx";
 import { TooltipIconButton, type TooltipIconButtonProps } from "../icon-button";
 import { Kbd } from "../kbd";
 import { ComposerRail } from "./rail";
+import { COMPOSER_WORDS } from "../../../../shared/session/composer";
 
 /**
  * The column, the thread's rows and the composer alike, so their edges line up: 736 of text inside 16 each side,
@@ -63,7 +64,7 @@ export function ComposerTools({ className, ...props }: ComponentProps<"div">) {
 export function PlusButton(props: Omit<TooltipIconButtonProps, "tooltip" | "size" | "children">) {
   return (
     // A white + [D207].
-    <TooltipIconButton tooltip="Add files and more" look="bar" {...props}>
+    <TooltipIconButton tooltip={COMPOSER_WORDS.add} look="bar" {...props}>
       <Plus />
     </TooltipIconButton>
   );
@@ -123,7 +124,7 @@ export function SharedComposer({
           <ComposerTools>
             {shell ? (
               <span className="flex h-control-sm min-w-0 items-center gap-2 px-2 text-sm">
-                <span className="truncate text-link">Shell command</span>
+                <span className="truncate text-link">{COMPOSER_WORDS.shell}</span>
                 <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
                   <Kbd>Esc</Kbd> to exit
                 </span>

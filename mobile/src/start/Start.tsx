@@ -16,7 +16,7 @@ import { Button } from "../Button";
 import { streamNow } from "../link";
 import { ArrowUp, Bolt } from "../../../app/ui/src/icons";
 import { ProviderMark } from "../compose/KindIcons";
-import { effortLabel } from "../compose/Model";
+import { effortLabel } from "../../../app/shared/session/composer";
 import { canned, forMac, newId } from "../compose/state";
 import { lists } from "../mac/mac";
 import { color, text } from "../theme";
