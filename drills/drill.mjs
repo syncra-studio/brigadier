@@ -884,6 +884,14 @@ async function diskFull() {
 }
 
 // Drill 4 ------------------------------------------------------------------------------------------
+// At a lower priority: `nice`, or on Windows, which has none, the priority set once it's started.
+function low(n, cmd, args, opts) {
+  if (!WIN) return spawn('nice', ['-n', String(n), cmd, ...args], opts)
+  const c = spawn(cmd, args, opts)
+  try { os.setPriority(c.pid, n) } catch {}
+  return c
+}
+
 async function scale() {
   const gb = +(process.env.SCALE_GB ?? 20)
   const n = 100, live = 10
@@ -896,14 +904,14 @@ async function scale() {
     const t = now()
     const per = Math.floor((gb * 2 ** 30) / n)
     // Four generators at a time, so the disk stays usable.
-    const gen = (i) => new Promise((res) => spawn('nice', ['-n', '10', `${BIN}/brigadier-fake`, 'gen', `${shared}/g${String(i).padStart(3, '0')}`, String(per)], { stdio: 'ignore' }).on('exit', res))
+    const gen = (i) => new Promise((res) => low(10, `${BIN}/brigadier-fake`, ['gen', `${shared}/g${String(i).padStart(3, '0')}`, String(per)], { stdio: 'ignore' }).on('exit', res))
     for (let i = 0; i < n; i += 4) await Promise.all([0, 1, 2, 3].filter((j) => i + j < n).map((j) => gen(i + j)))
     fs.writeFileSync(`${shared}/done`, '')
     r.generate_s = Math.round((now() - t) / 1000)
   }
   fs.mkdirSync(`${DATA}/sessions`, { recursive: true })
   const gs = fs.readdirSync(shared).filter((g) => g.startsWith('g'))
-  for (const g of gs) fs.symlinkSync(`${shared}/${g}`, `${DATA}/sessions/${g}`)
+  for (const g of gs) fs.symlinkSync(`${shared}/${g}`, `${DATA}/sessions/${g}`, 'junction') // a symlink off Windows
   const big = 'g000'
   const tail = cli(['read', big, '--tail', '200'])
   r.cold_open_tail200_ms = Math.round(tail.out.ms ?? tail.ms)
@@ -916,7 +924,7 @@ async function scale() {
   for (const id of ids.slice(1)) startFake(id)
   for (const id of ids) cli(['send', id, `${cid()} tree:600`])
   const t0 = now()
-  const rebuild = spawn('nice', ['-n', '5', `${BIN}/brigadier`, 'index', '--cold'], { env: { ...process.env, BRIGADIER_DATA: DATA }, stdio: ['ignore', 'pipe', 'ignore'] })
+  const rebuild = low(5, `${BIN}/brigadier`, ['index', '--cold'], { env: { ...process.env, BRIGADIER_DATA: DATA }, stdio: ['ignore', 'pipe', 'ignore'] })
   let rebuildOut = ''
   rebuild.stdout.on('data', (d) => { rebuildOut += d })
   const done = new Promise((res) => rebuild.on('exit', res))
@@ -943,7 +951,8 @@ async function scale() {
   const all = ps(), main = all.filter((p) => p.cmd.includes(OWNER_BIN) && p.cmd.includes(DATA))
   // An owner's own helpers (A's watchdog) count toward its memory.
   const owners = [...main, ...all.filter((p) => p.cmd.includes(OWNER_BIN) && main.some((m) => m.pid === p.ppid))]
-  const rss = (pid) => +spawnSync('ps', ['-o', 'rss=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim() || 0
+  const rss = (pid) => +(WIN ? spawnSync('powershell', ['-NoProfile', '-Command', `(Get-Process -Id ${pid}).WorkingSet64 / 1kb`], { encoding: 'utf8' })
+    : spawnSync('ps', ['-o', 'rss=', '-p', String(pid)], { encoding: 'utf8' })).stdout?.trim() || 0
   r.idle_owner_processes = owners.length
   r.idle_owner_rss_kb_total = owners.reduce((a, p) => a + rss(p.pid), 0)
   r.idle_rss_kb_per_live_session = Math.round(r.idle_owner_rss_kb_total / live)
