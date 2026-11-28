@@ -341,6 +341,11 @@ pub fn grouped(command: &mut Command) -> io::Result<std::process::Child> {
     Ok(child)
 }
 
+/// `grouped`: a console's foreground doesn't stop a child on Windows.
+pub fn alone(command: &mut Command) -> io::Result<std::process::Child> {
+    grouped(command)
+}
+
 const PROCESS_ALL: u32 = windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION
     | windows_sys::Win32::System::Threading::PROCESS_TERMINATE
     | windows_sys::Win32::System::Threading::PROCESS_SET_QUOTA;

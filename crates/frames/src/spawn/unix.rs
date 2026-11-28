@@ -100,6 +100,18 @@ pub fn grouped(command: &mut Command) -> io::Result<Child> {
     crate::procs::spawn(command.process_group(0))
 }
 
+/// `grouped`, in a session of its own: no terminal, so a probe started from one (an interactive
+/// login shell) can't stop there waiting for the foreground. Its group is still its pid.
+pub fn alone(command: &mut Command) -> io::Result<Child> {
+    unsafe {
+        command.pre_exec(|| match libc::setsid() < 0 {
+            true => Err(io::Error::last_os_error()),
+            false => Ok(()),
+        })
+    };
+    crate::procs::spawn(command)
+}
+
 /// KILL for a `grouped` child's whole group, its own exit notwithstanding.
 pub fn kill_tree(pid: u32) {
     unsafe { libc::killpg(pid as i32, libc::SIGKILL) };

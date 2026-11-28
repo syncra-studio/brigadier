@@ -210,7 +210,7 @@ pub fn run_fed(
         .stdin(stdin)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let mut child = brigadier_frames::spawn::grouped(child).map_err(|e| e.to_string())?;
+    let mut child = brigadier_frames::spawn::alone(child).map_err(|e| e.to_string())?;
     if let (Some(text), Some(mut w)) = (input.map(String::from), child.stdin.take()) {
         std::thread::spawn(move || {
             use std::io::Write;
