@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { fuzzyMatch, MatchedText } from "./menus";
 import { favorites, star } from "./model-keys";
 import { effortLabel, type Model, type ModelGroup, type PickerProps, ProviderMark } from "./model-picker";
+import { effortOf } from "../../../../shared/session/model";
 import { type Quota, QuotaLeft } from "./quota-lines";
 import { SwitchAgentDialog } from "./switch-agent";
 
@@ -59,7 +60,7 @@ function useColumns({ groups, value, onChange, close, asksSwitch = true }: Colum
    */
   const pick = ({ group, model }: Row, also: { effort?: string; fast?: boolean } = {}, stay = false) => {
     const same = group.provider === value.provider;
-    const effort = also.effort ?? (inUse({ group, model }) ? value.effort : same && value.effort && model.efforts.includes(value.effort) ? value.effort : (model.defaultEffort ?? null));
+    const effort = effortOf(model, group.provider, value, inUse({ group, model }), also.effort);
     const choice = { provider: group.provider, model: model.id, effort, ...(model.fast && (also.fast ?? value.fast) ? { fast: true } : {}) };
     setCursor(keyOf({ group, model }));
     if (!same && asksSwitch) return setSwitching(choice);

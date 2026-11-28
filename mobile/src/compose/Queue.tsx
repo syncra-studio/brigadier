@@ -4,20 +4,13 @@
 import { useState } from "react";
 import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { Draft } from "../../../app/shared/draft";
-import type { QueuedMessage } from "../../../app/shared/session/queued";
+import { preview, type QueuedMessage } from "../../../app/shared/session/queued";
 import { attached } from "../../../app/shared/session/composer";
 import { color, spacing, radius, text, opacity, mono } from "../theme";
 import { ArrowCurvedRight, DotsHorizontal, Play, QueueGlyph, Spinner, Trash } from "../../../app/ui/src/icons";
 import { Terminal } from "../../../app/ui/src/icons/thread";
 import { FadeIn, Shimmer, Spin } from "./motion";
 
-/** The row's words: the text with each mention's and command's name in place. */
-const preview = (draft: Draft) =>
-  draft.parts
-    .map((part) => (typeof part === "string" ? part : part.kind === "mention" || part.kind === "command" ? part.label : ""))
-    .join("")
-    .replace(/\s+/g, " ")
-    .trim();
 
 /** A message with files, or a file or folder mention (a Mac path the phone may not send): not pulled back to edit here. */
 const hasFiles = (draft: Draft) =>

@@ -9,12 +9,12 @@ import { FileImage, Paperclip } from "../../../app/ui/src/icons";
 import { CommandIcon, MentionIcon } from "./KindIcons";
 import { forMac } from "./state";
 import { KIND_HEADINGS, MENU_NOTES, NEW_SESSION_WORDS, OVERNIGHT_WORDS, TOOL_LINES } from "../../../app/shared/session/composer";
+import { commandMatches, type CommandKind, fuzzyMatch, listedCommand, type Mention, type MentionGroup } from "../../../app/shared/menus";
+export { fuzzyMatch };
+export type { Mention };
 
 /** A `/` list row: the agent's command, or Brigadier's own; `run`, one the composer runs itself (/overnight). */
-export type Command = { id: string; kind: "command" | "tool" | "skill" | "mcp" | "prompt"; label: string; description?: string; instant: boolean; /** Its own icon from Rust: an SVG mark or an image. */ icon?: string | null };
-/** An `@` row; a `direct` one sends the next message to that worker alone. */
-export type Mention = { id: string; type: string; label: string; name?: string; detail?: string; hint?: string };
-type MentionGroup = { title: string | null; items: Mention[]; note?: string };
+export type Command = { id: string; kind: CommandKind; label: string; description?: string; instant: boolean; /** Its own icon from Rust: an SVG mark or an image. */ icon?: string | null };
 
 /** Brigadier's own tools, as the desktop's tools.tsx. */
 export const TOOLS: Command[] = TOOL_LINES.map(([id, line]): Command => ({ id, kind: "tool", label: `/${id}`, description: line, instant: false }));
@@ -28,28 +28,6 @@ export const COMMAND_TONES = { command: color.link, tool: color.success, skill: 
 /** A chip's colour in the text: a command's kind's; a note's orange; any other mention blue. */
 export const chipTone = (chip: { kind: string; type: string }) => (chip.kind === "command" ? COMMAND_TONES[chip.type as Command["kind"]] : chip.type === "note" ? color.warning : color.link);
 
-/**
- * Where `query` matches `text`, as the menus match: at its start, anywhere in it, or letter by letter in order.
- * The matched letters' positions and how good the match is (0 start, 1 anywhere, 2 in order); null: no match.
- */
-export function fuzzyMatch(words: string, query: string): { rank: 0 | 1 | 2; at: number[] } | null {
-  const lower = words.toLowerCase();
-  const want = query.toLowerCase();
-  const run = (from: number) => Array.from(want, (_, index) => from + index);
-  if (lower.startsWith(want)) return { rank: 0, at: run(0) };
-  const inside = lower.indexOf(want);
-  if (inside >= 0) return { rank: 1, at: run(inside) };
-  const at: number[] = [];
-  let from = 0;
-  for (const letter of want) {
-    const found = lower.indexOf(letter, from);
-    if (found < 0) return null;
-    at.push(found);
-    from = found + 1;
-  }
-  return { rank: 2, at };
-}
-
 /** A row's name, the letters the query matched in bold. */
 export function MatchedText({ words, query }: { words: string; query: string }) {
   const match = query ? fuzzyMatch(words, query) : null;
@@ -62,17 +40,6 @@ export function MatchedText({ words, query }: { words: string; query: string }) 
     else runs.push({ from: index, words: letter, hit: hit.has(index) });
   });
   return <>{runs.map((each) => <Text key={each.from} style={each.hit && { fontWeight: "600" }}>{each.words}</Text>)}</>;
-}
-
-/** Commands matching `query`, best first within each kind, the kinds in order so no heading repeats. */
-function commandMatches(commands: readonly Command[], query: string): Command[] {
-  const order = { command: 0, tool: 1, skill: 2, mcp: 3, prompt: 4 };
-  const rank = (command: Command) => Math.min(fuzzyMatch(command.label, query)?.rank ?? 3, fuzzyMatch(command.id, query)?.rank ?? 3);
-  return commands
-    .map((command) => ({ command, rank: rank(command) }))
-    .filter(({ rank }) => rank < 3)
-    .sort((a, b) => order[a.command.kind] - order[b.command.kind] || a.rank - b.rank)
-    .map(({ command }) => command);
 }
 
 /** The panel: opaque in a hairline over the card, as wide as it; it scrolls past 10.5 rows' worth. */
@@ -113,9 +80,7 @@ export function useCommands(id: string, fresh: unknown, opened: number) {
     void run(["commands", id]).then((reply) => {
       if (!live) return;
       const list: { name: string; description?: string; kind: Command["kind"]; instant: boolean; icon?: string | null }[] = reply.ok ? (reply.commands ?? []) : [];
-      // A prompt kept as Claude listed it before prompts had a kind of their own.
-      const kindOf = (each: (typeof list)[number]) => (each.kind === "mcp" && each.name.startsWith("mcp__") ? "prompt" : each.kind);
-      setListed(list.map((each) => ({ id: `${kindOf(each)}:${each.name}`, kind: kindOf(each), label: `/${each.name}`, description: each.description || undefined, instant: each.instant, icon: each.icon })));
+      setListed(list.map((each) => ({ ...listedCommand(each), icon: each.icon })));
     });
     try {
       request({ op: "mention", owner: id, q: "" }, (reply) => {

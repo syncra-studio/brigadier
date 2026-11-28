@@ -15,18 +15,10 @@ import { FromPeer } from "../../peers/message";
 import { ToWorker } from "../../workers/to-chip";
 import { RailItem } from "./rail";
 
-import type { QueuedMessage } from "../../../../shared/session/queued";
+import { preview, type QueuedMessage } from "../../../../shared/session/queued";
 import { attached } from "../../../../shared/session/composer";
 export type { QueuedMessage };
 
-/** The row's words: the text with each mention's and command's name in place. */
-function preview(draft: Draft): string {
-  return draft.parts
-    .map((part) => (typeof part === "string" ? part : part.kind === "mention" || part.kind === "command" ? part.label : ""))
-    .join("")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 /** The list with one item moved to `to`. */
 function moved<T extends { id: string }>(items: readonly T[], id: string, to: number): T[] {

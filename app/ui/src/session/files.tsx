@@ -83,10 +83,7 @@ async function store(run: Runner, owner: string, id: string, file: File, backend
   return run(["attach", owner, "add", id, file.name || "Pasted image.png", ...(backend ? ["--backend", backend] : []), "--in", others.join(","), ...from]);
 }
 
-/** The draft as Rust takes it, when it holds more than words; none for plain text [D109]. */
-export function payload(parts: Draft["parts"], tiles: readonly string[]): string | undefined {
-  return parts.some((part) => typeof part !== "string") || tiles.length > 0 ? JSON.stringify({ parts, attachmentIds: tiles }) : undefined;
-}
+export { payload } from "../../../shared/draft";
 
 /** A folder dropped in the composer, as an @folder mention [D2018]. */
 const folderChip = (path: string): Chip => ({ kind: "mention", id: path, type: "folder", label: path });

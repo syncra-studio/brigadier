@@ -2,7 +2,7 @@
 // the session's own agent's models only, as a phone may set no other [allow.rs `set`]; a worker's shown but fixed [D293].
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
-import { asGroups, choiceOf, loadModels, type Model, type ModelChoice, type ModelGroup, type ModelRow, setArgs } from "../../../app/shared/session/model";
+import { asGroups, choiceOf, effortOf, loadModels, type Model, type ModelChoice, type ModelGroup, type ModelRow, setArgs } from "../../../app/shared/session/model";
 import { failure } from "../../../app/shared/session/run";
 import { store } from "../../../app/shared/store";
 import { Button } from "../Button";
@@ -133,7 +133,7 @@ function Sheet({ group, value, onPick, onClose }: { group: ModelGroup | undefine
   const shown = older ? listed : listed.filter((model) => !isOld(model));
   const used = models.find(inUse);
   const pick = (model: Model, also: { effort?: string; fast?: boolean } = {}, stay = false) => {
-    const effort = also.effort ?? (inUse(model) ? value.effort : value.effort && model.efforts.includes(value.effort) ? value.effort : (model.defaultEffort ?? null));
+    const effort = effortOf(model, group!.provider, value, inUse(model), also.effort);
     onPick({ provider: group!.provider, model: model.id, effort, ...(model.fast && (also.fast ?? value.fast) ? { fast: true } : {}) });
     if (!stay) onClose();
   };

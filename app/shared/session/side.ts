@@ -14,6 +14,21 @@ export type Pending = { source: string; id: string; cid: string; text: string; t
 export type Swap = { was: string; now: string };
 export type Back = { source: string; text: string; n: number; above: boolean; draft?: Draft | null; swap?: Swap } | null;
 
+/** A new session's id, made here so its row and thread show before Rust has it [D30]. */
+export const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+/** The command that starts a send as new, or carries on with what Rust's logs hold for it. */
+export const sideArgs = (entry: Pick<Pending, "source" | "id" | "text" | "cid" | "qid" | "parts">) => [
+  "side",
+  entry.source,
+  entry.id,
+  "--text",
+  entry.text,
+  "--cid",
+  entry.cid,
+  ...(entry.qid ? ["--qid", entry.qid] : []),
+  ...(entry.parts ? ["--parts", entry.parts] : []),
+];
+
 /**
  * One Mac's sends as new and put backs [D58]. Asking again what a lost reply left unknown (`rerun`) and a start logged
  * with no result (`replay`) are each app's choice: the desktop calls them, a phone doesn't, as nothing resends by itself there.
@@ -33,8 +48,7 @@ export function sideState() {
   function start(run: Runner, entry: Pending): void {
     put(entry.id, { asking: true, unknown: false, error: undefined });
     if (!entry.title) void run(["title", entry.text]).then((reply) => reply.ok && put(entry.id, { title: reply.title }));
-    const args = ["side", entry.source, entry.id, "--text", entry.text, "--cid", entry.cid, ...(entry.qid ? ["--qid", entry.qid] : []), ...(entry.parts ? ["--parts", entry.parts] : [])];
-    void run(args).then((reply) => {
+    void run(sideArgs(entry)).then((reply) => {
       if (!get(entry.id)) return;
       if (reply.error === "disconnected") return put(entry.id, { asking: false, unknown: true });
       // With `session`, Rust logged it and the source's row says how it went; without, nothing was made or logged.

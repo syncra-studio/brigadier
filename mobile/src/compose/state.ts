@@ -2,7 +2,7 @@
 // app/ui/src/session/{draft,uncertain,sent}.ts and panel/chips.ts wire it.
 import { File, Paths } from "expo-file-system";
 import { uuid } from "expo-modules-core";
-import type { Chip as PanelChip } from "../../../app/shared/chips";
+import { chipsBack, type Chip as PanelChip } from "../../../app/shared/chips";
 import type { Draft } from "../../../app/shared/draft";
 import { draftState } from "../../../app/shared/session/draft";
 import { modelState } from "../../../app/shared/session/model";
@@ -77,7 +77,7 @@ function chipState(uncertain: ReturnType<typeof uncertainState>, run: Runner) {
     put(id, of(id).filter((chip) => !sent.some((each) => each.id === chip.id)));
   };
   uncertain.onChipsBack((id, given, ids = []) => {
-    const back = [...given, ...(withheld.get(id) ?? NONE).filter((chip) => ids.includes(chip.id) && !given.some((each) => each.id === chip.id))];
+    const back = chipsBack(given, withheld.get(id) ?? NONE, ids);
     if (back.length === 0) return;
     for (const chip of back) gone.delete(chip.id);
     put(id, [...back, ...of(id).filter((chip) => !back.some((each) => each.id === chip.id))]);
@@ -230,19 +230,4 @@ export function forMac() {
   const pk = macNow();
   if (!macs.has(pk)) macs.set(pk, macState(pk));
   return macs.get(pk)!;
-}
-
-/**
- * The chips as the agent reads them, after the user's own words: as the desktop's panel/chips.ts `withChips`, each
- * comment's place, its lines quoted, then what it says.
- */
-export function withChips(message: string, sent: readonly PanelChip[]): string {
-  const blocks = sent.map((chip) => {
-    if (chip.kind === "agent") return chip.text;
-    const { on, comment } = chip;
-    const lines = comment.start === comment.end ? `${comment.start}` : `${comment.start}-${comment.end}`;
-    const where = [on !== "review" && `in commit ${on.slice(0, 12)}`, comment.side === "deletions" && "before the change"].filter(Boolean).join(", ");
-    return `${comment.path}:${lines}${where ? ` (${where})` : ""}\n${comment.excerpt.split("\n").map((line) => `> ${line}`).join("\n")}\n\n${comment.text}`;
-  });
-  return [message.trim(), ...blocks].filter(Boolean).join("\n\n");
 }

@@ -45,7 +45,7 @@ import { type Attachment, AttachmentsContext, ChipNumbers } from "./attachments"
 import { $insertChip, $isChipNode, ChipContext, ChipNode, type OpenKind } from "./chip";
 import { type Chip, type Draft, EMPTY_DRAFT, isEmpty, plainText } from "./draft";
 import { CommandChips } from "./command-chips";
-import { asShell, asWords, bare, isShell } from "./shell";
+import { asShell, asWords, bare, isShell } from "../../../../shared/shell";
 import { registerArrowKeys } from "./arrow-keys";
 import { $caretItem, ITEM, MarkdownKeys, UrlNode } from "./markdown-keys";
 import { OVERLAYS } from "./decision-parts";

@@ -22,7 +22,8 @@ import { lists, thread } from "../mac/mac";
 import { color, spacing, opacity, touch } from "../theme";
 import { LevelPill } from "../powers/Level";
 import { NightReady, OvernightPill, OvernightStrip, StartNight, useNight } from "../powers/Overnight";
-import { backgroundPower, type Power, refusal, shellOf } from "../powers/powers";
+import { backgroundPower, type Power, refusal } from "../powers/powers";
+import { shellLine } from "../../../app/shared/shell";
 import { ImageSigns } from "../powers/View";
 import { composerSample } from "../mac/sample";
 import { ArrowUp, PlayTriangle, Plus, Stop } from "../../../app/ui/src/icons";
@@ -78,7 +79,7 @@ export function Composer({ id }: { id: string }) {
   const worker = Boolean(row?.worker);
   const partsNow = () => partsOf(words$.current, named$.current);
   // A `!` first makes the field a shell command, shown without its `!` [D316]: never a worker's, nor with a To:.
-  const shell = !worker && !toWorker && shellOf(partsOf(words, named$.current)) !== null;
+  const shell = !worker && !toWorker && shellLine(partsOf(words, named$.current)) !== null;
   const empty = isEmpty({ parts: shell ? [words.slice(1)] : partsOf(words, named$.current), attachmentIds: files.tiles.filter((each) => files.all.get(each)?.state !== "failed") });
   /** Keeps what the field holds, its files' ids too, as this phone's draft on the Mac. */
   const keep = (parts: Draft["parts"]) => drafts.keepDraft(run, id, { parts, attachmentIds: [...tilesNow()] });

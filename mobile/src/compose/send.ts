@@ -2,7 +2,9 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { Alert } from "react-native";
 import type { Chip as PanelChip } from "../../../app/shared/chips";
-import { type Draft, isEmpty, plainText, sendMode } from "../../../app/shared/draft";
+import { body, type Draft, isEmpty, payload, plainText, sendMode } from "../../../app/shared/draft";
+import { withChips } from "../../../app/shared/chips";
+import { sessionId, sideArgs } from "../../../app/shared/session/side";
 import { type QueuedMessage, toArgs } from "../../../app/shared/session/queued";
 import { pausedWords } from "../../../app/shared/session/composer";
 import { failure } from "../../../app/shared/session/run";
@@ -10,10 +12,11 @@ import { chipArgs, draftArgs, sendOp } from "../../../app/shared/session/sent";
 import type { Going } from "../../../app/shared/session/uncertain";
 import type { Frame } from "../../../app/shared/client";
 import { lists } from "../mac/mac";
-import { type Power, refusal, shellOf, shellPower } from "../powers/powers";
+import { type Power, refusal, shellPower } from "../powers/powers";
+import { shellLine } from "../../../app/shared/shell";
 import { NEW_SESSION } from "./Menus";
-import { body, type ComposerRow, isNew, lostReply, type Named, type Op, partsOf, payload, type Pulled, sessionId, type Sub, type To, unsigned, unsure } from "./parts";
-import { type forMac, newId, type ToLost, withChips } from "./state";
+import { type ComposerRow, isNew, lostReply, type Named, type Op, partsOf, type Pulled, type Sub, type To, unsigned, unsure } from "./parts";
+import { type forMac, newId, type ToLost } from "./state";
 
 /** What the composer's actions read from its render, each render's own. */
 type Scope = {
@@ -118,7 +121,7 @@ export function sendActions({ id, mac, row, connected, worker, to, toWorker, toS
     const tiles = readyNow();
     // A `!` line runs on the Mac's shell, through the queue: shown whole and signed, the field kept till the Mac has it.
     // A worker's is a message, as on the desktop.
-    const line = worker || toWorker ? null : shellOf(parts);
+    const line = worker || toWorker ? null : shellLine(parts);
     if (line !== null) {
       if (!line) return;
       if (line.startsWith("--")) return setPowerError("A command can't start with --");
@@ -160,7 +163,7 @@ export function sendActions({ id, mac, row, connected, worker, to, toWorker, toS
     const message = withChips(plainText(parts), sent);
     // The Mac reads words that start with `--` as a flag, so it refuses them.
     if (message.startsWith("--")) return setError("A message can't start with --");
-    const draft = body(parts, sent, tiles);
+    const draft = body(parts, tiles, sent);
     // Queue or Steer is the Mac's setting; the phone takes its default, Queue [D188]. A paused worker's waits till Resume [D3041].
     const mode = chosen ?? (row?.worker?.kind === "paused" ? "queue" : sendMode(running || commands, "queue", other, canSteer && running));
     if (!chosen && mode === "now" && paused && items.length > 0) {
@@ -252,7 +255,7 @@ export function sendActions({ id, mac, row, connected, worker, to, toWorker, toS
     // carries on with it rather than making a second session.
     const key = `${id}\n${message}\n${draft ?? ""}`;
     const made = { id: sessionId(), cid: newId() };
-    const args = mac.sides.get(key) ?? ["side", id, made.id, "--text", message, "--cid", made.cid, ...(pulled ? ["--qid", pulled.qid] : []), ...(draft ? ["--parts", draft] : [])];
+    const args = mac.sides.get(key) ?? sideArgs({ source: id, ...made, text: message, qid: pulled?.qid, parts: draft });
     const was = words$.current;
     setPowerError(null);
     setPower({

@@ -80,3 +80,11 @@ export function inThread(session: Session | null): ReadonlySet<string | undefine
   held.set(session, ids);
   return ids;
 }
+
+/** A queued row's words: the text with each mention's and command's name in place. */
+export const preview = (draft: Draft): string =>
+  draft.parts
+    .map((part) => (typeof part === "string" ? part : part.kind === "mention" || part.kind === "command" ? part.label : ""))
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();

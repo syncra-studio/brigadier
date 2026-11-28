@@ -34,6 +34,7 @@ export function CommandIcon({ command }: { command: Command }) {
 export function MentionIcon({ item }: { item: Mention }) {
   if (item.type === "worker" || item.type === "direct") return <WorkerGlyph id={item.id} />;
   if (item.type === "note") return <StickyNote className="size-icon-md text-warning" />;
-  const Icon = { chat: Chat, tab: Globe, plugin: Plugin, folder: Folder }[item.type] ?? File;
+  const icons: Partial<Record<Mention["type"], typeof File>> = { chat: Chat, tab: Globe, plugin: Plugin, folder: Folder };
+  const Icon = icons[item.type] ?? File;
   return <Icon className="size-icon-md text-muted-foreground" />;
 }

@@ -1,3 +1,5 @@
+import { type Chip as PanelChip, withChips } from "./chips";
+
 /**
  * A message being written, as the composer's props carry it: one shape for saving and restoring a draft,
  * sending it, recalling a sent prompt with ↑ and editing a queued message. Rust stores it; the field only
@@ -58,3 +60,10 @@ export function sendMode(running: boolean, followUp: FollowUp, other: boolean, c
   const way = other ? (followUp === "queue" ? "steer" : "queue") : followUp;
   return way === "steer" && !canSteer ? "queue" : way;
 }
+
+/** The draft as Rust takes it, when it holds more than words; none for plain text [D109]. */
+export const payload = (parts: Draft["parts"], tiles: readonly string[]): string | undefined =>
+  parts.some((part) => typeof part !== "string") || tiles.length > 0 ? JSON.stringify({ parts, attachmentIds: tiles }) : undefined;
+/** The draft for Rust, which builds the agent's words from its parts: the chips' words go after them, as in the text. */
+export const body = (parts: Draft["parts"], tiles: readonly string[], sent: readonly PanelChip[]) =>
+  payload(sent.length === 0 ? parts : [...parts, `${isEmpty({ parts, attachmentIds: [] }) ? "" : "\n\n"}${withChips("", sent)}`], tiles);

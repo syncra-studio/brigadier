@@ -37,3 +37,25 @@ export const agentChipWords = (chip: AgentChip): { title: string; detail: string
 
 /** Where a diff comment is: "auth.ts:12" or "auth.ts:12–14". */
 export const commentAt = (comment: DiffComment) => `${comment.path.slice(comment.path.lastIndexOf("/") + 1)}:${comment.start === comment.end ? comment.start : `${comment.start}–${comment.end}`}`;
+
+/** Chips waiting again: those given back, then those a read held back (`held`) that a given-back message names in `ids`. */
+export const chipsBack = (given: readonly Chip[], held: readonly Chip[], ids: readonly string[]): Chip[] => [
+  ...given,
+  ...held.filter((chip) => ids.includes(chip.id) && !given.some((each) => each.id === chip.id)),
+];
+
+/**
+ * The chips as the agent reads them, after the user's own words: each comment's place (on a removed line, the old
+ * file's; on a commit's diff, that commit's), the lines it's on, quoted, then what it says after a blank line, so it
+ * isn't read as part of the quote.
+ */
+export function withChips(message: string, sent: readonly Chip[]): string {
+  const blocks = sent.map((chip) => {
+    if (chip.kind === "agent") return chip.text;
+    const { on, comment } = chip;
+    const lines = comment.start === comment.end ? `${comment.start}` : `${comment.start}-${comment.end}`;
+    const where = [on !== "review" && `in commit ${on.slice(0, 12)}`, comment.side === "deletions" && "before the change"].filter(Boolean).join(", ");
+    return `${comment.path}:${lines}${where ? ` (${where})` : ""}\n${comment.excerpt.split("\n").map((line) => `> ${line}`).join("\n")}\n\n${comment.text}`;
+  });
+  return [message.trim(), ...blocks].filter(Boolean).join("\n\n");
+}

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Animated, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { agentChipWords, type Chip as PanelChip, commentAt } from "../../../app/shared/chips";
-import { type Chip, type Draft, isEmpty, plainText } from "../../../app/shared/draft";
+import { type Chip, type Draft, plainText } from "../../../app/shared/draft";
 import type { ModelRow } from "../../../app/shared/session/model";
 import type { RustQueued } from "../../../app/shared/session/queued";
 import type { Going } from "../../../app/shared/session/uncertain";
@@ -15,7 +15,7 @@ import { Sparkles, XCircle } from "../../../app/ui/src/landing/icons";
 import { Spin, usePulse } from "./motion";
 import { chipTone, NEW_SESSION } from "./Menus";
 import { ThreadImage } from "../thread/Image";
-import { type Attachment, forMac, withChips } from "./state";
+import { type Attachment, forMac } from "./state";
 
 /** A session's row with what the composer needs from Rust, as the desktop's ComposerRow. */
 export type ComposerRow = ModelRow & {
@@ -64,14 +64,7 @@ export function partsOf(words: string, chips: readonly Named[]): Draft["parts"] 
   return parts;
 }
 
-/** The draft for Rust, which builds the agent's words from its parts and files; none for words alone (the desktop's files.tsx `payload`). */
-export const payload = (parts: Draft["parts"], tiles: readonly string[]) => (parts.some((part) => typeof part !== "string") || tiles.length > 0 ? JSON.stringify({ parts, attachmentIds: tiles }) : undefined);
-/** The message's parts with the chips' words after them, as in the text, and its files. */
-export const body = (parts: Draft["parts"], sent: readonly PanelChip[], tiles: readonly string[]) =>
-  payload(sent.length === 0 ? parts : [...parts, `${isEmpty({ parts, attachmentIds: [] }) ? "" : "\n\n"}${withChips("", sent)}`], tiles);
 
-/** The desktop's home/start.ts sessionId: a new session's id, made here. */
-export const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 /** A reply lost with the link: what it asked may have been done. */
 export const lostReply = (reply: Record<string, any>) => reply.error === "closed" || reply.error === "disconnected";
 /** The failure that came last of `errors`, each a source's own; once it's cleared, any other still there. */

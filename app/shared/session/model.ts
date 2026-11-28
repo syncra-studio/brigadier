@@ -42,6 +42,13 @@ export type ModelGroup = {
 /** What the session runs on; `fast` on its model's fast tier. */
 export type ModelChoice = { provider: string; model: string; effort: string | null; fast?: boolean };
 
+/**
+ * The effort a picked model of `provider` takes: the one clicked, else the one in use for the model in use; within the
+ * agent a new model keeps the effort when it has that level, else takes its own default.
+ */
+export const effortOf = (model: Model, provider: string, value: ModelChoice, inUse: boolean, clicked?: string): string | null =>
+  clicked ?? (inUse ? value.effort : provider === value.provider && value.effort && model.efforts.includes(value.effort) ? value.effort : (model.defaultEffort ?? null));
+
 /** One signed-in account's limits as Rust serves them on a model group (C1): `used` and `resets` null where unknown. */
 export type Quota = { account: string; name: string; limits: { name: string; used: number | null; resets: number | null }[] };
 

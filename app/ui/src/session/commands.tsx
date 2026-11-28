@@ -15,6 +15,7 @@ import { SETTINGS_PAGES, type SettingsPageId } from "../settings/pages";
 import { ROUTING_ROWS } from "../settings/routing";
 import { openSettings } from "../settings/shell";
 import { HOME_DRAFT } from "./draft";
+import { listedCommand } from "../../../shared/menus";
 import { urlOf } from "./files";
 
 type Listed = { name: string; description?: string; kind: SlashCommand["kind"]; path?: string | null; instant: boolean };
@@ -40,9 +41,7 @@ export function useComposerCommands({ owner, run, field, backend, project, extra
     void run(["commands", owner, ...(home ? ["--backend", backend!, ...(project ? ["--project", project] : [])] : [])]).then((reply) => {
       if (!live) return;
       const list: Listed[] = reply.ok ? (reply.commands ?? []) : [];
-      // A prompt kept as Claude listed it before prompts had a kind of their own ("mcp", a server's); library names have no `_`.
-      const kindOf = (each: Listed) => (each.kind === "mcp" && each.name.startsWith("mcp__") ? "prompt" : each.kind);
-      const next = { key, list: list.map((each) => ({ id: `${kindOf(each)}:${each.name}`, kind: kindOf(each), label: `/${each.name}`, description: each.description || undefined, source: each.path ?? undefined, instant: each.instant })) };
+      const next = { key, list: list.map((each) => ({ ...listedCommand(each), source: each.path ?? undefined })) };
       // The same list stays the same array: the open menu keeps its place.
       setKept((now) => (JSON.stringify(now) === JSON.stringify(next) ? now : next));
     });

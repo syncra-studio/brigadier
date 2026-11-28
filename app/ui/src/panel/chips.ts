@@ -16,7 +16,8 @@ import { HOME } from "../shell/tab-store";
  */
 
 export type { Chip } from "../../../shared/chips";
-import type { Chip } from "../../../shared/chips";
+export { withChips } from "../../../shared/chips";
+import { type Chip, chipsBack as backOf } from "../../../shared/chips";
 
 /** The comment box being written: the diff it's on, its lines and its words so far. */
 export type CommentDraft = { on: string; path: string; side: "additions" | "deletions"; start: number; end: number; text: string };
@@ -132,7 +133,7 @@ export const leaveChips = (session: string, sent: readonly Chip[]) => {
 
 /** Chips waiting again, before any added since: Rust has them back already; `ids`, a given-back message's chips a read held back. */
 const chipsBack = (session: string, given: readonly Chip[], ids: readonly string[] = []) => {
-  const back = [...given, ...(withheld.get(session) ?? NONE).filter((chip) => ids.includes(chip.id) && !given.some((each) => each.id === chip.id))];
+  const back = backOf(given, withheld.get(session) ?? NONE, ids);
   if (back.length === 0) return;
   for (const chip of back) gone.delete(chip.id);
   set(session, [...back, ...(chips.get(session) ?? NONE).filter((chip) => !back.some((each) => each.id === chip.id))]);
@@ -177,18 +178,3 @@ export async function flushChips(session: string): Promise<Record<string, any>> 
   return (await Promise.all(writes)).find((reply) => reply.ok === false) ?? {};
 }
 
-/**
- * The chips as the agent reads them, after the user's own words: each comment's place (on a removed line, the old
- * file's; on a commit's diff, that commit's), the lines it's on, quoted, then what it says after a blank line, so it
- * isn't read as part of the quote.
- */
-export function withChips(message: string, sent: readonly Chip[]): string {
-  const blocks = sent.map((chip) => {
-    if (chip.kind === "agent") return chip.text;
-    const { on, comment } = chip;
-    const lines = comment.start === comment.end ? `${comment.start}` : `${comment.start}-${comment.end}`;
-    const where = [on !== "review" && `in commit ${on.slice(0, 12)}`, comment.side === "deletions" && "before the change"].filter(Boolean).join(", ");
-    return `${comment.path}:${lines}${where ? ` (${where})` : ""}\n${comment.excerpt.split("\n").map((line) => `> ${line}`).join("\n")}\n\n${comment.text}`;
-  });
-  return [message.trim(), ...blocks].filter(Boolean).join("\n\n");
-}

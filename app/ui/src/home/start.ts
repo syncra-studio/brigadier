@@ -12,6 +12,7 @@ import { ask, openThread, type Row, threadSource, useDaemon, useThread } from ".
 import { store } from "../onboarding/api";
 import { type Shown, useProjects } from "../projects/projects";
 import { newId } from "../session/store";
+import { sessionId } from "../../../shared/session/side";
 import { flushChips } from "../panel/chips";
 import { carryHome, CHAT, HOME, isRef, openTab, rereadTabs, selectTab, setHomeTabs, type Tab, tabsSettled, takeTabs } from "../shell/tab-store";
 import { prName, prPageHash, reviewChats } from "../pull-requests/route";
@@ -279,8 +280,7 @@ async function restore(key: string): Promise<void> {
   }
 }
 
-/** A new session's id, made here so its row and thread show before Rust has it [D30]. */
-export const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+export { sessionId };
 
 /** Where a project's session works: `base` for a new worktree, `worktree` for an existing one. */
 export type Place = { workIn: WorkIn; base: string | null; worktree: string | null; review?: string };

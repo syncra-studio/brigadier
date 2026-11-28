@@ -14,25 +14,9 @@ import type { Chip } from "./draft";
 import { PlusButton } from "./composer";
 import { ToolIcon } from "./tools";
 import { KIND_HEADINGS, MENU_NOTES } from "../../../../shared/session/composer";
-
-/**
- * A row of the `@` menu: what a mention names. `label` is what its chip keeps (a path, a chat's title, a worker's
- * name). A `direct` row is no mention: picking it sends the next message to that worker alone. PROPOSED.
- */
-export type Mention = {
-  id: string;
-  type: "file" | "folder" | "chat" | "worker" | "direct" | "tab" | "note";
-  label: string;
-  /** The row's name, when it isn't the label (a file's name for its path). */
-  name?: string;
-  /** Grey text after the name (a file's folder). */
-  detail?: string;
-  /** Grey text at the row's end. */
-  hint?: string;
-};
-
-/** A part of the `@` menu: its heading (none for ranked results), rows and a grey note under them. PROPOSED. */
-type MentionGroup = { title: string | null; items: Mention[]; note?: string };
+import { commandMatches, type CommandKind, fuzzyMatch, type Mention, type MentionGroup } from "../../../../shared/menus";
+export { fuzzyMatch };
+export type { Mention };
 
 /**
  * What the `@` menu shows: Rust's latest reply, echoing the query it answers, asked for as the query changes
@@ -51,7 +35,7 @@ export type SlashCommand = {
   label: string;
   description?: string;
   /** Listed under its kind's heading: Commands, Tools, Skills, MCP servers (the library's), MCP prompts (a server's, as the agent lists them). A tool is Brigadier's own (./tools.tsx). */
-  kind: "command" | "tool" | "skill" | "mcp" | "prompt";
+  kind: CommandKind;
   /** Where it comes from (an MCP server's name, a skill's folder), for opening it. */
   source?: string;
   /** Its own icon from Rust: an SVG mark or a same-origin image; without one, its kind's. */
@@ -64,39 +48,6 @@ export type SlashCommand = {
 
 /** `commands` null: not listed yet (the menu says it's loading, never "No commands"). `onMenu`: a menu of them opened. */
 export type Commands = { commands: SlashCommand[] | null; onRun: (command: SlashCommand) => void; onMenu: () => void };
-
-/**
- * Where `query` matches `text`, as the menus match: at its start, anywhere in it, or letter by letter in order.
- * The matched letters' positions and how good the match is (0 start, 1 anywhere, 2 in order); null: no match.
- */
-export function fuzzyMatch(text: string, query: string): { rank: 0 | 1 | 2; at: number[] } | null {
-  const lower = text.toLowerCase();
-  const want = query.toLowerCase();
-  const run = (from: number) => Array.from(want, (_, index) => from + index);
-  if (lower.startsWith(want)) return { rank: 0, at: run(0) };
-  const inside = lower.indexOf(want);
-  if (inside >= 0) return { rank: 1, at: run(inside) };
-  const at: number[] = [];
-  let from = 0;
-  for (const letter of want) {
-    const found = lower.indexOf(letter, from);
-    if (found < 0) return null;
-    at.push(found);
-    from = found + 1;
-  }
-  return { rank: 2, at };
-}
-
-/** Commands matching `query`, best first within each kind, the kinds in order so no heading repeats. */
-function commandMatches(commands: readonly SlashCommand[], query: string): SlashCommand[] {
-  const order = { command: 0, tool: 1, skill: 2, mcp: 3, prompt: 4 };
-  const rank = (command: SlashCommand) => Math.min(fuzzyMatch(command.label, query)?.rank ?? 3, fuzzyMatch(command.id, query)?.rank ?? 3);
-  return commands
-    .map((command) => ({ command, rank: rank(command) }))
-    .filter(({ rank }) => rank < 3)
-    .toSorted((a, b) => order[a.command.kind] - order[b.command.kind] || a.rank - b.rank)
-    .map(({ command }) => command);
-}
 
 /** A row's name in white, the letters the query matched in bold (`hit`: their class, a model chip's also bright). */
 export function MatchedText({ text, query, hit: hitClass = "font-semibold" }: { text: string; query: string; hit?: string }) {

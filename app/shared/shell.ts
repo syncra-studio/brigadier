@@ -11,5 +11,7 @@ export const asShell = (parts: Parts): Parts => (typeof parts[0] === "string" ? 
 /** A message's words, its `!` first its own: an empty part before it keeps it from being the mode. */
 export const asWords = (parts: Parts): Parts => (isShell(parts) ? ["", ...parts] : parts);
 
+/** A `!` line's command, trimmed: "" with nothing to run, null for a message. */
+export const shellLine = (parts: Parts): string | null => (isShell(parts) ? bare(parts).join("").trim() : null);
 /** The command `parts` hold, trimmed; null for a message, or with nothing to run. */
-export const commandOf = (parts: Parts): string | null => (isShell(parts) && bare(parts).join("").trim()) || null;
+export const commandOf = (parts: Parts): string | null => shellLine(parts) || null;

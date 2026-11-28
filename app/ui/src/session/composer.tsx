@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { SharedComposer } from "../components/composer/composer";
-import { type Draft, isEmpty, plainText, sendMode, swapWords } from "../components/composer/draft";
-import { asShell, asWords, commandOf, isShell } from "../components/composer/shell";
+import { body, type Draft, isEmpty, plainText, sendMode, swapWords } from "../components/composer/draft";
+import { asShell, asWords, commandOf, isShell } from "../../../shared/shell";
 import { ComposerField, type ComposerFieldHandle } from "../components/composer/field";
 import { QueueCard, type QueuedMessage } from "../components/composer/queue";
 import { PausedSendDialog } from "../components/composer/rail";
@@ -252,9 +252,6 @@ export function SessionComposer({ id, row, offline, blocked, onSent, run = daemo
     setEmpty(true);
     return pulled;
   };
-  /** The draft for Rust, which builds the agent's words from its parts: the chips' words go after them, as in the text. */
-  const body = (parts: Draft["parts"], tiles: readonly string[], sent: readonly Chip[]) =>
-    payload(sent.length === 0 ? parts : [...parts, `${isEmpty({ parts, attachmentIds: [] }) ? "" : "\n\n"}${withChips("", sent)}`], tiles);
   const isNew = (part: Draft["parts"][number]) => typeof part !== "string" && part.kind === "command" && part.id === NEW_SESSION.id;
   const submitNew = () => {
     const rest = (field.current?.parts() ?? []).filter((part) => !isNew(part));
