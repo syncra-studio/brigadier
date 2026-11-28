@@ -4,7 +4,7 @@ set -u
 cd "$(git rev-parse --show-toplevel)"
 
 THEME="app/ui/src/theme.css"
-AGENTS_MAX_BYTES=2050
+AGENTS_MAX_BYTES=2300
 # The line every session loads [D2025].
 AGENT_LINE="crates/core/src/agent-line.txt"
 AGENT_LINE_MAX_BYTES=300

@@ -9,3 +9,8 @@
 
 - Add no token without picking it from the old theme or getting the owner's OK.
 - The UI/UX reference is the old app (tag `legacy-final`).
+
+## Where code goes
+
+- `crates/`: Rust. `app/main`, `app/ui`: the desktop. `mobile/`: the iPhone app. `relay/`: the relay.
+- What both apps use (types, wire, view rules, words, samples): once in `app/shared`, which imports neither app. Views stay per app.
