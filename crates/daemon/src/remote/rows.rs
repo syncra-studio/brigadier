@@ -68,6 +68,22 @@ fn branches(cx: &Ctx, p: &str) -> Result<serde_json::Value, Fail> {
     worktrees::branches(cx.data, Path::new(&folder)).map_err(|_| REFUSED)
 }
 
+/// A kept start as Home's book holds it (`--home <draft>`, its draft not): as the phone sends one,
+/// the adopt's `--draft` its own, for the start row to check.
+pub(super) fn booked(
+    mut op: Vec<String>,
+    home: &str,
+    draft: Option<&str>,
+) -> Result<Vec<String>, Fail> {
+    let at = (op.iter().skip(2).position(|x| x == "--home")).ok_or(REFUSED)? + 2;
+    if op.get(at + 1).map(String::as_str) != Some(home) {
+        return Err(REFUSED);
+    }
+    op.drain(at..at + 2);
+    op.extend(["--draft".into(), draft.ok_or(REFUSED)?.into()]);
+    Ok(op)
+}
+
 pub(super) fn row(
     cx: &Ctx,
     args: &[String],

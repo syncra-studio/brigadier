@@ -124,6 +124,12 @@ pub(super) fn check(cx: &Ctx, req: &Value) -> Result<Checked, Fail> {
             copy("q", &text)?;
             &["q", "owner"]
         }
+        // The sidebar's search over message text, read only: what its hits name, the phone lists.
+        "search" => {
+            req["q"].as_str().ok_or(REFUSED)?;
+            copy("q", &text)?;
+            &["q"]
+        }
         // The Review tab's status watch of a session's own checkout; never a project's.
         "git" => &[],
         "run" => {
@@ -137,7 +143,7 @@ pub(super) fn check(cx: &Ctx, req: &Value) -> Result<Checked, Fail> {
     };
     // The session a reading op names, visible to this device; `mention` names it `owner`.
     let session = match op {
-        "subscribe" | "run" => None,
+        "subscribe" | "run" | "search" => None,
         "mention" => Some(("owner", &req["owner"])),
         _ => Some(("session", &req["session"])),
     };
@@ -336,12 +342,18 @@ fn run(
                     let kind = f.get("--kind").ok_or(REFUSED)?;
                     let op: Vec<String> =
                         serde_json::from_str(f.get("--op").ok_or(REFUSED)?).map_err(|_| REFUSED)?;
-                    // A kept command is tried again with no one to sign it: none that needs a signature.
+                    // A start is kept as its book holds it: checked as the phone sends one.
+                    let op = match kind {
+                        "start" => super::rows::booked(op, a(1)?, f.get("--draft"))?,
+                        _ => op,
+                    };
+                    // A kept command is tried again with no one to sign it: none that needs a
+                    // signature but a start, which this adopt then needs itself, signed afresh.
                     let mut signed = None;
                     // Refused as itself: a kept command's own answer (a path to sign) isn't given.
                     let kept = run(cx, op.clone(), false, &mut signed).map_err(|_| REFUSED)?;
                     if !top
-                        || signed.is_some()
+                        || signed.is_some() && kind != "start"
                         || op.first().map(String::as_str) != Some(kind)
                         || kept != op
                     {
@@ -349,6 +361,9 @@ fn run(
                     }
                     json_of(f.get("--draft").ok_or(REFUSED)?)?;
                     f.get("--draft-rev").map(number).transpose()?;
+                    if signed.is_some() {
+                        *need = fresh::signed(&args);
+                    }
                 }
                 Some(words) => {
                     json_of(words)

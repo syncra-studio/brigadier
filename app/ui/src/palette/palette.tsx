@@ -19,9 +19,9 @@ import { matches } from "../shortcuts";
 import { useShown } from "../sidebar/actions";
 import { RowMark } from "../sidebar/row";
 import { type Project, type SessionRow, statusWords } from "../sidebar/words";
+import type { Hit } from "../../../shared/rows";
 
-/** A session whose messages hold every word: the best message's snippet, and where the words are in it (UTF-16). */
-export type Hit = { id: string; snippet: string; at: [number, number][] };
+export type { Hit };
 /** Rust's search over message text, best first [D72]; rejects with the reason. */
 export type TextSearch = (q: string) => Promise<Hit[]>;
 /** ⌘K lists an archived row last, tagged [D197]. */
