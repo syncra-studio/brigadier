@@ -7,112 +7,31 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
-import { Alert, Animated, KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { KeyboardAvoidingView, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
-import type { Chip as PanelChip } from "../../../app/shared/chips";
-import { type Chip, type Draft, EMPTY_DRAFT, isEmpty, plainText, sendMode } from "../../../app/shared/draft";
-import type { ModelRow } from "../../../app/shared/session/model";
-import { inThread, type QueuedMessage, queuedOf, type RustQueued, toArgs } from "../../../app/shared/session/queued";
-import { failure } from "../../../app/shared/session/run";
-import { chipArgs, draftArgs, sendOp, sends } from "../../../app/shared/session/sent";
-import type { Going } from "../../../app/shared/session/uncertain";
+import { type Draft, EMPTY_DRAFT, isEmpty, plainText } from "../../../app/shared/draft";
+import { inThread, type QueuedMessage, queuedOf } from "../../../app/shared/session/queued";
+import { sends } from "../../../app/shared/session/sent";
 import type { Frame } from "../../../app/shared/client";
 import { COMPACTION } from "../../../app/shared/words";
 import { Confirm } from "../act/Confirm";
 import { streamNow } from "../link";
 import { lists, thread } from "../mac/mac";
-import { color, mono, size, text } from "../theme";
+import { color, size } from "../theme";
 import { LevelPill } from "../powers/Level";
 import { NightReady, nightPlaceholder, OvernightPill, OvernightStrip, StartNight, useNight } from "../powers/Overnight";
-import { backgroundPower, type Power, refusal, shellOf, shellPower } from "../powers/powers";
+import { backgroundPower, type Power, refusal, shellOf } from "../powers/powers";
 import { ImageSigns } from "../powers/View";
 import { composerSample } from "../mac/sample";
-import { Boxed, Glyph, Shimmer, Spinner, usePulse } from "./Glyph";
-import { chipTone, type Command, Commands, Mentions, NEW_SESSION, OVERNIGHT, PlusMenu, useCommands } from "./Menus";
+import { Glyph, Shimmer } from "./Glyph";
+import { type Command, Commands, Mentions, NEW_SESSION, OVERNIGHT, PlusMenu, useCommands } from "./Menus";
 import { ModelPill } from "./Model";
 import { Pill, PillDivider } from "./Pill";
 import { QueueCard } from "./Queue";
-import { ThreadImage } from "../thread/Image";
-import { type Attachment, forMac, newId, type Picked, type ToLost, withChips } from "./state";
-
-/** A session's row with what the composer needs from Rust, as the desktop's ComposerRow. */
-type ComposerRow = ModelRow & {
-  /** `editing`: the message pulled back to edit, kept by Rust; any device's. */
-  queue?: { paused: boolean; items: RustQueued[]; editing?: { id: string; text: string; parts?: Draft; slot: number; to?: string; shell?: string } | null; running?: string[] } | null;
-  steer?: boolean;
-  /** The last turn was the user's Stop: Resume carries it on [D373]. */
-  resumable?: boolean;
-  holding?: boolean;
-  /** A rebirth under way: its turn being stopped, or its fresh conversation not yet started [D88, D112]. */
-  optimizing?: boolean;
-};
-
-/** One queue action, shown at once until its reply is in and Rust's row has caught up with it (`touched`). */
-type Op = { key: string; kind: "add" | "remove" | "resume" | "move"; qid: string; text?: string; slot?: number; at?: number; done?: () => void };
-/** The field's draft a message was sent from, its revision then, and its chips: what Rust gives back if it's refused. */
-type Sub = { draft: Draft; rev: number | null; chips: readonly PanelChip[] };
-type Pulled = { qid: string; slot: number; text: string } | null;
-
-/** A chip in the text, which shows there as its label. */
-type Named = Extract<Chip, { label: string }>;
-const named = (part: Draft["parts"][number]): part is Named => typeof part !== "string" && "label" in part;
-/** A draft's files: its tiles, and its image and paste chips as tiles too, since the field shows no chip without a label. */
-const tilesOf = (draft: Draft) => [...new Set([...draft.attachmentIds, ...draft.parts.flatMap((part) => (typeof part !== "string" && "attachmentId" in part ? [part.attachmentId] : []))])];
-
-/** The field's text as a draft's parts: each chip still whole in it is a chip again, the rest words. */
-function partsOf(words: string, chips: readonly Named[]): Draft["parts"] {
-  const found: { chip: Named; at: number }[] = [];
-  for (const chip of chips) {
-    const n = chip.label.length;
-    for (let at = words.indexOf(chip.label); n > 0 && at >= 0; at = words.indexOf(chip.label, at + 1)) {
-      if (found.some((each) => at < each.at + each.chip.label.length && each.at < at + n)) continue;
-      found.push({ chip, at });
-      break;
-    }
-  }
-  found.sort((a, b) => a.at - b.at);
-  const parts: Draft["parts"] = [];
-  let from = 0;
-  for (const { chip, at } of found) {
-    if (at > from) parts.push(words.slice(from, at));
-    parts.push(chip);
-    from = at + chip.label.length;
-  }
-  if (from < words.length) parts.push(words.slice(from));
-  return parts;
-}
-
-/** The draft for Rust, which builds the agent's words from its parts and files; none for words alone (the desktop's files.tsx `payload`). */
-const payload = (parts: Draft["parts"], tiles: readonly string[]) => (parts.some((part) => typeof part !== "string") || tiles.length > 0 ? JSON.stringify({ parts, attachmentIds: tiles }) : undefined);
-/** The message's parts with the chips' words after them, as in the text, and its files. */
-const body = (parts: Draft["parts"], sent: readonly PanelChip[], tiles: readonly string[]) =>
-  payload(sent.length === 0 ? parts : [...parts, `${isEmpty({ parts, attachmentIds: [] }) ? "" : "\n\n"}${withChips("", sent)}`], tiles);
-
-/** The desktop's home/start.ts sessionId: a new session's id, made here. */
-const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-/** A reply lost with the link: what it asked may have been done. */
-const lostReply = (reply: Record<string, any>) => reply.error === "closed" || reply.error === "disconnected";
-/** The failure that came last of `errors`, each a source's own; once it's cleared, any other still there. */
-function useLatest(errors: (string | null)[]): string | null {
-  const seen = useRef<(string | null)[]>([]);
-  const [latest, setLatest] = useState<string | null>(null);
-  useEffect(() => {
-    const fresh = errors.find((each, at) => each && each !== seen.current[at]);
-    seen.current = errors;
-    if (fresh) setLatest(fresh);
-    else if (latest !== null && !errors.includes(latest)) setLatest(errors.find(Boolean) ?? null);
-  });
-  return latest;
-}
-
-/** Not a definite refusal: no answer, or one that says the worker's host may have it (`answered: false`, its I/O failing). */
-const unsure = (reply: Record<string, any>) => lostReply(reply) || reply.answered === false;
-/** Stopped before the command ran: the Mac's Face ID gate turned it down, so what it asked wasn't done. */
-const unsigned = (reply: Record<string, any>) => ["Needs Face ID", "Turned off for this iPhone on your Mac", "no randomness"].includes(String(reply.error));
-/** The worker a To: sends to, its name as it was picked. */
-type To = { id: string; name: string };
-const isNew = (part: Draft["parts"][number]) => typeof part !== "string" && part.kind === "command" && part.id === NEW_SESSION.id;
+import { ChipTile, type ComposerRow, Field, Link, type Named, named, OnItsWay, type Op, partsOf, type Pulled, st, Tile, tilesOf, type To, useLatest, Viewer } from "./parts";
+import { sendActions } from "./send";
+import { type Attachment, forMac, type Picked } from "./state";
 
 export function Composer({ id }: { id: string }) {
   const mac = forMac();
@@ -287,239 +206,18 @@ export function Composer({ id }: { id: string }) {
     return { id: cmd, line: ran?.kind === "shell" ? ran.command : "" };
   });
 
-  const act = (op: Omit<Op, "key">, args: string[], fail?: (reply: Record<string, any>) => void, then?: (reply: Record<string, any>) => void) => {
-    const key = newId();
-    setOps((now) => [...now, { ...op, key }]);
-    setError(null);
-    void run(["queue", id, ...args]).then((reply) => {
-      then?.(reply);
-      if (reply.ok) return setOps((now) => now.map((each) => (each.key === key ? { ...each, at: reply.at ?? 0 } : each)));
-      setOps((now) => now.filter((each) => each.key !== key));
-      setError(failure(reply));
-      fail?.(reply);
-    });
+  /** Why Send waits now, in the desktop's words; none when it can go. */
+  const waitsFor = () => {
+    const now = fileStore.of(id);
+    const tiles = now.tiles.flatMap((each) => now.all.get(each) ?? []);
+    if (tiles.some((each) => each.state === "uploading")) return "Files uploading…";
+    // Kept in the draft, not read from Rust's folder yet.
+    if (tiles.length < now.tiles.length) return "Files loading…";
+    if (tiles.some((each) => each.state === "ready" && each.mime.startsWith("image/")) && !mac.models.takesImages(((toRow as typeof row) ?? row)?.backend, ((toRow as typeof row) ?? row)?.model)) return "This model does not support image inputs. Try a different model";
+    return undefined;
   };
-  /** With `sub`, the field's own message: kept first, it takes its chips as it goes, and Rust gives it back if it's refused. */
-  const queue = (message: string, qid: string, slot: number | undefined, fail: ((reply: Record<string, any>) => void) | undefined, parts: string | undefined, sub: Sub) => {
-    const args = ["add", message, "--qid", qid, ...(slot === undefined ? [] : ["--at", String(slot)]), ...(parts ? ["--parts", parts] : []), ...chipArgs(sub.chips)];
-    const entry = sending.keep(id, { cid: qid, kind: "queue", op: ["queue", id, ...args], draft: sub.draft, rev: sub.rev, chips: sub.chips, at: Date.now() });
-    act({ kind: "add", qid, text: message, slot }, [...args, ...draftArgs(sub.draft, sub.rev)], fail, (reply) => sending.answered(run, id, entry, reply));
-  };
-  /** Given back, an edited message's kept copy goes: its words come back as a new draft, never under the refused id. */
-  const gave = (pulled: Pulled) => (reply: Record<string, any>) => reply.given_back && pulled && act({ kind: "remove", qid: pulled.qid }, ["remove", pulled.qid]);
-  /** Empties the field for a message that's going, and answers the queued message it was edited from. */
-  const take = () => {
-    const pulled = editing.get();
-    editing.set(null);
-    setField([]);
-    return pulled;
-  };
-  /** The field and the chips leave at once, the message kept first, so nothing is lost [D30, D363]. */
-  const goes = (parts: Draft["parts"], sent: readonly PanelChip[], send: (pulled: Pulled, sub: Sub) => void) => {
-    const sub: Sub = { draft: { parts, attachmentIds: readyNow() }, rev: drafts.revOf(id), chips: sent };
-    send(editing.get(), sub);
-    fileStore.sent(id);
-    take();
-    waitingChips.leave(id, sent);
-  };
-  // Sent at once or steered, an edited message's kept copy goes.
-  const sendNow = (message: string, pulled: Pulled, steer: boolean, cid: string, parts: string | undefined, sub: Sub) => {
-    void sending.go(run, id, { cid, kind: "send", op: sendOp(id, message, cid, { parts, steer, chips: sub.chips }), draft: sub.draft, chips: sub.chips, at: Date.now() }, sub.rev);
-    if (pulled) act({ kind: "remove", qid: pulled.qid }, ["remove", pulled.qid]);
-  };
-  const steerQueued = (qid: string) => act({ kind: "remove", qid }, ["steer", qid]);
-  const edit = (qid: string) => {
-    // One Rust may not hold goes from there, its words above what's typed, as a new message [D363].
-    const mine = lost(qid);
-    if (mine) return sending.discard(run, id, mine, true);
-    const slot = items.findIndex((each) => each.id === qid);
-    const message = textOf(qid);
-    const parts = row?.queue?.items.find((each) => each.id === qid)?.parts?.parts ?? [message];
-    editing.set({ qid, slot: Math.max(slot, 0), text: message });
-    setField(parts);
-    const put = words$.current;
-    act({ kind: "remove", qid }, ["edit", qid], () => {
-      if (editing.get()?.qid === qid) editing.set(null);
-      // Words typed while it was asked stay.
-      if (words$.current === put) setField([]);
-    });
-  };
-  /** Sends the field as it is now; `chosen`, the paused queue's answer, read again from the field when it comes. */
-  const submit = (other: boolean, chosen?: "now" | "queue"): void => {
-    if (!connected) return;
-    const parts = partsNow();
-    const sent = waitingChips.of(id);
-    const tiles = readyNow();
-    // A `!` line runs on the Mac's shell, through the queue: shown whole and signed, the field kept till the Mac has it.
-    // A worker's is a message, as on the desktop.
-    const line = worker || toWorker ? null : shellOf(parts);
-    if (line !== null) {
-      if (!line) return;
-      if (line.startsWith("--")) return setPowerError("A command can't start with --");
-      setPowerError(null);
-      // One whose reply was lost keeps its id when confirmed again: the Mac runs or queues an id once.
-      const shellKey = `${id}\n${line}`;
-      // An edit's id went with another line already (its reply lost): this line is a new command, not that edit.
-      const spent = (qid: string) => [...mac.shells].some(([key, kept]) => kept === qid && key !== shellKey);
-      if (editing.get() && spent(editing.get()!.qid)) editing.set(null);
-      const pulled = editing.get();
-      const qid = mac.shells.get(shellKey) ?? pulled?.qid ?? `c-${newId()}`;
-      const typed = words$.current;
-      return setPower({
-        ...shellPower(id, line, qid, pulled?.slot),
-        then: (reply) => {
-          // Kept through refusals too ("Turned off…"): only the Mac taking this id lets it go.
-          if (reply.error === "closed") mac.shells.set(shellKey, qid);
-          else if (reply.ok && mac.shells.get(shellKey) === qid) mac.shells.delete(shellKey);
-          if (!reply.ok) return setPowerError(refusal(reply));
-          if (editing.get()?.qid === qid) editing.set(null);
-          // Only the command leaves the field: a message given back above it while the sheet was open stays.
-          const now = words$.current;
-          if (now === typed) setField([]);
-          else if (now.endsWith(`\n\n${typed}`)) setField(partsOf(now.slice(0, -typed.length - 2), named$.current));
-        },
-      });
-    }
-    if (waitsFor()) return;
-    if (toWorker && !isEmpty({ parts, attachmentIds: tiles })) return sendTo(toWorker, parts, tiles, other);
-    // With a To:, nothing falls to this session's own send: what waits above the field is this session's.
-    if (to) return void (sent.length > 0 && setError("Clear the To: to send what waits to this session"));
-    if (inProject && parts.some(isNew)) return submitNew(parts, tiles);
-    if (isEmpty({ parts, attachmentIds: tiles }) && sent.length === 0) {
-      // Held with nothing typed, it steers the first queued message [D183].
-      if (other && running && canSteer && items[0]?.state === "queued" && !items[0].shell) steerQueued(items[0].id);
-      return;
-    }
-    // The chips go after the words, and leave once it's sent or queued; a failed send keeps them in its message.
-    const message = withChips(plainText(parts), sent);
-    // The Mac reads words that start with `--` as a flag, so it refuses them.
-    if (message.startsWith("--")) return setError("A message can't start with --");
-    const draft = body(parts, sent, tiles);
-    // Queue or Steer is the Mac's setting; the phone takes its default, Queue [D188]. A paused worker's waits till Resume [D3041].
-    const mode = chosen ?? (row?.worker?.kind === "paused" ? "queue" : sendMode(running || commands, "queue", other, canSteer && running));
-    if (!chosen && mode === "now" && paused && items.length > 0) {
-      const count = items.length === 1 ? "One message waits" : `${items.length} messages wait`;
-      return Alert.alert("Send message?", `The queue is paused. ${count} until you resume it. Send this one now, or keep it in the queue with them.`, [
-        { text: "Keep paused", onPress: () => submit(other, "queue") },
-        { text: "Send now", style: "default", onPress: () => submit(other, "now") },
-      ]);
-    }
-    const msg = (mode === "queue" && editing.get()?.qid) || newId();
-    goes(parts, sent, (pulled, sub) => (mode === "queue" ? queue(message, msg, pulled?.slot, gave(pulled), draft, sub) : sendNow(message, pulled, mode === "steer", msg, draft, sub)));
-  };
-  /**
-   * To the worker alone, as the user's own message: steered (Send held, where it can) into its turn; else Rust gives it
-   * now or holds it in this session's queue, "To ‹name›", till that worker's turn is over. Taken, the To: goes; refused,
-   * the message and its To: come back [D3006, D3013, D3050].
-   */
-  const sendTo = (target: To, parts: Draft["parts"], tiles: string[], other: boolean) => {
-    if (toSending || toGone) return;
-    const [cid, message, draft] = [newId(), plainText(parts), payload(parts, tiles)];
-    if (message.startsWith("--")) return setError("A message can't start with --");
-    // A steer can't take files from here, nor another worker's mention, which the Mac reads as the target's [allow.rs
-    // `send --from`]: with them it goes through the queue.
-    const steer = tiles.length === 0 && !parts.some((part) => typeof part !== "string" && part.kind === "mention" && part.type === "worker") && sendMode(true, "queue", other, (lists.get().rows.find((each) => each.id === target.id) as ComposerRow | undefined)?.steer === true) === "steer";
-    // A message pulled back to edit is never one for a worker here: it goes back to its place.
-    const pulled = take();
-    if (pulled) act({ kind: "add", qid: pulled.qid, text: pulled.text, slot: pulled.slot }, ["restore"]);
-    fileStore.sent(id);
-    setToSending(true);
-    setError(null);
-    const entry = { cid, target, args: toArgs(id, target.id, message, { qid: cid }, steer, draft), text: message, queued: !steer };
-    void run(entry.args).then((reply) => {
-      setToSending(false);
-      const went = reply.ok || reply.result === "logged";
-      if (went || unsure(reply)) setTo((now) => (now?.id === target.id ? null : now));
-      if (went) return;
-      // No answer, or one that can't say: it may have gone, so it waits under its own id for Try again or Discard.
-      if (unsure(reply)) return mac.lostTo.put(id, cid, { ...entry, error: failure(reply) });
-      // Refused: it waits on its own with Edit, never merged into a field that may be addressed elsewhere by now.
-      mac.lostTo.put(id, cid, { ...entry, error: failure(reply), refused: { parts, tiles } });
-    });
-  };
-  /** The message under `cid` as it's kept now; none once it went or was let go. */
-  const keptLost = (cid: string) => mac.lostTo.of(id).find((each) => each.cid === cid);
-  /** Settles `lost` from a reply to it, unless it was let go meanwhile. */
-  const settleLost = (lost: ToLost, next: ToLost | null) => keptLost(lost.cid) && mac.lostTo.put(id, lost.cid, next);
-  /** Try again: its own command, under its id; it stays kept unless the Mac took it, as a retry's refusal doesn't say the first never went. */
-  const toAgain = (lost: ToLost) => {
-    mac.lostTo.put(id, lost.cid, { ...lost, busy: true });
-    void run(lost.args).then((reply) => settleLost(lost, reply.ok || reply.result === "logged" ? null : { ...lost, error: failure(reply) }));
-  };
-  /** Edit: a refused one's words and files back in an empty field, with its To:. */
-  const toEdit = (lost: ToLost) => {
-    if (!lost.refused || !isEmpty({ parts: partsNow(), attachmentIds: [...tilesNow()] })) return;
-    mac.lostTo.put(id, lost.cid, null);
-    setField(lost.refused.parts);
-    fileStore.restore(id, lost.refused.tiles);
-    setTo(lost.target);
-  };
-  /**
-   * Discard: one through the queue is taken out of this session's queue, then the worker's, which it may have been handed
-   * to meanwhile; it's let go only once both have taken it out. A steer can't be taken back, so it only stops showing here.
-   */
-  const toDiscard = (lost: ToLost) => {
-    // A refused one never went anywhere.
-    if (!lost.queued || lost.refused) return mac.lostTo.put(id, lost.cid, null);
-    mac.lostTo.put(id, lost.cid, { ...lost, busy: true });
-    void run(["queue", id, "remove", lost.cid])
-      // A worker no longer listed has no queue left to hold it.
-      .then((reply) => (reply.ok && lists.get().rows.some((each) => each.id === lost.target.id) ? run(["queue", lost.target.id, "remove", lost.cid]) : reply))
-      .then((reply) => settleLost(lost, reply.ok ? null : { ...lost, error: failure(reply) }));
-  };
-  /**
-   * Send as new, from a project's session (the /new chip): the message starts a new session there and the user stays.
-   * Signed with Face ID (`side`), the field kept till the Mac has it; a new session takes no files from here [allow.rs].
-   */
-  const submitNew = (parts: Draft["parts"], tiles: readonly string[]) => {
-    const rest = parts.filter((part) => !isNew(part));
-    if (tiles.length > 0) return setError("Remove the files to send this as a new session");
-    // `side` can't take what waits above the field from here [allow.rs], and they'd wait on here too.
-    if (waitingChips.of(id).length > 0) return setError("What waits above the field can't go to a new session from iPhone: send it here first");
-    if (isEmpty({ parts: rest, attachmentIds: [] })) return;
-    // One string, shown on the sheet and signed as it is.
-    const message = plainText(rest).trim();
-    if (message.startsWith("--")) return setError("A message can't start with --");
-    const pulled = editing.get();
-    const draft = payload(rest, []);
-    // One whose reply was lost is the same command confirmed again, its session's and message's ids kept, so Rust
-    // carries on with it rather than making a second session.
-    const key = `${id}\n${message}\n${draft ?? ""}`;
-    const made = { id: sessionId(), cid: newId() };
-    const args = mac.sides.get(key) ?? ["side", id, made.id, "--text", message, "--cid", made.cid, ...(pulled ? ["--qid", pulled.qid] : []), ...(draft ? ["--parts", draft] : [])];
-    const was = words$.current;
-    setPowerError(null);
-    setPower({
-      title: "Start as a new session?",
-      body: NEW_SESSION.description,
-      shown: message,
-      args,
-      then: (reply) => {
-        // Only the command's own answer settles it: one lost, or stopped at the signature, keeps its ids.
-        if (lostReply(reply) || unsigned(reply)) mac.sides.set(key, args);
-        else mac.sides.delete(key);
-        // With `session`, Rust logged it and this thread says how it went; without, nothing was made.
-        if (!reply.ok || !reply.session) return setPowerError(reply.ok ? String(reply.message ?? "Refused") : refusal(reply));
-        if (pulled && editing.get()?.qid === pulled.qid) editing.set(null);
-        // Only the message leaves the field: one given back above it while the sheet was open stays.
-        const now = words$.current;
-        if (now === was) setField([]);
-        else if (now.endsWith(`\n\n${was}`)) setField(partsOf(now.slice(0, -was.length - 2), named$.current));
-      },
-    });
-  };
-  const stop = () => {
-    setStopping(true);
-    setError(null);
-    void run(["stop", id]).then((reply) => {
-      if (reply.ok) return;
-      setStopping(false);
-      setError(failure(reply));
-    });
-  };
-  const resume = () => act({ kind: "resume", qid: "" }, ["resume"]);
+  const { act, steerQueued, edit, submit, toAgain, toEdit, toDiscard, stop, resume, move } = sendActions({ id, mac, row, connected, worker, to, toWorker, toSending, toGone, inProject, running, canSteer, commands, paused, items, editing, lost, textOf, readyNow, tilesNow, partsNow, setField, waitsFor, words$, named$, setOps, setError, setPowerError, setPower, setToSending, setTo, setStopping });
   const resuming = live.some((op) => op.kind === "resume");
-  const move = (qid: string, to: number) => new Promise<void>((resolve, reject) => act({ kind: "move", qid, done: resolve }, ["move", qid, String(to)], reject));
   const stuck = row?.queue?.items.find((each) => each.error);
 
   /** Typed: kept as the draft; emptied while a queued message was pulled back, that message goes back to its place. */
@@ -586,16 +284,6 @@ export function Composer({ id }: { id: string }) {
     keep(partsNow());
   };
 
-  /** Why Send waits now, in the desktop's words; none when it can go. */
-  const waitsFor = () => {
-    const now = fileStore.of(id);
-    const tiles = now.tiles.flatMap((each) => now.all.get(each) ?? []);
-    if (tiles.some((each) => each.state === "uploading")) return "Files uploading…";
-    // Kept in the draft, not read from Rust's folder yet.
-    if (tiles.length < now.tiles.length) return "Files loading…";
-    if (tiles.some((each) => each.state === "ready" && each.mime.startsWith("image/")) && !mac.models.takesImages(((toRow as typeof row) ?? row)?.backend, ((toRow as typeof row) ?? row)?.model)) return "This model does not support image inputs. Try a different model";
-    return undefined;
-  };
   const waits = waitsFor();
   const add = (picked: Picked[]) => picked.forEach((each) => fileStore.attach(id, each, row?.backend));
   const photos = () => {
@@ -778,224 +466,3 @@ export function Composer({ id }: { id: string }) {
     </KeyboardAvoidingView>
   );
 }
-
-/**
- * The field, as the desktop's field.tsx: at least 44 tall, a quarter of the screen at most, then it scrolls and fades
- * at its top; each chip in its kind's colour. A command shows without its `!`, in mono after the Terminal icon;
- * Backspace in an empty one leaves the mode, as deleting the `!` would.
- */
-function Field({ words, chips, shell, placeholder, night, onChange, onCursor }: { words: string; chips: readonly Named[]; shell: boolean; placeholder: string; night: boolean; onChange: (next: string) => void; onCursor: (at: number) => void }) {
-  const { height } = useWindowDimensions();
-  const [scrolled, setScrolled] = useState(false);
-  const under = night && !shell ? color.surfaceUnder : color.composer;
-  return (
-    <View>
-      {shell ? (
-        <View style={st.terminal} pointerEvents="none">
-          <Boxed mark=">_" color={color.link} />
-        </View>
-      ) : null}
-      <TextInput
-        style={[st.input, { maxHeight: height * 0.25 }, shell && st.mono]}
-        multiline
-        placeholder={placeholder}
-        placeholderTextColor={color.placeholder}
-        onChangeText={(next) => onChange(shell ? `!${next}` : next)}
-        onKeyPress={(event) => shell && words === "!" && event.nativeEvent.key === "Backspace" && onChange("")}
-        onSelectionChange={(event) => onCursor(event.nativeEvent.selection.end)}
-        onScroll={(event) => setScrolled(event.nativeEvent.contentOffset.y > 0)}
-        accessibilityLabel={shell ? "Shell command input" : "Message"}
-      >
-        {shell ? words.slice(1) : segments(words, chips).map(([part, chip], at) => <Text key={at} style={chip && { color: chipTone(chip) }}>{part}</Text>)}
-      </TextInput>
-      {scrolled ? <View pointerEvents="none" style={[st.fade, { experimental_backgroundImage: `linear-gradient(to bottom, ${under}, transparent)` }]} /> : null}
-    </View>
-  );
-}
-
-/** The field's words cut at each chip, so a chip is drawn as one. */
-function segments(words: string, chips: readonly Named[]): [string, Named | null][] {
-  return partsOf(words, chips).map((part) => (typeof part === "string" ? [part, null] : [(part as Named).label, part as Named]));
-}
-
-/** "PDF", "PNG image", "Text": what a file's tile says under its name (the desktop's attachments.tsx `kindOf`). */
-function kindOf(name: string, mime: string): string {
-  if (mime === "application/pdf") return "PDF";
-  const extension = name.includes(".") ? name.split(".").pop()?.toUpperCase() : undefined;
-  if (mime.startsWith("image/")) return extension ? `${extension} image` : "Image";
-  if (mime.startsWith("text/")) return extension ? `${extension} text` : "Text";
-  return extension ? `${extension} file` : "File";
-}
-
-const baseName = (name: string) => name.slice(name.lastIndexOf("/") + 1);
-
-/**
- * A tile's ✕: a dark dot inside its corner. Its reach grows out to the corner, and on a card down and in too; on an
- * image it stops short of the middle, which opens the image.
- */
-const Remove = ({ label, onPress, image }: { label: string; onPress: () => void; image: boolean }) => (
-  <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} hitSlop={image ? { top: 6, right: 6, left: 4, bottom: 4 } : 14} style={st.remove}>
-    <Glyph name="x" size={9} color={color.background} weight="700" />
-  </Pressable>
-);
-
-/** A card in the tiles row: an icon in its box, a title over a second line, and its ✕ where it has one. */
-function Card({ icon, title, detail, invalid, children }: { icon: React.ReactNode; title: string; detail: string; invalid?: boolean; children?: React.ReactNode }) {
-  return (
-    <View accessible accessibilityLabel={`${title}, ${detail}`} style={[st.fileCard, invalid && { borderColor: color.invalid }]}>
-      <View style={st.iconBox}>{icon}</View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={st.cardTitle} numberOfLines={1}>{title}</Text>
-        <Text style={st.cardDetail} numberOfLines={1}>{detail}</Text>
-      </View>
-      {children}
-    </View>
-  );
-}
-
-/**
- * A file over the field: an image as a rounded thumbnail, pulsing till Rust has it with a spinner over it; any other
- * as a card with its kind, Attaching… or why it failed, red-edged then. A tap opens an image whole.
- */
-function Tile({ owner, file, onOpen, onRemove }: { owner: string; file: Attachment; onOpen: () => void; onRemove: () => void }) {
-  const name = baseName(file.name);
-  const image = file.mime.startsWith("image/") && file.state !== "failed";
-  const remove = <Remove label={`Remove ${name}`} onPress={onRemove} image={image} />;
-  if (image) {
-    return (
-      <View style={st.thumb}>
-        {file.state === "ready" ? (
-          <>
-            <ThreadImage owner={owner} attachment={file.id} mime={file.mime} label={file.name} style={StyleSheet.absoluteFill} />
-            <Pressable accessibilityRole="button" accessibilityLabel={`Preview ${file.name}`} onPress={onOpen} style={StyleSheet.absoluteFill} />
-          </>
-        ) : (
-          <Pulsing />
-        )}
-        <View pointerEvents="none" style={st.ring} />
-        {file.state === "uploading" ? (
-          <View pointerEvents="none" style={[StyleSheet.absoluteFill, st.centred]}>
-            <Spinner />
-          </View>
-        ) : null}
-        {remove}
-      </View>
-    );
-  }
-  const failed = file.state === "failed";
-  const icon = failed ? <Glyph name="warning" color={color.destructive} label="Upload failed" /> : file.state === "uploading" ? <Spinner /> : <Glyph name={file.mime.startsWith("image/") ? "image" : file.mime.startsWith("text/") || file.mime === "application/pdf" ? "document" : "file"} color={color.mutedForeground} />;
-  return (
-    <Card icon={icon} title={name} detail={failed ? (file.error ?? "Couldn't attach this file") : file.state === "uploading" ? "Attaching…" : kindOf(file.name, file.mime)} invalid={failed}>
-      {remove}
-    </Card>
-  );
-}
-
-/** An image's box till its bytes are in. */
-const Pulsing = () => <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: color.muted, opacity: usePulse() }]} />;
-
-const plural = (n: number, one: string) => (n === 1 ? `1 ${one}` : `${n} ${one}s`);
-
-/**
- * What waits above the field for the agent, as the desktop's CommentChip and AgentChipTile: a diff comment, a Resolve or
- * a Fix with agent. A phone only reads them and sends them with its next message, so no ✕ [allow.rs `chips`].
- */
-function ChipTile({ chip }: { chip: PanelChip }) {
-  if (chip.kind === "comment") {
-    const { path, start, end, text: said, excerpt } = chip.comment;
-    return <Card icon={<Glyph name="comment" color={color.mutedForeground} />} title={said} detail={`${baseName(path)}:${start === end ? start : `${start}–${end}`}  ${excerpt}`} />;
-  }
-  const agent = chip.chip;
-  return agent.kind === "resolve" ? (
-    <Card icon={<Glyph name="sparkles" color={color.mutedForeground} />} title={`Resolve ${plural(agent.conflicts, "conflict")}`} detail={`${plural(agent.files, "file")} · ${agent.operation} ${agent.onto}`} />
-  ) : (
-    <Card icon={<Glyph name="xCircle" color={color.destructive} />} title={`Fix ${agent.run}`} detail={agent.failed} />
-  );
-}
-
-/** An image tile opened whole, as the desktop's viewer; held, it saves to Photos. */
-function Viewer({ owner, file, onClose }: { owner: string; file: Attachment; onClose: () => void }) {
-  return (
-    <Modal visible animationType="fade" onRequestClose={onClose}>
-      <SafeAreaView style={st.viewer}>
-        <Pressable accessibilityRole="button" onPress={onClose} hitSlop={12} style={st.done}>
-          <Text style={st.doneText}>Done</Text>
-        </Pressable>
-        <ThreadImage owner={owner} attachment={file.id} mime={file.mime} label={file.name} style={{ flex: 1 }} whole />
-      </SafeAreaView>
-    </Modal>
-  );
-}
-
-/** A message on its way, as the desktop's sent.tsx bubbles: sending, or why not with Try again, Discard and Edit. */
-function OnItsWay({ id, entry }: { id: string; entry: Going }) {
-  const { run, sends: sending } = forMac();
-  const failed = entry.stuck;
-  // One that may have reached its agent is only tried again, under its id [C75].
-  const maybe = entry.reached !== false;
-  return (
-    <View style={st.going}>
-      <Text style={st.goingText} numberOfLines={3}>{entry.op[2] ?? plainText(entry.draft.parts)}</Text>
-      <Text style={failed ? st.error : st.muted}>{failed ? `${maybe ? "May have been sent" : "Not sent"} · ${failed}` : "Sending…"}</Text>
-      {failed ? (
-        <View style={st.actions}>
-          {entry.op.length > 0 ? <Link title="Try again" onPress={() => void sending.again(run, id, entry)} /> : null}
-          {!maybe ? <Link title="Edit" onPress={() => sending.discard(run, id, entry, true)} /> : null}
-          {!maybe ? <Link title="Discard" onPress={() => sending.discard(run, id, entry)} /> : null}
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-const Link = ({ title, disabled, onPress }: { title: string; disabled?: boolean; onPress: () => void }) => (
-  <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} hitSlop={8} style={disabled && { opacity: size.disabled }}>
-    <Text style={st.link}>{title}</Text>
-  </Pressable>
-);
-
-const st = StyleSheet.create({
-  // 12 under the card (pb-3), or the home indicator's inset where that's more.
-  column: { gap: 8, paddingHorizontal: 16, paddingBottom: 12, backgroundColor: color.background },
-  // The gap above the card is taken back, and the tuck under its top edge.
-  rail: { marginHorizontal: size.railInset, marginBottom: -size.railTuck - 8, paddingBottom: size.railTuck, borderTopLeftRadius: size.radiusOverlay, borderTopRightRadius: size.radiusOverlay, borderWidth: 1, borderBottomWidth: 0, borderColor: color.border, backgroundColor: color.codeSurface, overflow: "hidden" },
-  ruled: { borderTopWidth: 1, borderTopColor: color.border },
-  card: { gap: 4, padding: 8, borderRadius: size.radiusComposer, backgroundColor: color.composer, boxShadow: color.composerGlow },
-  // overnight.css `night-sky`: the page's darkest fill, a violet glow from the end corner and a blue one from the start.
-  night: { backgroundColor: color.surfaceUnder, boxShadow: `inset 0 0 0 1px ${color.picked}`, experimental_backgroundImage: color.nightSky },
-  shell: { boxShadow: `${color.composerGlow}, 0 0 0 1px ${color.link}` },
-  input: { ...text.base, color: color.foreground, minHeight: size.composer, paddingHorizontal: 8, paddingTop: 10, paddingBottom: 10 },
-  mono: { fontFamily: mono, paddingLeft: 36 },
-  terminal: { position: "absolute", left: 8, top: 14, zIndex: 1 },
-  fade: { position: "absolute", left: 0, right: 0, top: 0, height: 16 },
-  footer: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 2 },
-  shellWords: { ...text.sm, color: color.link, paddingHorizontal: 8, height: size.controlSm, lineHeight: size.controlSm, flexShrink: 1 },
-  plus: { width: size.controlSm, height: size.controlSm, borderRadius: size.radiusIconButton, alignItems: "center", justifyContent: "center" },
-  pillText: { ...text.sm, color: color.mutedForeground, flexShrink: 1 },
-  toDot: { fontSize: 10, color: color.mutedForeground },
-  end: { flexDirection: "row", alignItems: "center", gap: 2, marginLeft: "auto", flexShrink: 1, minWidth: 0 },
-  status: { ...text.xs, color: color.mutedForeground, flexShrink: 1, paddingHorizontal: 4 },
-  send: { width: size.controlSm, height: size.controlSm, borderRadius: size.controlSm / 2, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
-  run: { height: size.controlSm, borderRadius: size.controlSm / 2, paddingHorizontal: 12, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
-  runText: { ...text.sm, fontWeight: "500", color: color.primaryFg },
-  stop: { width: 10, height: 10, borderRadius: 2, backgroundColor: color.primaryFg },
-  waits: { ...text.xs, color: color.mutedForeground, paddingHorizontal: 8, marginTop: -4 },
-  tiles: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-end", gap: 8, paddingHorizontal: 4, paddingTop: 4, paddingBottom: 6 },
-  thumb: { width: size.thumb, height: size.thumb, borderRadius: size.radiusSurface, overflow: "hidden", backgroundColor: color.muted },
-  ring: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: size.radiusSurface, borderWidth: 1, borderColor: color.border },
-  centred: { alignItems: "center", justifyContent: "center" },
-  fileCard: { width: size.card, maxWidth: "100%", flexDirection: "row", alignItems: "center", gap: 8, padding: 6, paddingRight: 28, borderRadius: size.radiusSurface, borderWidth: 1, borderColor: color.border },
-  iconBox: { width: size.controlLg, height: size.controlLg, borderRadius: size.radiusIconButton, backgroundColor: color.background, alignItems: "center", justifyContent: "center" },
-  cardTitle: { ...text.sm, color: color.foreground },
-  cardDetail: { ...text.xs, color: color.mutedForeground },
-  remove: { position: "absolute", top: 6, right: 6, width: size.iconMd, height: size.iconMd, borderRadius: size.iconMd / 2, backgroundColor: color.foreground, alignItems: "center", justifyContent: "center", zIndex: 1 },
-  viewer: { flex: 1, backgroundColor: color.viewer },
-  done: { alignSelf: "flex-end", padding: 16 },
-  doneText: { ...text.base, fontWeight: "600", color: color.primary },
-  going: { alignSelf: "flex-end", maxWidth: "85%", gap: 4, borderRadius: 16, backgroundColor: color.bubble, padding: 12 },
-  goingText: { ...text.base, color: color.chat },
-  actions: { flexDirection: "row", gap: 16 },
-  link: { ...text.sm, color: color.link },
-  muted: { ...text.sm, color: color.mutedForeground },
-  error: { ...text.sm, color: color.destructive },
-});
