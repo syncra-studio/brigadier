@@ -64,6 +64,8 @@ pub(super) struct Stream {
     pub(super) mentions: HashSet<String>,
     /// Challenges issued on this stream, not yet used.
     pub(super) nonces: Vec<super::fresh::Nonce>,
+    /// When its last `attachment` pieces were served, for their limit.
+    pub(super) pieces: Vec<Instant>,
 }
 
 impl Stream {
@@ -75,6 +77,7 @@ impl Stream {
 /// A frame from the gateway.
 pub(super) fn frame(s: &mut State, id: u32, kind: u8, bytes: &[u8]) {
     match kind {
+        gateway::CONTROL if id == 0 => super::relay::from_relay(s, bytes),
         gateway::OPEN => open(s, id, &String::from_utf8_lossy(bytes)),
         gateway::DATA => {
             if let Err(why) = data(s, id, bytes) {
@@ -87,7 +90,12 @@ pub(super) fn frame(s: &mut State, id: u32, kind: u8, bytes: &[u8]) {
 }
 
 fn open(s: &mut State, id: u32, peer: &str) {
-    let source = peer.rsplit_once(':').map_or(peer, |(ip, _)| ip).to_string();
+    // A relay stream's source is the phone's own address there, never one slot for all of them.
+    let source = match peer.starts_with("relay:") {
+        true => peer,
+        false => peer.rsplit_once(':').map_or(peer, |(ip, _)| ip),
+    };
+    let source = source.to_string();
     let opens = s.opens.entry(source.clone()).or_default();
     opens.retain(|at| at.elapsed() < Duration::from_secs(60));
     let unproven = (s.streams.values())
@@ -111,6 +119,7 @@ fn open(s: &mut State, id: u32, peer: &str) {
         bridge: None,
         mentions: HashSet::new(),
         nonces: vec![],
+        pieces: vec![],
     };
     s.streams.insert(id, stream);
 }
@@ -260,7 +269,8 @@ fn request(s: &mut State, id: u32, req: &Value) -> Result<(), Fail> {
                         }
                     }
                     json!({"ok": fits, "error": (!fits).then_some("proto"), "proto_min": PROTO.0,
-                        "proto_max": PROTO.1, "build": brigadier_frames::wire::build(), "name": s.live.as_ref().map(|l| &l.1)})
+                        "proto_max": PROTO.1, "build": brigadier_frames::wire::build(), "name": s.live.as_ref().map(|l| &l.1),
+                        "relay": super::relay::hello(s)})
                 }
                 _ if !hello => json!({"ok": false, "error": "proto"}),
                 _ => return Ok(bridge::request(s, id, &device, req)?),

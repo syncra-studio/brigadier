@@ -97,6 +97,9 @@ fn no_paths(frame: &mut Value) {
 }
 
 /// A phone's request after `hello`: through the table and on, or refused here.
+/// Proposed: `attachment` pieces (256 KB each) a stream may take per minute, about 60 MB.
+const PIECES: (usize, std::time::Duration) = (240, std::time::Duration::from_secs(60));
+
 pub(super) fn request(
     s: &mut super::State,
     id: u32,
@@ -118,7 +121,22 @@ pub(super) fn request(
         resolved: Default::default(),
     };
     if req["op"] == "attachment" {
+        let stream = s.streams.get_mut(&id).ok_or("gone")?;
+        stream.pieces.retain(|at| at.elapsed() < PIECES.1);
+        if stream.pieces.len() >= PIECES.0 {
+            let busy = serde_json::json!({"re": req["id"], "ok": false, "error": "busy"});
+            return link::reply(s, id, &busy).map_err(|e| e.to_string());
+        }
+        stream.pieces.push(std::time::Instant::now());
         let mut answer = super::files::attachment(&cx, req);
+        // Each file once in the device's Activity, at its first piece.
+        if answer["ok"] == true && req["offset"].as_u64().unwrap_or(0) == 0 {
+            let names = [
+                req["owner"].as_str().unwrap_or(""),
+                req["attachment"].as_str().unwrap_or(""),
+            ];
+            super::powers::log(&data, device, "attachment", &names.map(String::from));
+        }
         answer["re"] = req["id"].as_u64().into();
         return link::reply(s, id, &answer).map_err(|e| e.to_string());
     }

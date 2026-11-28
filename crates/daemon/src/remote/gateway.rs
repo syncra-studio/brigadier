@@ -2,7 +2,8 @@
 //! its end of a socket pair and fd 4 the TCP listener bound here on every interface, at the port
 //! last used (`data/remote/port`) or a free one. Frames on the pair are `[stream u32][kind u8]
 //! [len u16][bytes]`: kind 0 data, 1 a peer's opening (its address), 2 a close; each goes to
-//! `link` under the remote state's lock.
+//! `link` under the remote state's lock. Stream 0 is the relay's: kind 4 names it to the gateway,
+//! kind 5 carries its control frames; its phone streams have the top bit set.
 
 use super::{STATE, State, bonjour, link};
 use std::io::{self, Read, Write};
@@ -21,6 +22,10 @@ const PROFILE: &str = include_str!("../../../remote-gateway/sandbox.sb");
 pub(super) const DATA: u8 = 0;
 pub(super) const OPEN: u8 = 1;
 pub(super) const CLOSE: u8 = 2;
+pub(super) const RELAY: u8 = 4;
+pub(super) const CONTROL: u8 = 5;
+/// A relay phone stream's id has this bit set.
+pub(super) const TOP: u32 = 1 << 31;
 /// Proposed: a gateway that takes no frame for this long is stuck, and is started again: the
 /// daemon never waits on it with the remote state locked for longer.
 const STUCK: Duration = Duration::from_secs(5);
@@ -69,11 +74,15 @@ pub(super) fn start(data: &Path, public: &[u8]) -> io::Result<Gateway> {
     }
     let (ours, theirs) = UnixStream::pair()?;
     let fds = [theirs.as_raw_fd(), listener.as_raw_fd()];
+    let mut profile = PROFILE.to_string();
+    if super::relay::dev() {
+        profile += "(allow network-outbound (remote ip \"localhost:*\"))\n";
+    }
     let mut command = Command::new("/usr/bin/sandbox-exec");
     command
         .arg("-D")
         .arg(format!("GATEWAY={}", program.display()))
-        .args(["-p", PROFILE])
+        .args(["-p", &profile])
         .arg(&program)
         .env_clear()
         .stdin(Stdio::null())

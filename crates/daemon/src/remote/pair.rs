@@ -28,7 +28,7 @@ pub(super) struct Offer {
     /// The typed code: 16 Crockford base32 characters (80 bits), its psk taken from their ASCII.
     pub(super) code: String,
     made: Instant,
-    expires: u64,
+    pub(super) expires: u64,
     used: bool,
 }
 
@@ -199,13 +199,24 @@ fn crockford(bytes: &[u8; 10]) -> String {
 
 fn shown(s: &State, offer: &Offer) -> Value {
     let port = s.live.as_ref().map_or(0, |l| l.0);
-    let url = format!(
+    let mut url = format!(
         "https://brigadier.sh/p#v=1&m={}&s={}&a={}&e={}",
         URL.encode(s.public),
         URL.encode(offer.secret),
         addresses(port).join(","),
         offer.expires / 1000
     );
+    // Away from home too, while the relay carries this computer: an old phone ignores both.
+    if let Some(pass) = super::relay::ticket(s, offer.expires / 1000) {
+        let text = |k: &str| pass[k].as_str().unwrap_or("").to_string();
+        url += &format!(
+            "&r={}&k={}&p={}.{}",
+            text("url"),
+            text("key"),
+            pass["until"],
+            text("sig")
+        );
+    }
     let svg = qrcode::QrCode::new(&url).map_or(String::new(), |qr| {
         qr.render::<qrcode::render::svg::Color>()
             .min_dimensions(240, 240)
@@ -272,7 +283,8 @@ fn status(s: &State, data: &Path) -> Value {
     json!({"ok": true, "on": data.join("remote/on").exists(), "port": port,
         "name": name.unwrap_or_else(super::name),
         "offer": s.offer.as_ref().filter(|o| o.open()).map(|o| shown(s, o)),
-        "pending": pending, "warning": s.warning, "devices": devices, "awake": awake_asked(data)})
+        "pending": pending, "warning": s.warning, "devices": devices, "awake": awake_asked(data),
+        "relay": super::relay::shown(s, data)})
 }
 
 pub(super) fn awake_asked(data: &Path) -> bool {
@@ -337,12 +349,21 @@ pub(super) fn forget_again(s: &mut State, data: &Path) {
 /// `remote status | on | off | awake on|off | offer | allow | deny | revoke <device>`.
 pub(super) fn cli(data: &Path, args: &[String]) -> Value {
     let mut s = STATE.lock().unwrap();
+    let answer = command(&mut s, data, args);
+    // A revoke or a new phone reaches the relay now, not at the next pass.
+    if s.live.is_some() {
+        super::relay::pass(&mut s, data);
+    }
+    answer
+}
+
+fn command(s: &mut State, data: &Path, args: &[String]) -> Value {
     let done = |r: std::io::Result<()>| match r {
         Ok(()) => json!({"ok": true}),
         Err(e) => json!({"ok": false, "error": e.to_string()}),
     };
     match (args.get(1).map(String::as_str), args.get(2)) {
-        (Some("status"), None) => status(&s, data),
+        (Some("status"), None) => status(s, data),
         (Some("on"), None) => done(
             fs::create_dir_all(data.join("remote"))
                 .and_then(|()| brigadier_core::write_atomic(&data.join("remote/on"), b"on")),
@@ -354,16 +375,17 @@ pub(super) fn cli(data: &Path, args: &[String]) -> Value {
         (Some("awake"), Some(off)) if args.len() == 3 && off == "off" => {
             done(remove(&data.join("remote-awake")))
         }
-        (Some("offer"), None) => offer(&mut s, data),
-        (Some("allow"), None) => answer(&mut s, true),
-        (Some("deny"), None) => answer(&mut s, false),
-        (Some("revoke"), Some(device)) => revoke(&mut s, data, device),
+        (Some("offer"), None) => offer(s, data),
+        (Some("allow"), None) => answer(s, true),
+        (Some("deny"), None) => answer(s, false),
+        (Some("revoke"), Some(device)) => revoke(s, data, device),
         (Some("device"), Some(id)) if args.len() == 6 && args[3] == "power" => {
             super::powers::set(data, id, &args[4], &args[5])
         }
         (Some("log"), Some(device)) if args.len() == 3 => super::powers::entries(data, device),
+        (Some("relay"), Some(_)) => super::relay::set(data, args),
         _ => {
-            json!({"ok": false, "error": "usage: remote status|on|off|awake on|off|offer|allow|deny|revoke <device>|device <id> power <p> on|off|log <device>"})
+            json!({"ok": false, "error": "usage: remote status|on|off|awake on|off|offer|allow|deny|revoke <device>|device <id> power <p> on|off|log <device>|relay off|hosted|own <url>"})
         }
     }
 }

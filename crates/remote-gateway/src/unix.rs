@@ -3,8 +3,11 @@
 //! the TCP listener the daemon bound. It holds no keys and parses nothing: it passes each peer's
 //! length-prefixed messages (2-byte length, as Noise frames them) to the daemon as
 //! `[stream u32][kind u8][len u16][bytes]`, and the daemon's back, dropping any peer that isn't
-//! on a private, link-local or Tailscale address before a byte reaches the daemon. It ends when
-//! the daemon does.
+//! on a private, link-local or Tailscale address before a byte reaches the daemon. It also keeps
+//! the one outbound socket to the relay the daemon names (`relay`). It ends when the daemon does.
+
+#[path = "relay.rs"]
+mod relay;
 
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
@@ -35,7 +38,7 @@ pub fn main() {
         let (daemon, peers) = (daemon.clone(), peers.clone());
         thread::spawn(move || accept(listener, &daemon, &peers));
     }
-    let _ = from_daemon(reader, &peers);
+    let _ = from_daemon(reader, &peers, &daemon);
     // The daemon is gone: so is everything it was carrying.
     std::process::exit(0);
 }
@@ -56,6 +59,9 @@ fn near(ip: IpAddr) -> bool {
 }
 
 fn send(daemon: &Daemon, stream: u32, kind: u8, bytes: &[u8]) -> io::Result<()> {
+    if bytes.len() > usize::from(u16::MAX) {
+        return Err(io::ErrorKind::InvalidData.into());
+    }
     let mut frame = Vec::with_capacity(7 + bytes.len());
     frame.extend(stream.to_be_bytes());
     frame.push(kind);
@@ -102,13 +108,18 @@ fn from_peer(mut conn: TcpStream, id: u32, daemon: &Daemon) -> io::Result<()> {
     }
 }
 
-fn from_daemon(mut daemon: UnixStream, peers: &Peers) -> io::Result<()> {
+fn from_daemon(mut from: UnixStream, peers: &Peers, daemon: &Daemon) -> io::Result<()> {
     let mut head = [0; 7];
+    let relay = relay::Relay::default();
     loop {
-        daemon.read_exact(&mut head)?;
+        from.read_exact(&mut head)?;
         let id = u32::from_be_bytes(head[..4].try_into().unwrap());
         let mut bytes = vec![0; u16::from_be_bytes([head[5], head[6]]) as usize];
-        daemon.read_exact(&mut bytes)?;
+        from.read_exact(&mut bytes)?;
+        if id == 0 || id & relay::TOP != 0 {
+            relay::from_daemon(&relay, id, head[4], bytes, daemon);
+            continue;
+        }
         let mut peers = peers.lock().unwrap();
         match head[4] {
             DATA => {

@@ -34,7 +34,7 @@ pub(super) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
+pub(super) fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
     fs::create_dir_all(path.parent().unwrap_or(path))?;
     brigadier_core::write_atomic(path, bytes)?;
     fs::set_permissions(path, Permissions::from_mode(0o600))

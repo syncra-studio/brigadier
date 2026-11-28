@@ -17,6 +17,7 @@ mod link;
 mod pair;
 mod power;
 mod powers;
+mod relay;
 mod rows;
 
 use serde_json::Value;
@@ -50,6 +51,7 @@ struct State {
     pending: Option<pair::Pending>,
     warning: Option<&'static str>,
     sessions: HashMap<String, devices::Session>,
+    relay: relay::Relay,
     /// Revoked devices whose files are removed again for a while: when revoked, last tried.
     forgetting: HashMap<String, (Instant, Instant)>,
 }
@@ -99,10 +101,12 @@ impl Remote {
             let mut s = STATE.lock().unwrap();
             (s.live, s.out, s.offer, s.pending) = (None, None, None, None);
             s.streams.clear();
+            relay::reset(&mut s);
         }
         if let Some(running) = &mut self.gateway {
             let mut s = STATE.lock().unwrap();
             link::tick(&mut s);
+            relay::pass(&mut s, data);
             let open = s.offer.as_ref().is_some_and(pair::Offer::open);
             if open != running.open {
                 running.bonjour.update(&bonjour::txt(&s.public, open));

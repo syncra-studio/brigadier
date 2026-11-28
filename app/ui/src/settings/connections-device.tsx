@@ -101,7 +101,7 @@ function Powers({ device, powers, load }: { device: Device; powers: Record<Power
             <span className="shrink-0 text-quiet-foreground tabular-nums">
               {new Date(entry.at).toLocaleDateString([], { month: "short", day: "numeric" })} {clock(entry.at)}
             </span>
-            <span className="shrink-0 text-quiet-foreground">{LABEL[entry.power] ?? entry.power}</span>
+            <span className="shrink-0 text-quiet-foreground">{LABEL[entry.power] ?? "File"}</span>
             {/* Whole and unshortened, as the phone showed it before Face ID. */}
             <code className="min-w-0 font-mono break-all whitespace-pre-wrap">{entry.argv.map((arg) => (/^[\w@%+=:,./!-]+$/.test(arg) ? arg : JSON.stringify(arg))).join(" ")}</code>
           </div>
