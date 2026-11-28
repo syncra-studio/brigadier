@@ -312,6 +312,16 @@ pub fn end(tree: &[(i32, u64)], grace: Duration) {
     left().iter().for_each(|&&(p, s)| procs::kill_checked(p, s));
 }
 
+/// Windows' console host, which a console program started without a console gets as its child:
+/// it ends with that console, so it's never a helper or a job.
+fn console(p: &procs::Proc) -> bool {
+    let name = |e: std::path::PathBuf| {
+        e.file_name()
+            .is_some_and(|n| n.eq_ignore_ascii_case("conhost.exe"))
+    };
+    cfg!(windows) && procs::exe(p.pid).is_some_and(name)
+}
+
 /// `dir`: the session's own folder.
 pub fn live(fold: &Fold, owner: Owner, dir: &Path, all: &[procs::Proc]) -> Live {
     let child = fold
@@ -322,12 +332,17 @@ pub fn live(fold: &Fold, owner: Owner, dir: &Path, all: &[procs::Proc]) -> Live 
     let running_below = child.map_or(0, |c| {
         procs::descendants(all, c.pid)
             .iter()
-            .filter(|p| !p.stopped)
+            .filter(|p| !p.stopped && !console(p))
             .count()
     });
     let members: usize = live_groups(fold, all)
         .iter()
-        .map(|&&(g, s, _)| procs::group(all, g, s).len())
+        .map(|&&(g, s, _)| {
+            procs::group(all, g, s)
+                .iter()
+                .filter(|p| !console(p))
+                .count()
+        })
         .sum();
     let mine = crate::background::proven(dir, fold, all);
     let left = left_running(fold, all, child.map(|c| c.pid), &mine, dir);
