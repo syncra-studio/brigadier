@@ -962,7 +962,7 @@ const st = StyleSheet.create({
   ruled: { borderTopWidth: 1, borderTopColor: color.border },
   card: { gap: 4, padding: 8, borderRadius: size.radiusComposer, backgroundColor: color.composer, boxShadow: color.composerGlow },
   // overnight.css `night-sky`: the page's darkest fill, a violet glow from the end corner and a blue one from the start.
-  night: { backgroundColor: color.surfaceUnder, boxShadow: `inset 0 0 0 1px ${color.picked}`, experimental_backgroundImage: "radial-gradient(ellipse at top right, rgba(177,151,252,0.34), transparent 360px), radial-gradient(ellipse at bottom left, rgba(2,133,255,0.34), transparent 320px)" },
+  night: { backgroundColor: color.surfaceUnder, boxShadow: `inset 0 0 0 1px ${color.picked}`, experimental_backgroundImage: color.nightSky },
   shell: { boxShadow: `${color.composerGlow}, 0 0 0 1px ${color.link}` },
   input: { ...text.base, color: color.foreground, minHeight: size.composer, paddingHorizontal: 8, paddingTop: 10, paddingBottom: 10 },
   mono: { fontFamily: mono, paddingLeft: 36 },
@@ -989,7 +989,7 @@ const st = StyleSheet.create({
   cardTitle: { ...text.sm, color: color.foreground },
   cardDetail: { ...text.xs, color: color.mutedForeground },
   remove: { position: "absolute", top: 6, right: 6, width: size.iconMd, height: size.iconMd, borderRadius: size.iconMd / 2, backgroundColor: color.foreground, alignItems: "center", justifyContent: "center", zIndex: 1 },
-  viewer: { flex: 1, backgroundColor: "#000" },
+  viewer: { flex: 1, backgroundColor: color.viewer },
   done: { alignSelf: "flex-end", padding: 16 },
   doneText: { ...text.base, fontWeight: "600", color: color.primary },
   going: { alignSelf: "flex-end", maxWidth: "85%", gap: 4, borderRadius: 16, backgroundColor: color.bubble, padding: 12 },

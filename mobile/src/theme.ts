@@ -36,6 +36,15 @@ export const color = {
   cyan: "#24c1c9", // --color-ansi-cyan, oklch(0.74 0.12 200): an MCP server or prompt
   violet: "#b197fc", // --color-tile-violet: Overnight's moon
   ring: "#0285ff", // --color-ring
+  // The phone's own: the unread dot, a connected Mac's dot, a diff's added and removed lines, a picked option,
+  // the image viewer's backdrop and the night sky behind Overnight's composer.
+  unread: "#339cff",
+  online: "#3fb950",
+  added: "rgba(84,206,136,0.15)",
+  removed: "rgba(255,103,100,0.15)",
+  optionOn: "rgba(255,255,255,0.16)",
+  viewer: "#000",
+  nightSky: "radial-gradient(ellipse at top right, rgba(177,151,252,0.34), transparent 360px), radial-gradient(ellipse at bottom left, rgba(2,133,255,0.34), transparent 320px)",
 };
 
 // The composer's sizes (theme.css --spacing-*, --radius-*).

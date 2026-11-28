@@ -4,6 +4,7 @@ set -u
 cd "$(git rev-parse --show-toplevel)"
 
 THEME="app/ui/src/theme.css"
+PHONE_THEME="mobile/src/theme.ts"
 AGENTS_MAX_BYTES=2050
 # The line every session loads [D2025].
 AGENT_LINE="crates/core/src/agent-line.txt"
@@ -44,7 +45,9 @@ done < <(files | grep -E '\.(rs|ts|tsx)$')
 
 check "import of a banned package" '@assistant-ui|@tauri-apps' . ':!scripts/limits'
 
-not_theme=("${WEB[@]}" ":!$THEME")
+not_theme=("${WEB[@]}" ":!$THEME" ":!$PHONE_THEME")
+# The iPhone app has no CSS or Tailwind: React Native styles through style=.
+not_phone=("${not_theme[@]}" ":!mobile/")
 check "raw colour outside the theme file" \
   '#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})([^0-9a-zA-Z_-]|$)|0x[0-9a-fA-F]{6,8}([^0-9a-fA-F]|$)|(^|[^a-zA-Z0-9_-])(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\(' \
   "${not_theme[@]}"
@@ -53,16 +56,16 @@ check "named colour outside the theme file" \
   "${not_theme[@]}"
 check "raw length in CSS outside the theme file" \
   '(^|[^a-zA-Z0-9_#-])[0-9]*\.?[0-9]+(px|rem|em|ex|ch|cap|ic|lh|rlh|vw|vh|vi|vb|vmin|vmax|svw|svh|lvw|lvh|dvw|dvh|cqw|cqh|cqi|cqb|cqmin|cqmax|cm|mm|q|Q|in|pt|pc|%)([^a-zA-Z0-9_-]|$)' \
-  '*.css' ":!$THEME"
+  '*.css' ":!$THEME" ":!mobile/"
 check "Tailwind bracket value" \
   '[a-zA-Z0-9]-\[[^] ]*\]|[a-zA-Z0-9]-\(--|\[&[^] ]*\]|[@*]\[[^] ]*\]|\[--?[a-zA-Z-]+:[^] ]+\]|\[[a-z]+(-[a-z]+)*:[^] ]+\]' \
-  "${not_theme[@]}"
+  "${not_phone[@]}"
 check "colour with an opacity suffix outside the theme file" \
   '(^|[^a-zA-Z0-9_-])(bg|text|border(-[xytrblse])?|ring|ring-offset|inset-ring|outline|fill|stroke|from|via|to|shadow|inset-shadow|divide|placeholder|caret|accent|decoration)-[a-z][a-z0-9-]*/([0-9]|\(|\[)' \
-  "${not_theme[@]}"
+  "${not_phone[@]}"
 check "inline style value" \
   '(^|[^a-zA-Z0-9_-])style=|\.style([^a-zA-Z0-9_]|$)|<style|\.setProperty\(|\.cssText' \
-  "${not_theme[@]}"
+  "${not_phone[@]}"
 
 # What every agent loads at start: AGENTS.md and the two files it imports.
 agents_bytes="$(cat AGENTS.md CONTRIBUTING.md ARCHITECTURE.md | wc -c)"

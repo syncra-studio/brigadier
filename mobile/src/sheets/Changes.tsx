@@ -110,7 +110,7 @@ function FileView({ id, scope, review, file, onBack }: { id: string; scope: Scop
               <View>
                 <Text style={{ fontFamily: mono, fontSize: 12, lineHeight: 17, color: color.mutedForeground, paddingHorizontal: 8 }}>{hunk.header}</Text>
                 {lineDiff(old, now).map(([mark, line], at) => (
-                  <Text key={at} style={{ fontFamily: mono, fontSize: 12, lineHeight: 17, paddingHorizontal: 8, color: color.foreground, backgroundColor: mark === "+" ? "rgba(84,206,136,0.15)" : mark === "-" ? "rgba(255,103,100,0.15)" : undefined }}>
+                  <Text key={at} style={{ fontFamily: mono, fontSize: 12, lineHeight: 17, paddingHorizontal: 8, color: color.foreground, backgroundColor: mark === "+" ? color.added : mark === "-" ? color.removed : undefined }}>
                     {mark} {line}
                   </Text>
                 ))}

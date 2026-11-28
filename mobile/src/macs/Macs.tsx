@@ -26,7 +26,7 @@ export function Macs({ macs, status, onConnect, onForget, onAdd }: {
         return (
           <View key={mac.pk} style={styles.row}>
             <Text style={styles.name}>
-              <Text style={{ color: s === "connected" ? "#3fb950" : color.mutedForeground }}>● </Text>
+              <Text style={{ color: s === "connected" ? color.online : color.mutedForeground }}>● </Text>
               {mac.name}
             </Text>
             <Text style={styles.status}>{said(s)}</Text>

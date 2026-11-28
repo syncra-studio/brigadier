@@ -295,7 +295,7 @@ const st = StyleSheet.create({
   title: { ...text.base, fontWeight: "500", color: color.foreground },
   detail: { ...text.sm, color: color.mutedForeground },
   option: { flexDirection: "row", gap: 10, borderRadius: 10, backgroundColor: color.fill, paddingHorizontal: 12, paddingVertical: 8 },
-  optionOn: { backgroundColor: "rgba(255,255,255,0.16)" },
+  optionOn: { backgroundColor: color.optionOn },
   number: { ...text.sm, minWidth: 14, color: color.mutedForeground },
   label: { ...text.sm, color: color.foreground },
   recommended: { fontSize: 12, color: color.mutedForeground },
