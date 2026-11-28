@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 
+import { store as sharedStore } from "../../../shared/store";
 import { ask } from "../daemon";
 
 /** A CLI command through the daemon [D40]; the reply's `error` (or `message`) on failure. */
@@ -82,21 +83,8 @@ export const errorText = (cause: unknown) => (cause instanceof Error ? cause.mes
 
 type Store<T> = { get: () => T; set: (next: T) => void; use: () => T; subscribe: (listener: () => void) => () => void };
 export function store<T>(initial: T): Store<T> {
-  let value = initial;
-  const listeners = new Set<() => void>();
-  const subscribe = (listener: () => void) => {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
-  };
-  return {
-    get: () => value,
-    set(next) {
-      value = next;
-      for (const listener of listeners) listener();
-    },
-    use: () => useSyncExternalStore(subscribe, () => value),
-    subscribe,
-  };
+  const shared = sharedStore(initial);
+  return { ...shared, use: () => useSyncExternalStore(shared.subscribe, shared.get) };
 }
 
 /** One agent as Rust checked it [D45]: each adapter says how it is found, installed and signed in. */
