@@ -2316,12 +2316,14 @@ async function agentCheck() {
 // (%APPDATA%\\npm, OpenCode's npm shim resolved to its exe), elsewhere OpenCode's own ~/.opencode/bin.
 async function npmFind() {
   freshData('npmfind')
+  const home = `${DATA}/home`
+  fs.mkdirSync(home, { recursive: true })
   const appdata = `${DATA}/appdata`
-  const exe = WIN ? `${appdata}/npm/node_modules/@opencode/cli/bin/opencode.exe` : `${process.env.HOME}/.opencode/bin/opencode`
+  const exe = WIN ? `${appdata}/npm/node_modules/@opencode/cli/bin/opencode.exe` : `${home}/.opencode/bin/opencode`
   fs.mkdirSync(path.dirname(exe), { recursive: true })
   fs.copyFileSync(`${BIN}/brigadier-fake${EXE}`, exe)
   if (WIN) fs.writeFileSync(`${appdata}/npm/opencode.cmd`, '@ECHO off\r\n"%dp0%\\node_modules\\@opencode\\cli\\bin\\opencode.exe"   %*\r\n')
-  const r = await cliAsync(['agents'], { APPDATA: appdata.replaceAll('/', path.sep) })
+  const r = await cliAsync(['agents'], { HOME: home, USERPROFILE: home, APPDATA: appdata.replaceAll('/', path.sep) })
   const found = r.agents?.find((a) => a.name === 'opencode')?.path ?? null
   const norm = (p) => p && fs.realpathSync.native(p).toLowerCase()
   log({ summary: 'npmfind', pass: !!found && norm(found) === norm(exe), found, want: exe, error: r.error ?? null })
@@ -2332,16 +2334,16 @@ async function npmFind() {
 // as a faked hosts.yml with its active login and one more: onboarding's GitHub card names both. Needs gh installed.
 async function ghLogins() {
   freshData('ghlogins')
+  const home = `${DATA}/home`
+  fs.mkdirSync(home, { recursive: true })
   const appdata = `${DATA}/appdata`
-  const dir = WIN ? `${appdata}/GitHub CLI` : `${process.env.HOME}/.config/gh`
+  const dir = WIN ? `${appdata}/GitHub CLI` : `${home}/.config/gh`
   fs.mkdirSync(dir, { recursive: true })
   delete process.env.GH_CONFIG_DIR
-  // wx: a scratch HOME's own gh sign-in is never overwritten.
   fs.writeFileSync(`${dir}/hosts.yml`, 'github.com:\n    users:\n        drill-a:\n        drill-b:\n    git_protocol: https\n    user: drill-a\n', { flag: 'wx' })
-  const r = await cliAsync(['forges'], { APPDATA: appdata.replaceAll('/', path.sep) })
+  const r = await cliAsync(['forges'], { HOME: home, USERPROFILE: home, APPDATA: appdata.replaceAll('/', path.sep) })
   const card = r.forges?.find((f) => f.name === 'github')
   log({ summary: 'ghlogins', pass: JSON.stringify(card?.logins) === '["drill-a","drill-b"]', cli: card?.cli ?? null, logins: card?.logins ?? null, error: r.error ?? null })
-  if (!WIN) fs.rmSync(`${dir}/hosts.yml`)
   if (process.env.KEEP !== '1') drop(DATA)
 }
 
