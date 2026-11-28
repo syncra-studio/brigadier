@@ -7,6 +7,7 @@ use crate::owner;
 mod find;
 mod marks;
 mod search;
+mod store;
 use brigadier_core::fold::{self, Owner};
 use brigadier_core::{self as core, Folded, adapters, projects};
 use brigadier_frames::{log, procs, take_lock};
@@ -19,6 +20,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, io};
+use store::{fold_into, reset};
 
 /// Bumped with any change to the tables. Together with the normaliser's version it decides
 /// whether `index.db` is still ours, or is deleted and rebuilt from the logs.
@@ -149,7 +151,7 @@ impl Index {
             .filter(|id| ids.binary_search(id).is_err())
             .cloned()
             .collect();
-        let (mut changed, mut commits, mut resets) = (vec![], vec![], vec![]);
+        let mut changed = vec![];
         for id in ids.iter().filter(|id| core::check_id(id).is_ok()) {
             let dir = core::session_dir(&self.data, id);
             let meta = fs::metadata(dir.join("log")).ok();
@@ -168,54 +170,14 @@ impl Index {
             self.looked.insert(id.clone());
             if len < e.done.pos {
                 *e = Entry::default(); // the log was replaced: start over, old text included
-                resets.push(id.clone());
-            }
-            if len != e.seen_len {
-                // A fork's inherited copy goes in with its first pass.
-                let mut texts: Vec<Row> = match e.done.pos {
-                    0 => core::archive::inherited(&dir)
-                        .into_iter()
-                        .map(row)
-                        .collect(),
-                    _ => vec![],
-                };
-                let mut title = e.title.clone();
-                let mut rewound = false;
-                let mut summary =
-                    (e.done.fold.turns.first()).is_some_and(|t| t.origin == "summary");
-                let folded = core::fold_from(&dir, e.done.clone(), |item| {
-                    rewound |= item["kind"] == "note" && item["event"] == "rewound";
-                    let skip = core::archive::summary(item, &mut summary);
-                    let entry = core::archive::entry(item, core::archive::at(item));
-                    if let Some(entry) = entry.filter(|_| !skip) {
-                        if entry.from == "user" && title.is_empty() {
-                            title = crate::title::from(&entry.text);
-                        }
-                        texts.push(row(entry));
-                    }
-                });
-                e.seen_len = len;
-                match folded {
-                    Ok(f) if f.norm.clean() => {
-                        // A rewind takes its dropped words out of search, however late it's read.
-                        if rewound {
-                            texts = core::archive::read(&dir)
-                                .unwrap_or_default()
-                                .into_iter()
-                                .map(row)
-                                .collect();
-                            resets.push(id.clone());
-                        }
-                        core::keep(&dir, &f);
-                        e.title = title;
-                        e.done = f;
-                        e.ahead = None;
-                        e.error = None;
-                        commits.push((id.clone(), texts));
-                    }
-                    Ok(f) => e.ahead = Some(f),
-                    Err(err) => e.error = Some(err.to_string()),
+                if let Err(err) = reset(&mut self.db, id) {
+                    return Err(self.recover(err));
                 }
+            }
+            if len != e.seen_len
+                && let Err(err) = fold_into(&mut self.db, id, &dir, e, len)
+            {
+                return Err(self.recover(err));
             }
             let f = e.ahead.as_ref().unwrap_or(&e.done);
             let live = fold::live(&f.fold, owner::state(&self.data, id), &dir, &all);
@@ -385,23 +347,25 @@ impl Index {
             self.entries.remove(id);
             self.rows.remove(id);
         }
-        if let Err(e) = self.write(&changed, &commits, &resets, &gone) {
-            // Nothing of this pass was stored: carry on from what was, so the next pass redoes it.
-            self.entries = load(&self.db).map_err(db_err)?;
-            self.rows.clear();
-            return Err(db_err(e));
+        if let Err(e) = self.write(&changed, &gone) {
+            return Err(self.recover(e));
         }
         Ok((changed, gone))
     }
 
-    fn write(
-        &mut self,
-        changed: &[Value],
-        commits: &[(String, Vec<Row>)],
-        resets: &[String],
-        gone: &[String],
-    ) -> rusqlite::Result<()> {
-        if changed.is_empty() && commits.is_empty() && resets.is_empty() && gone.is_empty() {
+    /// A write failed: carry on from what was stored, each session's fold with its text, so the
+    /// next pass redoes the rest.
+    fn recover(&mut self, e: rusqlite::Error) -> io::Error {
+        match load(&self.db) {
+            Ok(entries) => self.entries = entries,
+            Err(e) => return db_err(e),
+        }
+        self.rows.clear();
+        db_err(e)
+    }
+
+    fn write(&mut self, changed: &[Value], gone: &[String]) -> rusqlite::Result<()> {
+        if changed.is_empty() && gone.is_empty() {
             return Ok(());
         }
         let tx = self.db.transaction()?;
@@ -414,23 +378,6 @@ impl Index {
                         row["backend"].as_str(), row["updated"].as_i64(), row["items"].as_i64(),
                         !matches!(row["archived"], Value::Null | Value::Bool(false))],
             )?;
-        }
-        for id in resets {
-            tx.execute("DELETE FROM text WHERE id=?1", params![id])?;
-        }
-        for (id, texts) in commits {
-            let blob = serde_json::to_vec(&self.entries[id].done).unwrap_or_default();
-            tx.execute(
-                "UPDATE sessions SET folded=?2 WHERE id=?1",
-                params![id, blob],
-            )?;
-            // Parsed once, not per row: a cold rebuild inserts millions [D52].
-            let mut insert = tx.prepare_cached(
-                "INSERT INTO text(id, at, src, ts, body, files) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
-            )?;
-            for (at, src, ts, body, files) in texts {
-                insert.execute(params![id, at, src, *ts as i64, body, files])?;
-            }
         }
         for id in gone {
             tx.execute("DELETE FROM sessions WHERE id=?1", params![id])?;
