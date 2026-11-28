@@ -4,7 +4,7 @@ import { daemonRun, failure } from "../session/composer";
 import { type Draft, EMPTY_DRAFT, isEmpty, plainText } from "../components/composer/draft";
 import { draftOf, HOME_DRAFT, keepDraft, loadDraft, moveDraft, oldProject, resyncDraft, revOf, takeBack } from "../session/draft";
 import { adopt, draftArgs, keep } from "../session/sent";
-import { flagOf, forget, goingOf, type Going, keptOf, UNCONFIRMED } from "../session/uncertain";
+import { flagOf, forget, goingOf, type Going, keptOf, UNCONFIRMED, went } from "../session/uncertain";
 import { dropTiles } from "../session/files";
 import type { ModelChoice } from "../components/composer/model-picker";
 import type { PermissionLevel } from "../components/composer/pickers";
@@ -218,7 +218,7 @@ function land(id: string, reply: Record<string, any>): void {
   const key = entry.draft ?? HOME_DRAFT;
   // Rust's book has it now, or what came of it: the app's copy goes. An error before the book took it (its lock,
   // its write) says neither: the copy stays for Try again, as a session's send keeps its own (sent.tsx).
-  const owned = reply.ok || reply.given_back || reply.unsettled === true || reply.logged !== undefined || reply.went || reply.result === "went" || reply.result === "settled";
+  const owned = reply.ok || reply.given_back || reply.unsettled === true || reply.logged !== undefined || went(reply);
   if (!entry.fork && owned) forget(key, entry.cid);
   if (reply.given_back) {
     // Its session is gone, Rust says: its words and files are the draft's again, over what's typed there since.
@@ -230,7 +230,7 @@ function land(id: string, reply: Record<string, any>): void {
     return;
   }
   // In its session's log already, or settled: the session's own row and recover take over [D54].
-  if (reply.went || reply.result === "went" || reply.result === "settled") return put(id, null);
+  if (went(reply)) return put(id, null);
   // A fork answers with its session once it holds all it needs [D35].
   const result = (reply.result ?? (reply.ok && reply.session ? "delivered" : undefined)) as string | undefined;
   if (result === "delivered") {

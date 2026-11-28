@@ -10,7 +10,9 @@ import { type Chip, type Draft, EMPTY_DRAFT, plainText } from "../../../app/shar
 import { baseBranches, type RepoInfo } from "../../../app/shared/rows";
 import { asGroups, type ModelChoice, type ModelGroup, type ModelRow } from "../../../app/shared/session/model";
 import { failure } from "../../../app/shared/session/run";
-import { flagOf, type Going, UNCONFIRMED } from "../../../app/shared/session/uncertain";
+import { flagOf, type Going, UNCONFIRMED, went } from "../../../app/shared/session/uncertain";
+import { HOME_DRAFT } from "../../../app/shared/session/draft";
+import { sessionId } from "../../../app/shared/session/side";
 import { Confirm } from "../act/Confirm";
 import { streamNow } from "../link";
 import { ArrowUp, Bolt, Branch } from "../../../app/ui/src/icons";
@@ -45,12 +47,10 @@ const filesOf = (draft: Pick<Draft, "parts" | "attachmentIds"> | undefined): Fil
   ids: draft?.attachmentIds ?? [],
 });
 
-/** A new session's id, made here as the desktop makes it, so the start can be asked again under it. */
-export const sessionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
 export function Start({ project, name, onStarted }: { project: string; name: string; onStarted: (id: string, title: string) => void }) {
   const { run, drafts, unsaved, uncertain } = forMac();
-  const key = `@home:${project}`;
+  const key = `${HOME_DRAFT}:${project}`;
   const header = useHeaderHeight();
   const { height } = useWindowDimensions();
   const conn = useSyncExternalStore(lists.subscribe, () => (lists.get().ready ? streamNow() : -1));
@@ -182,7 +182,7 @@ export function Start({ project, name, onStarted }: { project: string; name: str
       // A Discard's give-back is no refusal: nothing to say then.
       return setError(reply.message || reply.error ? failure(reply) : null);
     }
-    const delivered = reply.result === "delivered" || (reply.ok && reply.result === undefined) || reply.went || reply.result === "went" || reply.result === "settled";
+    const delivered = reply.result === "delivered" || (reply.ok && reply.result === undefined) || went(reply);
     // In its session's log, its agent not confirming it, or refusing it: the session shows how it went.
     const logged = reply.result === "logged" || reply.logged === true;
     if (delivered || logged) uncertain.forget(key, cid);

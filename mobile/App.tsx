@@ -35,7 +35,7 @@ const POWER_SHEETS: Record<string, { title: string; body?: string; shown: string
   "power-shell": shellPower("s1", 'npm test -- --watch=false && rm -rf "build/tmp"', "c-1"),
   "power-full": { ...FULL_ACCESS, args: ["level", "s1", "full", "--op", "o1"] },
   "power-overnight": { ...nightWords("start", false), shown: "Fix the failing login test", args: ["overnight", "s1", "start", "--op", "o1"] },
-  "start-confirm": { title: "Start this chat on your Mac?", body: "In brigadier, on Opus 4.5 High.", shown: "Add a dark mode switch to Settings, and remember the choice", args: [] },
+  "start-confirm": { title: "Start this chat on your Mac?", body: "In brigadier, on Opus 4.5, High.", shown: "Add a dark mode switch to Settings, and remember the choice", args: [] },
   "power-view": { ...VIEW_WORDS, shown: "/private/tmp/screenshots/login-page.png", args: ["attach", "s1", "view", "/private/tmp/screenshots/login-page.png"] },
 };
 const powers = sample === "powers" || (sample !== null && sample in POWER_SHEETS);

@@ -8,7 +8,7 @@ import { FORK_FILES, FORK_REPO_FILES } from "../../../app/shared/words";
 import { Confirm } from "../act/Confirm";
 import { forMac } from "../compose/state";
 import { lists } from "../mac/mac";
-import { sessionId } from "../start/Start";
+import { sessionId } from "../../../app/shared/session/side";
 
 /** What Rust's check offers on an answer; `worktree` null in a chat with no project, which forks its conversation only. */
 type Offer = { at: string; worktree: "snapshot" | "none" | "gone" | "sourceGone" | "repos" | null; repos?: { name: string; files: "snapshot" | "none" | "gone" | "later" }[]; fingerprint: string };

@@ -49,6 +49,8 @@ export function flagOf(op: readonly string[], name: string): string | undefined 
 
 /** Why one Rust's book holds isn't on its way: no reply said where it is. */
 export const UNCONFIRMED = "it couldn't be confirmed";
+/** A start Rust answers is in its session's log already, or settled: the session's own row takes over [D54]. */
+export const went = (reply: Record<string, any>): boolean => Boolean(reply.went) || reply.result === "went" || reply.result === "settled";
 
 /**
  * One Mac's messages on their way, kept under `prefix` [D58]: the desktop's one Mac `brigadier.uncertain.`, a phone's
