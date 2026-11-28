@@ -8,9 +8,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { type Chip, type Draft, EMPTY_DRAFT, plainText } from "../../../app/shared/draft";
 import { baseBranches, type RepoInfo } from "../../../app/shared/rows";
-import { asGroups, type ModelChoice, type ModelGroup, type ModelRow } from "../../../app/shared/session/model";
+import { asGroups, latestOf, type ModelChoice, type ModelGroup, type ModelRow, startModel } from "../../../app/shared/session/model";
 import { failure } from "../../../app/shared/session/run";
-import { flagOf, type Going, UNCONFIRMED, went } from "../../../app/shared/session/uncertain";
+import { flagOf, type Going, loggedWhy, startOutcome, UNCONFIRMED } from "../../../app/shared/session/uncertain";
 import { HOME_DRAFT } from "../../../app/shared/session/draft";
 import { sessionId } from "../../../app/shared/session/side";
 import { Confirm } from "../act/Confirm";
@@ -20,7 +20,7 @@ import { BrigadierMark } from "../../../app/ui/src/onboarding/mark";
 import { ProviderMark } from "../compose/KindIcons";
 import { COMPOSER_WORDS, effortLabel } from "../../../app/shared/session/composer";
 import { HOME_WORDS } from "../../../app/shared/words";
-import { Link, st as cs } from "../compose/parts";
+import { Link, lostReply, st as cs } from "../compose/parts";
 import { Pill } from "../compose/Pill";
 import { canned, forMac, newId } from "../compose/state";
 import { lists } from "../mac/mac";
@@ -113,13 +113,16 @@ export function Start({ project, name, onStarted }: { project: string; name: str
     if (connected) void run(["models", "--project", project]).then((reply) => reply.ok && setGroups(asGroups(reply.groups)));
   }, [connected]);
   const rows = useSyncExternalStore(lists.subscribe, () => lists.get().rows) as ModelRow[];
-  const last = rows.filter((row) => row.project === project && row.model).sort((a, b) => b.sent - a.sent)[0];
+  // The link gives a project only the Mac's cached list (remote/allow.rs), so once here it counts as the fresh one.
+  const choice = startModel(picked, latestOf(rows, project), groups, groups !== null);
+  // Kept once worked out, as the desktop keeps it in Home's draft: another session's model doesn't move it meanwhile.
+  useEffect(() => {
+    if (choice !== picked) setPicked(choice);
+  }, [choice, picked]);
   const offered = (groups ?? []).filter((group) => !group.unavailable).flatMap((group) => group.models.filter((model) => !model.legacy).map((model) => ({ group, model })));
-  const has = (choice: ModelChoice | null | undefined): choice is ModelChoice => !!choice && (!groups || offered.some(({ group, model }) => group.provider === choice.provider && model.id === choice.model));
-  const lastChoice = last && { provider: last.backend, model: last.model!, effort: last.effort ?? null, fast: last.fast === true };
-  const first = offered[0] && { provider: offered[0].group.provider, model: offered[0].model.id, effort: offered[0].model.defaultEffort ?? null };
-  const choice = [picked, lastChoice, first].find(has) ?? null;
-  const found = (each: ModelChoice) => offered.find(({ group, model }) => group.provider === each.provider && model.id === each.model);
+  // Any available model, so a legacy default still shows its name.
+  const found = (each: ModelChoice) =>
+    (groups ?? []).filter((group) => !group.unavailable).flatMap((group) => group.models.map((model) => ({ group, model }))).find(({ group, model }) => group.provider === each.provider && model.id === each.model);
   // Its words for a screen reader, as the desktop's modelWords: "GPT-5.5, Fast, High".
   const shown = (each: ModelChoice) => [found(each)?.model.name ?? each.model, each.fast ? "Fast" : null, each.effort ? effortLabel(each.effort) : null].filter(Boolean).join(", ");
   const pick = () =>
@@ -173,23 +176,27 @@ export function Start({ project, name, onStarted }: { project: string; name: str
       return;
     }
     setError(null);
-    if (reply.given_back) {
-      // Its session is gone, Rust says: its words are this draft's again, above what's typed, once whichever way they come.
-      if (reply.again || !Array.isArray(reply.parts)) {
+    // The link closed before the Mac answered: the phone can't ask again by itself (each start is signed), so it says so.
+    if (lostReply(reply)) return uncertain.markGoing(key, cid, { stuck: "The connection to your Mac ended before it answered, so it may have started.", booked: entry.booked || reply.unsettled === true || !!reply.session, reached: entry.reached, left: reply.left === true });
+    switch (startOutcome(reply)) {
+      case "back":
+        // Its session is gone, Rust says: its words are this draft's again, above what's typed, once whichever way they come.
+        if (reply.again || !Array.isArray(reply.parts)) {
+          uncertain.forget(key, cid);
+          drafts.resyncDraft(run, key);
+        } else drafts.takeBack(run, key, { cid: reply.cid ?? cid, parts: reply.parts, attachmentIds: reply.attachmentIds ?? [], error: reply.ok ? undefined : failure(reply), typed: reply.typed });
+        // A Discard's give-back is no refusal: nothing to say then.
+        return setError(reply.message || reply.error ? failure(reply) : null);
+      case "went":
+      case "delivered":
         uncertain.forget(key, cid);
-        drafts.resyncDraft(run, key);
-      } else drafts.takeBack(run, key, { cid: reply.cid ?? cid, parts: reply.parts, attachmentIds: reply.attachmentIds ?? [], error: failure(reply), typed: reply.typed });
-      // A Discard's give-back is no refusal: nothing to say then.
-      return setError(reply.message || reply.error ? failure(reply) : null);
+        return onStarted(op[1]!, titleOf(op));
+      // In its session's log, its agent not confirming it: the session shows how it went.
+      case "logged":
+        uncertain.forget(key, cid);
+        return setLanded({ id: op[1]!, title: titleOf(op), error: loggedWhy(reply) });
     }
-    const delivered = reply.result === "delivered" || (reply.ok && reply.result === undefined) || went(reply);
-    // In its session's log, its agent not confirming it, or refusing it: the session shows how it went.
-    const logged = reply.result === "logged" || reply.logged === true;
-    if (delivered || logged) uncertain.forget(key, cid);
-    if (delivered) return onStarted(op[1]!, titleOf(op));
-    if (logged) return setLanded({ id: op[1]!, title: titleOf(op), error: reply.result === "logged" ? String(reply.error ?? "It reached the log, but not the agent.") : String(reply.why ?? failure(reply)) });
-    const why = reply.error === "closed" ? "The connection to your Mac ended before it answered, so it may have started." : String(reply.why ?? failure(reply));
-    uncertain.markGoing(key, cid, { stuck: why, booked: entry.booked || reply.unsettled === true || !!reply.session, reached: reply.error !== "closed" || entry.reached, left: reply.left === true });
+    uncertain.markGoing(key, cid, { stuck: failure(reply), booked: entry.booked || reply.unsettled === true || !!reply.session, reached: reply.unsettled === true, left: reply.left === true });
   };
   /** Discard: Rust takes the start back (`drop`), its words into this draft; one it never had comes back from here. */
   const discard = (entry: Going) => {

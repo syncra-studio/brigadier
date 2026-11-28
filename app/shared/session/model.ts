@@ -131,3 +131,21 @@ export function loadModels(run: Runner, id: string, on: { list: (groups: ModelGr
     on.refreshed?.();
   }, on.failed);
 }
+
+/** A project's newest session (any project's, given none), whose model a new chat there starts on [D129]. */
+export const latestOf = <T extends Pick<Row, "project" | "sent">>(rows: readonly T[], project?: string): T | undefined =>
+  rows.filter((row) => (project ? row.project === project : row.project)).sort((a, b) => b.sent - a.sent)[0];
+
+/**
+ * A new chat's model: the one picked, else `last`'s (never its Fast), else the first an agent offers, one on this
+ * computer first. Only a fresh list can disprove a pick; cache may offer the first one, never replace it [D129].
+ */
+export function startModel(picked: ModelChoice | null | undefined, last: Pick<ModelRow, "backend" | "model" | "effort"> | undefined, groups: readonly ModelGroup[] | null | undefined, fresh: boolean): ModelChoice | null {
+  const has = (choice: ModelChoice | null | undefined): choice is ModelChoice =>
+    Boolean(choice && groups?.some((group) => !group.unavailable && group.provider === choice.provider && group.models.some((each) => each.id === choice.model)));
+  const lastChoice = last?.model ? { provider: last.backend, model: last.model, effort: last.effort ?? null } : null;
+  const offered = groups?.filter((group) => !group.unavailable).flatMap((group) => group.models.map((each) => ({ group, each })));
+  const first = offered?.find(({ each }) => (each as { local?: boolean }).local) ?? offered?.[0];
+  const firstChoice = first && { provider: first.group.provider, model: first.each.id, effort: first.each.defaultEffort ?? null };
+  return fresh ? ([picked, lastChoice, firstChoice].find(has) ?? null) : (picked ?? lastChoice ?? firstChoice ?? null);
+}

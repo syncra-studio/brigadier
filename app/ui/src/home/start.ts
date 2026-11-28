@@ -4,7 +4,7 @@ import { daemonRun, failure } from "../session/composer";
 import { type Draft, EMPTY_DRAFT, isEmpty, plainText } from "../components/composer/draft";
 import { draftOf, HOME_DRAFT, keepDraft, loadDraft, moveDraft, oldProject, resyncDraft, revOf, takeBack } from "../session/draft";
 import { adopt, draftArgs, keep } from "../session/sent";
-import { flagOf, forget, goingOf, type Going, keptOf, UNCONFIRMED, went } from "../session/uncertain";
+import { flagOf, forget, goingOf, type Going, keptOf, loggedWhy, owned, startOutcome, UNCONFIRMED } from "../session/uncertain";
 import { dropTiles } from "../session/files";
 import type { ModelChoice } from "../components/composer/model-picker";
 import type { PermissionLevel } from "../components/composer/pickers";
@@ -12,6 +12,7 @@ import { ask, openThread, type Row, threadSource, useDaemon, useThread } from ".
 import { store } from "../onboarding/api";
 import { type Shown, useProjects } from "../projects/projects";
 import { newId } from "../session/store";
+import { latestOf } from "../../../shared/session/model";
 import { sessionId } from "../../../shared/session/side";
 import { flushChips } from "../panel/chips";
 import { carryHome, CHAT, HOME, isRef, openTab, rereadTabs, selectTab, setHomeTabs, type Tab, tabsSettled, takeTabs } from "../shell/tab-store";
@@ -142,7 +143,7 @@ export async function splitNewChat(projects: Shown[], rows: Row[]): Promise<void
   const words = draftOf(HOME_DRAFT);
   if (!words) return;
   const picked = oldProject(HOME_DRAFT);
-  const latest = rows.filter((row) => row.project).toSorted((a, b) => b.sent - a.sent)[0]?.project;
+  const latest = latestOf(rows)?.project;
   const none = picked === null || (picked === undefined && isEmpty(words) && old.tabs.length === 0);
   const project = none ? undefined : (projects.find((each) => each.id === picked) ?? projects.find((each) => each.id === latest) ?? projects[0])?.id;
   if (project) {
@@ -210,39 +211,37 @@ function put(id: string, change: Partial<Starting> | null): void {
 const reason = (reply: Record<string, any>) => String(reply.message ?? reply.error ?? "Refused");
 const isOpen = (id: string) => window.location.hash === `#thread/${encodeURIComponent(id)}`;
 
-/** A start's or recover's reply, read by its outcome, never by the session merely existing. */
+/** A start's or recover's reply, read by its outcome (app/shared/session/uncertain.ts), never by the session merely existing. */
 function land(id: string, reply: Record<string, any>): void {
   const entry = get(id);
   if (!entry) return;
-  if (reply.error === "disconnected") return put(id, { asking: false, unknown: true });
+  const outcome = startOutcome(reply);
+  if (outcome === "unknown") return put(id, { asking: false, unknown: true });
   const key = entry.draft ?? HOME_DRAFT;
-  // Rust's book has it now, or what came of it: the app's copy goes. An error before the book took it (its lock,
-  // its write) says neither: the copy stays for Try again, as a session's send keeps its own (sent.tsx).
-  const owned = reply.ok || reply.given_back || reply.unsettled === true || reply.logged !== undefined || went(reply);
-  if (!entry.fork && owned) forget(key, entry.cid);
-  if (reply.given_back) {
-    // Its session is gone, Rust says: its words and files are the draft's again, over what's typed there since.
-    if (Array.isArray(reply.parts)) takeBack(daemonRun, key, { cid: entry.cid, parts: reply.parts, attachmentIds: reply.attachmentIds ?? [], error: reply.ok ? undefined : reason(reply), signIn: reply.error === "sign_in", typed: reply.typed });
-    else resyncDraft(daemonRun, key);
-    put(id, null);
-    rereadTabs(key);
-    if (isOpen(id)) newSession(entry.project);
-    return;
+  if (!entry.fork && owned(reply)) forget(key, entry.cid);
+  switch (outcome) {
+    case "back":
+      // Its session is gone, Rust says: its words and files are the draft's again, over what's typed there since.
+      if (Array.isArray(reply.parts)) takeBack(daemonRun, key, { cid: entry.cid, parts: reply.parts, attachmentIds: reply.attachmentIds ?? [], error: reply.ok ? undefined : failure(reply), signIn: reply.error === "sign_in", typed: reply.typed });
+      else resyncDraft(daemonRun, key);
+      put(id, null);
+      rereadTabs(key);
+      if (isOpen(id)) newSession(entry.project);
+      return;
+    // In its session's log already, or settled: the session's own row and recover take over [D54].
+    case "went":
+      return put(id, null);
+    case "delivered":
+      // Kept until Rust's row has it and, when open, its thread has the turn (useStartingRows).
+      put(id, { asking: false, unknown: false, outcome: "delivered", error: undefined });
+      get(id)!.then?.();
+      // It read "not found" before Rust had it: only the open thread is asked again [D40].
+      if (isOpen(id)) openThread(id);
+      return;
+    case "logged":
+      return put(id, { asking: false, unknown: false, outcome: "logged", error: loggedWhy(reply) });
   }
-  // In its session's log already, or settled: the session's own row and recover take over [D54].
-  if (went(reply)) return put(id, null);
-  // A fork answers with its session once it holds all it needs [D35].
-  const result = (reply.result ?? (reply.ok && reply.session ? "delivered" : undefined)) as string | undefined;
-  if (result === "delivered") {
-    // Kept until Rust's row has it and, when open, its thread has the turn (useStartingRows).
-    put(id, { asking: false, unknown: false, outcome: "delivered", error: undefined });
-    get(id)!.then?.();
-    // It read "not found" before Rust had it: only the open thread is asked again [D40].
-    if (isOpen(id)) openThread(id);
-    return;
-  }
-  if (result === "logged") return put(id, { asking: false, unknown: false, outcome: "logged", error: reply.error ? String(reply.error) : "It reached the log, but not the agent." });
-  put(id, { asking: false, unknown: false, error: reason(reply), maybe: reply.unsettled === true, left: reply.left === true, signIn: reply.error === "sign_in" });
+  put(id, { asking: false, unknown: false, error: failure(reply), maybe: reply.unsettled === true, left: reply.left === true, signIn: reply.error === "sign_in" });
   if (!entry.fork) sendFailed(entry.cid);
   rereadTabs(key);
 }

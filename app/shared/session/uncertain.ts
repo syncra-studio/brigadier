@@ -52,6 +52,22 @@ export const UNCONFIRMED = "it couldn't be confirmed";
 /** A start Rust answers is in its session's log already, or settled: the session's own row takes over [D54]. */
 export const went = (reply: Record<string, any>): boolean => Boolean(reply.went) || reply.result === "went" || reply.result === "settled";
 
+/** What came of a start or recover, by Rust's reply, in the desktop's order; never by the session merely existing. */
+export function startOutcome(reply: Record<string, any>): "unknown" | "back" | "went" | "delivered" | "logged" | "refused" {
+  if (reply.error === "disconnected") return "unknown";
+  if (reply.given_back) return "back";
+  if (went(reply)) return "went";
+  // A fork answers with its session once it holds all it needs [D35].
+  const result = reply.result ?? (reply.ok && reply.session ? "delivered" : undefined);
+  return result === "delivered" || result === "logged" ? result : "refused";
+}
+/**
+ * Rust's book has the start now, or what came of it: the app's copy goes. An error before the book took it (its lock,
+ * its write) says neither: the copy stays for Try again, as a session's send keeps its own.
+ */
+export const owned = (reply: Record<string, any>): boolean => Boolean(reply.ok || reply.given_back || reply.unsettled === true || reply.logged !== undefined || went(reply));
+export const loggedWhy = (reply: Record<string, any>) => (reply.error ? String(reply.error) : "It reached the log, but not the agent.");
+
 /**
  * One Mac's messages on their way, kept under `prefix` [D58]: the desktop's one Mac `brigadier.uncertain.`, a phone's
  * each paired Mac its own, so one Mac's records are never read, pruned or sent to another.

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import type { ModelChoice, ModelGroup } from "../components/composer/model-picker";
+import type { ModelGroup } from "../components/composer/model-picker";
 import type { PermissionLevel } from "../components/composer/pickers";
 import { Button } from "../components/button";
 import { ErrorLine } from "../components/error-line";
@@ -19,6 +19,7 @@ import { draftOf, keepDraft, loadDraft } from "../session/draft";
 import { LevelPicker } from "../session/level";
 import { OvernightPill } from "../sessions/overnight-parts";
 import { asGroups, levelsOf } from "../session/model";
+import { latestOf, startModel } from "../../../shared/session/model";
 import { readRouting } from "../settings/routing";
 import { SetUpAgentDialog } from "../session/set-up";
 import { discard, draftKey, pickHomeProject, retry, setHomeDraft, start, useHomeDraft, useHomeProject, useStarting } from "./start";
@@ -44,7 +45,6 @@ export function HomeDraft() {
   const draft = useHomeDraft();
   const key = draftKey(draft);
   const ran = (rows ?? []) as Ran[];
-  const latest = (project?: string) => ran.filter((row) => (project ? row.project === project : row.project)).toSorted((a, b) => b.sent - a.sent)[0];
   // A project added from here is picked once Rust has it (the old app opened its draft).
   const before = useRef<Set<string> | null>(null);
   const added = before.current && projects?.find((each) => !before.current!.has(each.id));
@@ -114,15 +114,7 @@ export function HomeDraft() {
     return () => window.removeEventListener("focus", load);
   }, [missing, daemon, id, trusted]);
 
-  const has = (choice: ModelChoice | null | undefined): choice is ModelChoice =>
-    Boolean(choice && groups?.some((group) => !group.unavailable && group.provider === choice.provider && group.models.some((each) => each.id === choice.model)));
-  const last = latest(project?.id);
-  const lastChoice = last?.model ? { provider: last.backend, model: last.model, effort: last.effort ?? null } : null;
-  const offered = groups?.filter((group) => !group.unavailable).flatMap((group) => group.models.map((each) => ({ group, each })));
-  const first = offered?.find(({ each }) => (each as { local?: boolean }).local) ?? offered?.[0];
-  const firstChoice = first && { provider: first.group.provider, model: first.each.id, effort: first.each.defaultEffort ?? null };
-  // Only a fresh list can disprove a pick; cache may offer the first one, never replace it.
-  const model = fresh ? ([draft.model, lastChoice, firstChoice].find(has) ?? null) : (draft.model ?? lastChoice ?? firstChoice ?? null);
+  const model = startModel(draft.model, latestOf(ran, project?.id), groups, fresh === true);
   useEffect(() => {
     if (model !== draft.model) setHomeDraft({ model });
   }, [model, draft.model]);

@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { uncertainState } from "../../../shared/session/uncertain";
 
-export { flagOf, type Going, UNCONFIRMED, went } from "../../../shared/session/uncertain";
+export { flagOf, type Going, loggedWhy, owned, startOutcome, UNCONFIRMED, went } from "../../../shared/session/uncertain";
 
 /** This Mac's messages on their way (app/shared/session/uncertain.ts), under the key they've always had. */
 export const uncertain = uncertainState("brigadier.uncertain.");
