@@ -29,7 +29,8 @@ pub(super) struct Remote {
 }
 
 impl Remote {
-    pub(super) fn pass(&mut self, _data: &Path) {}
+    pub(super) fn pass(&mut self, _data: &Path, _rows: &std::collections::BTreeMap<String, Value>) {
+    }
 }
 
 pub(super) fn awake(_data: &Path) -> bool {

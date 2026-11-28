@@ -10,6 +10,7 @@ import { Input } from "../components/input";
 import { type Choice, Segmented } from "../components/segmented";
 import { SettingsCard } from "../components/settings-card";
 import { SettingsRow } from "../components/settings-row";
+import { Switch } from "../components/switch";
 import { UsageBar } from "../components/usage-bar";
 import { run } from "../onboarding/api";
 import { useSave } from "./general";
@@ -19,6 +20,9 @@ import { SettingsSection } from "./parts";
 export type Relay = { mode: Mode; url: string | null; ready: boolean; room: string | null; seen: number; closed: number | null; usage: Usage | null };
 
 type Mode = "off" | "hosted" | "own";
+
+/** `remote status`'s push: its own switch, apart from the relay's (relay-wire rev 4). */
+export type Push = { on: boolean };
 
 export const AWAY_ROW = { label: "Away from home", description: "Reach this computer through a relay when your phone isn't on the same Wi-Fi", section: "Away from home" } as const;
 
@@ -55,7 +59,7 @@ function UsageRow({ usage: last }: { usage: Usage }) {
 }
 
 /** Settings › Connections › Away from home: no relay, Brigadier's, or one the user deployed; how its socket is, and its room. `offline`: the daemon's status can't be read now, so the last one isn't shown as current. */
-export function AwaySection({ relay, paired, load, offline }: { relay: Relay; paired: boolean; load: () => Promise<unknown>; offline: boolean }) {
+export function AwaySection({ relay, push, paired, load, offline }: { relay: Relay; push: Push; paired: boolean; load: () => Promise<unknown>; offline: boolean }) {
   // A choice shown before the daemon has it: "own" stays picked until its address is used.
   const [picked, setPicked] = useState<Mode | null>(null);
   // The field follows the daemon's address until it is edited.
@@ -64,6 +68,18 @@ export function AwaySection({ relay, paired, load, offline }: { relay: Relay; pa
   const [asking, setAsking] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const save = useSave();
+  // The switch shows its new place at once, until the daemon's status has it.
+  const [pushing, setPushing] = useState<boolean | null>(null);
+  const pushSave = useSave();
+  const pushOn = pushing ?? push.on;
+  const togglePush = (on: boolean) => {
+    setPushing(on);
+    pushSave.run(() =>
+      run(["remote", "push", on ? "on" : "off"])
+        .then(load)
+        .finally(() => setPushing(null)),
+    );
+  };
   const mode = picked ?? relay.mode;
   const apply = (args: string[]) => {
     setAsking(null);
@@ -112,6 +128,13 @@ export function AwaySection({ relay, paired, load, offline }: { relay: Relay; pa
           <Segmented label="Relay" value={mode} options={MODES} disabled={busy || offline} onChange={choose} />
         </SettingsRow>
         {shown && relay.usage && <UsageRow usage={relay.usage} />}
+        <SettingsRow
+          label="Notifications"
+          description="Paired phones hear when a session needs you or is done, also with the relay off. Only your phone can read them."
+          error={pushSave.error}
+        >
+          <Switch aria-label="Notifications" checked={pushOn} disabled={offline} onCheckedChange={togglePush} />
+        </SettingsRow>
         {mode === "own" && (
           <div className="flex flex-col gap-3 px-4 py-3">
             <ol className="flex list-decimal flex-col gap-1.5 ps-5 text-label">

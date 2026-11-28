@@ -2,6 +2,7 @@
 import Link, { type Mac, type Pass } from "../../modules/link";
 import { ask, close, closeCount, connect, next, send, streamNow } from "../link";
 import { PROTO } from "../../../app/shared/proto";
+import { register } from "../push";
 
 export type Problem =
   | "expired" | "reused" | "denied" | "unreachable" | "noOffer" | "wrongCode"
@@ -47,6 +48,7 @@ async function hello(pk: string): Promise<"ok" | Problem> {
   const r = await ask({ op: "hello", proto: PROTO, build: Link.build });
   if (r.ok) {
     if (r.relay) await Link.relay(pk, r.relay);
+    void register(pk);
     return "ok";
   }
   if (r.error === "proto") return PROTO < r.proto_min ? "updatePhone" : "updateMac";

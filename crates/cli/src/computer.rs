@@ -9,7 +9,7 @@ mod status;
 mod verbs;
 
 pub(crate) use verbs::asks::answered;
-pub use verbs::turn_ended;
+pub use verbs::{ANY, idle, turn_ended};
 pub(crate) use verbs::{HELP, VERBS};
 
 use serde_json::{Value, json};

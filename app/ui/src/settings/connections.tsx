@@ -12,7 +12,7 @@ import { checkWords, codeWords, CONNECTION_WORDS } from "../../../shared/words";
 import { ChatCompose, CheckCircle, Desktop, Reload, Sparkle, Sun } from "../icons";
 import { errorText, run } from "../onboarding/api";
 import { useSave } from "./general";
-import { AWAY_ROW, AwaySection, type Relay } from "./connections-away";
+import { AWAY_ROW, AwaySection, type Push, type Relay } from "./connections-away";
 import { type Device, DeviceRow } from "./connections-device";
 import { SettingsPage, SettingsSection } from "./parts";
 
@@ -36,6 +36,7 @@ type Status = {
   /** null until the daemon can hold the Mac awake for the phone (M5): the toggle hides. */
   awake: boolean | null;
   relay: Relay;
+  push: Push;
 };
 
 /** Where Add is: the card, the Allow question, the QR, the "You're connected" card. The check is the daemon's `pending`. */
@@ -152,7 +153,7 @@ export function ConnectionsPage() {
           </SettingsCard>
         )}
       </SettingsSection>
-      {status && on && <AwaySection relay={status.relay} paired={devices.length > 0} load={load} offline={error !== null} />}
+      {status && on && <AwaySection relay={status.relay} push={status.push} paired={devices.length > 0} load={load} offline={error !== null} />}
       {awakeRow && (
         <SettingsSection title="Other settings">
           <SettingsCard>{awakeRow}</SettingsCard>

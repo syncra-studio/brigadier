@@ -22,6 +22,7 @@ mod window;
 
 use super::{Fail, HUB, lock, tool};
 use crate::agent::refuse;
+pub use act::{ANY, idle};
 use act::{act, key, need, token};
 use apps::{apps, find, menu_path};
 use calls::{UNLOGGED, sent};

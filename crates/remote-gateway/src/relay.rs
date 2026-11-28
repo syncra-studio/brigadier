@@ -19,6 +19,7 @@ use tungstenite::{Message, WebSocket};
 
 pub const RELAY: u8 = 4;
 pub const CONTROL: u8 = 5;
+pub const PUSH: u8 = 6;
 pub const TOP: u32 = 1 << 31;
 const PING: Duration = Duration::from_secs(30);
 /// How long a read waits before the queue of frames for the relay is looked at again.
@@ -46,7 +47,10 @@ pub struct Relay {
 
 /// A frame from the daemon for the relay: a new URL, a control frame, or a phone stream's.
 pub fn from_daemon(relay: &Relay, id: u32, kind: u8, bytes: Vec<u8>, daemon: &super::Daemon) {
-    if id == 0 && kind == RELAY {
+    if id == 0 && kind == PUSH {
+        let daemon = daemon.clone();
+        thread::spawn(move || push(&bytes, &daemon));
+    } else if id == 0 && kind == RELAY {
         // Under the lock an attempt reports its end under, so a replaced one never reports after.
         let mut slot = relay.socket.lock().unwrap();
         let generation = relay.generation.fetch_add(1, Ordering::SeqCst) + 1;
@@ -126,6 +130,47 @@ fn run(
     // `n`: which of the daemon's URLs this was, counting from the first since the gateway started.
     let closed = format!(r#"{{"t":"closed","code":{code},"n":{generation}}}"#);
     let _ = super::send(daemon, 0, CONTROL, closed.as_bytes());
+}
+
+/// One push (relay-wire rev 4): its own socket to the push sender, apart from the relay's, so it
+/// goes with the relay off; the push's text out, the sender's answer back up unread, or a
+/// `pushed` with the close code (0: no answer).
+fn push(bytes: &[u8], daemon: &super::Daemon) {
+    let text = String::from_utf8_lossy(bytes);
+    let Some((url, text)) = text.split_once('\n') else {
+        return;
+    };
+    let answer = (|| -> Result<String, Box<dyn Error>> {
+        let mut ws = connect(url, &|_| true)?.ok_or("no socket")?;
+        ws.send(Message::text(text))?;
+        let until = Instant::now() + DEADLINE;
+        while Instant::now() < until {
+            match ws.read() {
+                Ok(Message::Text(answer)) => {
+                    let _ = ws.close(None);
+                    let _ = ws.flush();
+                    return Ok(answer.to_string());
+                }
+                Ok(Message::Close(f)) => {
+                    let code = f.map_or(0, |f| u16::from(f.code));
+                    return Ok(format!(r#"{{"t":"pushed","code":{code}}}"#));
+                }
+                Ok(_) => {}
+                Err(tungstenite::Error::Io(e))
+                    if matches!(
+                        e.kind(),
+                        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                    ) => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Err("no answer".into())
+    })();
+    let answer = answer.unwrap_or_else(|e| {
+        eprintln!("brigadier-remote: a push: {e}");
+        r#"{"t":"pushed","code":0}"#.into()
+    });
+    let _ = super::send(daemon, 0, PUSH, answer.as_bytes());
 }
 
 /// The socket, or none when `keep` says this attempt was replaced before its handshakes.

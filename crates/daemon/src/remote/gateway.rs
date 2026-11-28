@@ -24,6 +24,8 @@ pub(super) const OPEN: u8 = 1;
 pub(super) const CLOSE: u8 = 2;
 pub(super) const RELAY: u8 = 4;
 pub(super) const CONTROL: u8 = 5;
+/// One push: the push sender's signed URL, a newline and its text down; its answer up.
+pub(super) const PUSH: u8 = 6;
 /// A relay phone stream's id has this bit set.
 pub(super) const TOP: u32 = 1 << 31;
 /// Proposed: a gateway that takes no frame for this long is stuck, and is started again: the

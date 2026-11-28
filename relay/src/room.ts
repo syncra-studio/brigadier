@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { COST_STEP, month, nextMonth, paid, prices } from "./budget";
+import { apns, configured } from "./push";
 import {
   CLOSE,
   DATA,
@@ -46,6 +47,8 @@ type Phone = { mac: false; ok: boolean; stream: number; addr: string; at: number
 type Seat = Mac | Phone;
 
 const HELLO_MS = 10_000;
+const PUSHES_A_DAY = 500;
+const DAY = 86_400_000;
 const MAX_TOKENS = 100;
 const MAX_INVITES = 32;
 // An offer lives 5 minutes; nothing a computer registers outlives this.
@@ -130,15 +133,47 @@ export class Room extends DurableObject<Env> {
     if (due.length) await this.ctx.storage.setAlarm(Math.min(...due));
   }
 
+  /**
+   * One sealed notification from the computer's push socket (rev 4): 500 a day per computer, by UTC day, each counted
+   * in the budget as a request and its fetch to APNs, never in the ceiling. A room made by a push is a new room too,
+   * so the address's daily quota applies. APNs' status; 0 while this deploy has no push secrets; 429 past the day's.
+   */
+  async push(addr: string, key: string, device: string, sealed: string): Promise<number> {
+    if (!configured(this.env)) return 0;
+    if (!(await this.claim(addr, key))) return LIMITED;
+    const store = this.ctx.storage;
+    const day = Math.floor(Date.now() / DAY);
+    const held = await store.get<{ day: number; n: number }>("pushes");
+    const n = held?.day === day ? held.n : 0;
+    if (n >= PUSHES_A_DAY) return 429;
+    // Counted before the fetch, so pushes arriving meanwhile can't pass the day's limit.
+    await store.put("pushes", { day, n: n + 1 });
+    const status = await apns(this.env, device, sealed);
+    const cost = 2 * this.price.request;
+    const mac = this.mac();
+    if (mac) await this.settle(mac, 0, cost);
+    else if (this.env.BUDGET_USD) await this.env.BUDGET.get(this.env.BUDGET.idFromName("all")).add(cost);
+    return status;
+  }
+
+  // A new room takes one of its address's daily rooms, once though its first opens and pushes come together: the
+  // quota's answer is awaited outside this room's storage, so a second caller waits on the same claim.
+  private claiming: Promise<boolean> | null = null;
+  private async claim(addr: string, key: string) {
+    if (await this.ctx.storage.get("key")) return true;
+    this.claiming ??= this.env.QUOTA.get(this.env.QUOTA.idFromName(source(addr)))
+      .take()
+      .then(async (ok) => (ok && (await this.ctx.storage.put("key", key)), ok))
+      .finally(() => (this.claiming = null));
+    return this.claiming;
+  }
+
   private async prove(ws: WebSocket, s: Mac, msg: string | ArrayBuffer) {
     const p = parse(msg);
     if (p?.t !== "proof" || typeof p.key !== "string" || typeof p.sig !== "string") return shut(ws, MALFORMED);
     if (!(await this.verify(s, p.key, p.sig))) return shut(ws, REFUSED);
+    if (!(await this.claim(s.addr, p.key))) return shut(ws, LIMITED);
     const store = this.ctx.storage;
-    if (!(await store.get("key"))) {
-      const quota = this.env.QUOTA.get(this.env.QUOTA.idFromName(source(s.addr)));
-      if (!(await quota.take())) return shut(ws, LIMITED);
-    }
     const seen = (await store.get<number>("seen")) ?? 0;
     for (const old of this.ctx.getWebSockets("mac")) {
       const o = seat(old);

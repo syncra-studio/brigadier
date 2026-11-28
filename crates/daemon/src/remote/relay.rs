@@ -64,7 +64,7 @@ pub(super) fn dev() -> bool {
     cfg!(debug_assertions) && std::env::var_os("BRIGADIER_RELAY_DEV").is_some_and(|v| v == "1")
 }
 
-fn fits(url: &str) -> bool {
+pub(super) fn fits(url: &str) -> bool {
     let plain = url.strip_prefix("ws://");
     let ok = url.starts_with("wss://")
         || (dev() && plain.is_some_and(|rest| rest.starts_with("127.0.0.1:")));
@@ -89,8 +89,11 @@ pub(super) fn chosen(data: &Path) -> Option<String> {
 pub(super) fn set(data: &Path, args: &[String]) -> Value {
     let path = data.join("remote/relay");
     let written = match (args.get(2).map(String::as_str), args.get(3)) {
-        // The key goes too: while the relay is off, nothing of it is left.
-        (Some("off"), None) => remove(&path).and_then(|()| remove(&data.join("remote/relay-key"))),
+        // The key goes too, unless push still signs with it: then nothing of it is left.
+        (Some("off"), None) => remove(&path).and_then(|()| match super::push::on(data) {
+            false => remove(&data.join("remote/relay-key")),
+            true => Ok(()),
+        }),
         (Some("hosted"), None) => brigadier_core::write_atomic(&path, b"hosted"),
         (Some("own"), Some(url)) if args.len() == 4 && fits(&wss(url)) => {
             brigadier_core::write_atomic(&path, format!("own {}", wss(url)).as_bytes())
@@ -106,7 +109,7 @@ pub(super) fn set(data: &Path, args: &[String]) -> Value {
     }
 }
 
-fn remove(path: &Path) -> std::io::Result<()> {
+pub(super) fn remove(path: &Path) -> std::io::Result<()> {
     match fs::remove_file(path) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
         _ => Ok(()),
@@ -335,6 +338,25 @@ fn unix() -> u64 {
 fn sign(key: &SigningKey, label: &[u8], time: u64) -> String {
     let sig: Signature = key.sign(&[label, &room(key), &time.to_be_bytes()].concat());
     URL.encode(sig.to_bytes())
+}
+
+/// The push sender's socket for one push (relay-wire rev 4), signed over that push's text too, so
+/// it carries nothing else.
+pub(super) fn push_url(data: &Path, base: &str, text: &[u8]) -> std::io::Result<String> {
+    let key = key(data)?;
+    let at = unix();
+    let signed = [
+        b"brigadier/relay/push/v1".as_slice(),
+        &room(&key),
+        &at.to_be_bytes(),
+        &Sha256::digest(text),
+    ];
+    let sig: Signature = key.sign(&signed.concat());
+    let (key, sig) = (URL.encode(public(&key)), URL.encode(sig.to_bytes()));
+    Ok(format!(
+        "{}/v1/push?key={key}&at={at}&sig={sig}",
+        base.trim_end_matches('/')
+    ))
 }
 
 /// While the relay carries this computer: a pass to its room until then, for the QR, `hello` and

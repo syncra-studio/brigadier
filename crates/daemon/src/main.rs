@@ -301,7 +301,7 @@ fn main() -> io::Result<()> {
                 .any(|r| r["overnight"]["state"] == "night");
         // The phone's Keep this Mac awake holds too, apart from the setting (remote design §4.6).
         awake.set(on || remote::awake(&data));
-        remote.pass(&data);
+        remote.pass(&data, &index.rows);
         lid.set(&data, on && brigadier_core::lid::wanted(&data));
         changed = brigadier::queue::wake::changed(changed, TICK);
     }

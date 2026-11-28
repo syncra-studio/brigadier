@@ -284,7 +284,7 @@ fn status(s: &State, data: &Path) -> Value {
         "name": name.unwrap_or_else(super::name),
         "offer": s.offer.as_ref().filter(|o| o.open()).map(|o| shown(s, o)),
         "pending": pending, "warning": s.warning, "devices": devices, "awake": awake_asked(data),
-        "relay": super::relay::shown(s, data)})
+        "relay": super::relay::shown(s, data), "push": super::push::shown(s, data)})
 }
 
 pub(super) fn awake_asked(data: &Path) -> bool {
@@ -384,8 +384,9 @@ fn command(s: &mut State, data: &Path, args: &[String]) -> Value {
         }
         (Some("log"), Some(device)) if args.len() == 3 => super::powers::entries(data, device),
         (Some("relay"), Some(_)) => super::relay::set(data, args),
+        (Some("push"), Some(_)) => super::push::set(data, args),
         _ => {
-            json!({"ok": false, "error": "usage: remote status|on|off|awake on|off|offer|allow|deny|revoke <device>|device <id> power <p> on|off|log <device>|relay off|hosted|own <url>"})
+            json!({"ok": false, "error": "usage: remote status|on|off|awake on|off|offer|allow|deny|revoke <device>|device <id> power <p> on|off|log <device>|relay off|hosted|own <url>|push on|off"})
         }
     }
 }

@@ -19,6 +19,12 @@ export interface Env {
   FREE_OPEN?: string;
   PRICE_REQUESTS?: string;
   PRICE_GB_S?: string;
+  // Push (rev 4): the owner's .p8 key, its key id and team id as secrets, hosted only; APNS_URL points elsewhere
+  // only on the local emulator.
+  APNS_KEY?: string;
+  APNS_KEY_ID?: string;
+  APNS_TEAM_ID?: string;
+  APNS_URL?: string;
 }
 
 export const MALFORMED = 4400;
@@ -64,17 +70,19 @@ export async function signed(key: Uint8Array, sig: Uint8Array, data: Uint8Array)
 
 export const OPEN_PROOF = "brigadier/relay/open/v1";
 export const PASS = "brigadier/relay/pass/v1";
+export const PUSH = "brigadier/relay/push/v1";
 const KEY = /^[A-Za-z0-9_-]{87}$/;
 const SIG = /^[A-Za-z0-9_-]{86}$/;
 
-// The room a front-door signature (open proof or pass) is good for, or null. Lengths are checked before decoding.
-export async function doorRoom(label: string, key: unknown, time: number, sig: unknown) {
+// The room a front-door signature (open proof, pass, or push with its text's hash as `extra`) is good for, or null.
+// Lengths are checked before decoding.
+export async function doorRoom(label: string, key: unknown, time: number, sig: unknown, extra = new Uint8Array(0)) {
   if (typeof key !== "string" || typeof sig !== "string" || !KEY.test(key) || !SIG.test(sig)) return null;
   const k = unb64url(key);
   const room = hex(await sha256(k));
   const t = new Uint8Array(8);
   new DataView(t.buffer).setBigUint64(0, BigInt(time));
-  return (await signed(k, unb64url(sig), new Uint8Array([...utf8(label), ...unhex(room), ...t]))) ? room : null;
+  return (await signed(k, unb64url(sig), new Uint8Array([...utf8(label), ...unhex(room), ...t, ...extra]))) ? room : null;
 }
 
 export function frame(stream: number, kind: number, body: Uint8Array = new Uint8Array(0)) {

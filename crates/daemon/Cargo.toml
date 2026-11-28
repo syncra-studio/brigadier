@@ -14,6 +14,7 @@ libc.workspace = true
 base64 = "=0.23.1"
 getrandom = "=0.4.3"
 hkdf = "=0.13.0"
+hpke = { version = "=0.15.2", default-features = false, features = ["x25519", "chacha", "getrandom", "alloc"] }
 p256 = { version = "=0.14.0", default-features = false, features = ["ecdsa", "std"] }
 qrcode = { version = "=0.15.0", default-features = false, features = ["svg"] }
 sha2 = "=0.11.1"

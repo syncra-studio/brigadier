@@ -224,7 +224,7 @@ fn covered(data: &Path, s: &Sess, n: u64, here: &dyn Fn() -> bool) -> String {
 /// Seconds since the user last gave input of `kind` (`ANY`: moved the mouse, clicked or typed;
 /// `CLICK`: a left click; `MODIFIER`: pressed or let go of ⌘, ⇧, ⌥ or ⌃) anywhere; no grant needed.
 #[cfg(target_os = "macos")]
-pub(super) fn idle(kind: u32) -> f64 {
+pub fn idle(kind: u32) -> f64 {
     #[link(name = "CoreGraphics", kind = "framework")]
     unsafe extern "C" {
         fn CGEventSourceSecondsSinceLastEventType(state: i32, kind: u32) -> f64;
@@ -233,12 +233,12 @@ pub(super) fn idle(kind: u32) -> f64 {
     unsafe { CGEventSourceSecondsSinceLastEventType(1, kind) }
 }
 /// kCGAnyInputEventType, kCGEventLeftMouseDown, kCGEventFlagsChanged.
-pub(super) const ANY: u32 = u32::MAX;
+pub const ANY: u32 = u32::MAX;
 pub(super) const CLICK: u32 = 1;
 pub(super) const MODIFIER: u32 = 12;
 
 #[cfg(not(target_os = "macos"))]
-pub(super) fn idle(_: u32) -> f64 {
+pub fn idle(_: u32) -> f64 {
     f64::MAX
 }
 

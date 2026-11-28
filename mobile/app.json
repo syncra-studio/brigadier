@@ -49,7 +49,14 @@
           "isAccessMediaLocationEnabled": false
         }
       ],
-      "expo-document-picker"
+      "expo-document-picker",
+      [
+        "expo-notifications",
+        {
+          "mode": "production"
+        }
+      ],
+      "./plugins/notify.js"
     ],
     "experiments": {
       "tsconfigPaths": false

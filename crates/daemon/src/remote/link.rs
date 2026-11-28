@@ -78,6 +78,7 @@ impl Stream {
 pub(super) fn frame(s: &mut State, id: u32, kind: u8, bytes: &[u8]) {
     match kind {
         gateway::CONTROL if id == 0 => super::relay::from_relay(s, bytes),
+        gateway::PUSH if id == 0 => super::push::answer(s, bytes),
         gateway::OPEN => open(s, id, &String::from_utf8_lossy(bytes)),
         gateway::DATA => {
             if let Err(why) = data(s, id, bytes) {

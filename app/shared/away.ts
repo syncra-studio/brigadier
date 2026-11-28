@@ -31,3 +31,9 @@ export function pausedLine(until: number, name?: string) {
   const who = name ? `Away from home, ${name}'s connection is` : "Away-from-home connections are";
   return `${who} paused ${when}. On the same Wi-Fi it still works.`;
 }
+
+/**
+ * A notification's words on the phone (relay-wire rev 4): its body by the sealed kind under the session's title, and
+ * `fallback`, all Apple and the relay see and what iOS 16 shows. It names the Mac: macOS's wording, the default.
+ */
+export const PUSH_WORDS = { needs: "Needs you", done: "Done", failed: "Stopped with an error", fallback: "Your Mac needs you" } as const;

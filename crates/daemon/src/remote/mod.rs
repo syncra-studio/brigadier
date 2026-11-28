@@ -17,11 +17,12 @@ mod link;
 mod pair;
 mod power;
 mod powers;
+mod push;
 mod relay;
 mod rows;
 
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -52,6 +53,7 @@ struct State {
     warning: Option<&'static str>,
     sessions: HashMap<String, devices::Session>,
     relay: relay::Relay,
+    push: push::Push,
     /// Revoked devices whose files are removed again for a while: when revoked, last tried.
     forgetting: HashMap<String, (Instant, Instant)>,
 }
@@ -89,8 +91,12 @@ pub(super) struct Remote {
 }
 
 impl Remote {
-    pub(super) fn pass(&mut self, data: &Path) {
+    pub(super) fn pass(&mut self, data: &Path, rows: &BTreeMap<String, Value>) {
         pair::forget_again(&mut STATE.lock().unwrap(), data);
+        // Before the gateway is looked at, so notices that came while it was down are no news later.
+        if enabled() {
+            push::pass(&mut STATE.lock().unwrap(), data, rows);
+        }
         let want = enabled() && data.join("remote/on").exists();
         if let Some(running) = &mut self.gateway
             && (!want || !running.alive())

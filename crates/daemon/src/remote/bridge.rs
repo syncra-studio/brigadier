@@ -120,6 +120,10 @@ pub(super) fn request(
         data: &data,
         resolved: Default::default(),
     };
+    if req["op"] == "push" {
+        let answer = super::push::register(&data, device, req);
+        return link::reply(s, id, &answer).map_err(|e| e.to_string());
+    }
     if req["op"] == "attachment" {
         let stream = s.streams.get_mut(&id).ok_or("gone")?;
         stream.pieces.retain(|at| at.elapsed() < PIECES.1);
