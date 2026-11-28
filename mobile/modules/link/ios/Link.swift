@@ -3,7 +3,7 @@ import Foundation
 import Network
 
 /// One encrypted stream to a Mac: TCP, each Noise message behind a 2-byte big-endian length. Above the handshake it
-/// carries plain bytes both ways; the frames inside them are the shared client's (vendor/brigadier-shared).
+/// carries plain bytes both ways; the frames inside them are the shared client's (app/shared/client.ts).
 final class Channel {
     /// `refused`: a Mac was reached but no message 2 opened (no open offer, another psk, an unknown device).
     enum Failure: Error { case unreachable, refused, closed }
