@@ -14,7 +14,8 @@ if [ "$(cat "$dev/version" 2>/dev/null)" != "$version" ]; then
   cp -Rc node_modules/electron/dist/Electron.app "$app"
   plutil -replace CFBundleName -string Brigadier "$app/Contents/Info.plist"
   plutil -replace CFBundleDisplayName -string Brigadier "$app/Contents/Info.plist"
-  codesign --force --sign - "$app"
+  # --deep: Electron's x64 build comes wholly unsigned (arm64's is linker-signed), so its nested code needs signing too.
+  codesign --force --deep --sign - "$app"
   echo "$version" >"$dev/version"
 fi
 exec "$app/Contents/MacOS/Electron" "$@"
