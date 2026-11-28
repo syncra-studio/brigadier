@@ -155,7 +155,8 @@ export const NIGHT_WORDS = {
   imBack: "I’m back",
   start: "Start night",
   startNow: "Or start now: it picks what you skip and tells you in the morning",
-  awake: "This Mac stays awake",
+  // The phone doesn't know its computer's system: the Mac's words there.
+  awake: (mac = true) => (mac ? "This Mac stays awake" : "This computer stays awake"),
   beforeYouGo: "Before you go",
   ready: "That’s all I need",
 } as const;

@@ -4,6 +4,7 @@ import { Button } from "../components/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "../components/dialog";
 import { Spinner } from "../icons";
 import { run } from "../onboarding/api";
+import { HERE } from "../onboarding/parts";
 import { useProjectSources } from "../onboarding/sources";
 import { useDaemon } from "../daemon";
 import { closeAddProject, daemonSource, showProject, type Source, useAddProject } from "./store";
@@ -55,7 +56,7 @@ export function AddProject({ source, offline, initialPath = "" }: { source: Sour
     <form onSubmit={submit} className="flex min-h-0 min-w-0 flex-col">
       <div className="flex shrink-0 flex-col gap-2 ps-7 pe-12 pt-6 pb-5">
         <DialogTitle>Add project</DialogTitle>
-        <DialogDescription>Pick from this Mac or any of your GitHub accounts; picks add up across them.</DialogDescription>
+        <DialogDescription>Pick from {HERE} or any of your GitHub accounts; picks add up across them.</DialogDescription>
       </div>
       <div className="flex h-add-project-body min-h-0 flex-col px-7 pb-5">{body}</div>
       <div className="flex shrink-0 items-center gap-2 border-t border-divider pt-3.75 pe-6 pb-4 ps-7">

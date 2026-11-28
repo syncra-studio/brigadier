@@ -18,6 +18,7 @@ import { useDaemon } from "../daemon";
 import { Copy, Folder, FolderOpen, Plus, Trash } from "../icons";
 import { Avatar } from "../landing/pr-parts";
 import { errorText, run } from "../onboarding/api";
+import { HERE } from "../onboarding/parts";
 import { shortPath } from "./add-project";
 import { IconPicker } from "./icon-picker";
 import { type Project, setProject, useProjects } from "./projects";
@@ -247,7 +248,7 @@ function ProjectSettings({ project, source }: { project: Project; source: Settin
           <IconPicker id={project.id} name={project.name} icon={project.icon} onChange={(icon) => save("icon", icon.startsWith("image:") ? {} : { icon: icon || null }, ["--icon", icon])} />
           <SavedInput aria-label="Name" value={project.name} onSave={(name) => (name.trim() ? save("name", { name: name.trim() }, ["--name", name.trim()]) : refuse("name", "Name can't be empty."))} onBack={() => clear("name")} />
         </Row>
-        <Row label="Folder" line={sessions > 0 ? `Where it is on this Mac; it has ${plural(sessions, "session", "sessions")}, so it can't move` : "Where it is on this Mac; a new folder is asked about trust again"} error={errors.folder}>
+        <Row label="Folder" line={sessions > 0 ? `Where it is on ${HERE}; it has ${plural(sessions, "session", "sessions")}, so it can't move` : `Where it is on ${HERE}; a new folder is asked about trust again`} error={errors.folder}>
           <span className="min-w-0 flex-1 truncate text-end font-mono text-xs text-foreground">{shortPath(project.folder)}</span>
           <TooltipIconButton tooltip="Reveal in Finder" size="icon-sm" onClick={() => void run(["projects", "reveal", project.id]).catch((cause) => showToast(`Couldn't reveal ${project.name}: ${errorText(cause)}`, { tone: "error" }))}>
             <FolderOpen />

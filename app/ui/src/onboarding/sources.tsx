@@ -13,7 +13,7 @@ import { newProjectId, useProjects } from "../projects/projects";
 import type { FolderCheck, GitHub, GitHubRepo, GitIdentity, Source } from "../projects/store";
 import { BrandMark } from "../settings/plugins-marks";
 import { errorText } from "./api";
-import { HERE } from "./parts";
+import { HERE, MAC } from "./parts";
 
 /*
  * Where a project comes from, for onboarding's Projects step and Add project both: one file [D676]. A column of sources
@@ -286,7 +286,7 @@ export function useProjectSources({ source, offline, initialPath = "", onExistin
   const body = (
     <div className="flex min-h-0 flex-1 gap-4">
       <nav aria-label="Where the project comes from" className="flex w-56 shrink-0 flex-col gap-0.5 overflow-y-auto border-e border-divider pe-3">
-        <Side on={where === "mac"} icon={<Desktop />} label="This Mac" count={folders.length} disabled={busy !== null} onClick={() => go("mac")} />
+        <Side on={where === "mac"} icon={<Desktop />} label={MAC ? "This Mac" : "This computer"} count={folders.length} disabled={busy !== null} onClick={() => go("mac")} />
         <Group icon={<Branch />} label="Git" />
         {/* Signed in, GitHub folds its accounts (its picks stay, counted on it while shut); else it's the one source [D679, D686]. */}
         {accounts[0] === "@" ? (

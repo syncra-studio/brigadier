@@ -7,6 +7,7 @@ import { RailItem } from "../components/composer/rail";
 import { cx } from "../components/cx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { Moon } from "../icons";
+import { MAC } from "../onboarding/parts";
 import { duration, useSecond } from "../thread/words";
 import { type Overnight, overnight } from "./overnight";
 import { NIGHT_WORDS as N, nightProgress } from "../../../shared/session/composer";
@@ -56,7 +57,7 @@ export function NightReady({ id, now }: { id: string; now: Overnight | null }) {
         <p className="text-sm font-medium">{N.ready}</p>
         {now?.words && <p className="text-label text-muted-foreground">{now.words}</p>}
       </div>
-      <StartNight id={id} label={N.awake} />
+      <StartNight id={id} label={N.awake(MAC)} />
     </RailItem>
   );
 }

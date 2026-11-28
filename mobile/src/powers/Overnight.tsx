@@ -124,7 +124,7 @@ export function NightReady({ night, connected }: { night: Night; connected: bool
         <Text style={st.readyTitle}>{N.ready}</Text>
         {night.now.words ? <Text style={st.readyWords}>{night.now.words}</Text> : null}
       </View>
-      <StartNight label={N.awake} night={night} connected={connected} />
+      <StartNight label={N.awake()} night={night} connected={connected} />
     </View>
   );
 }
