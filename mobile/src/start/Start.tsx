@@ -7,6 +7,7 @@ import { ActionSheetIOS, KeyboardAvoidingView, Pressable, StyleSheet, Text, Text
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { type Chip, type Draft, EMPTY_DRAFT, plainText } from "../../../app/shared/draft";
+import { baseBranches, type RepoInfo } from "../../../app/shared/rows";
 import { asGroups, type ModelChoice, type ModelGroup, type ModelRow } from "../../../app/shared/session/model";
 import { failure } from "../../../app/shared/session/run";
 import { flagOf, type Going, UNCONFIRMED } from "../../../app/shared/session/uncertain";
@@ -123,6 +124,17 @@ export function Start({ project, name, onStarted }: { project: string; name: str
       if (was) setPicked({ provider: was.group.provider, model: was.model.id, effort: was.model.defaultEffort ?? null });
     });
 
+  // The base branch, as the desktop's branch pill picks it: the project's branches, the checked-out one first; none
+  // picked, the Mac starts from the checked-out one.
+  const [repo, setRepo] = useState<RepoInfo | null>(null);
+  const [base, setBase] = useState<string | null>(null);
+  useEffect(() => {
+    if (connected) void run(["projects", "branches", project]).then((reply) => reply.ok && setRepo(reply.repo));
+  }, [connected]);
+  const listed = repo ? baseBranches(repo) : [];
+  const pickBase = () =>
+    ActionSheetIOS.showActionSheetWithOptions({ title: "Base branch", options: [...listed, "Cancel"], cancelButtonIndex: listed.length }, (at) => listed[at] && setBase(listed[at]));
+
   const start = () => {
     const message = words$.current.trim();
     const draft = draftNow();
@@ -133,7 +145,7 @@ export function Start({ project, name, onStarted }: { project: string; name: str
     setError(null);
     const rev = drafts.revOf(key);
     const cid = newId();
-    const op = ["start", sessionId(), "--project", project, "--cid", cid, "--draft", JSON.stringify(draft), "--draft-rev", String(rev), "--text", message, ...(withFiles ? ["--parts", JSON.stringify(draft)] : []), "--backend", choice.provider, "--model", choice.model, ...(choice.effort ? ["--effort", choice.effort] : []), ...(choice.fast ? ["--fast"] : [])];
+    const op = ["start", sessionId(), "--project", project, "--cid", cid, "--draft", JSON.stringify(draft), "--draft-rev", String(rev), "--text", message, ...(withFiles ? ["--parts", JSON.stringify(draft)] : []), "--backend", choice.provider, "--model", choice.model, ...(choice.effort ? ["--effort", choice.effort] : []), ...(choice.fast ? ["--fast"] : []), ...(base ? ["--base", base] : [])];
     // Kept before the field empties, so a give-back by any way takes this copy once, and nothing typed since.
     const entry = uncertain.keepGoing(key, { cid, kind: "start", op, draft, rev, at: Date.now() });
     put("", NO_FILES);
@@ -206,18 +218,23 @@ export function Start({ project, name, onStarted }: { project: string; name: str
         <View style={st.field}>
           <TextInput style={st.input} multiline autoFocus value={words} onChangeText={typed} placeholder={connected ? "Do anything" : "Not connected"} placeholderTextColor={color.mutedForeground} accessibilityLabel="Message" />
           <View style={st.bar}>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Model: ${choice ? shown(choice) : "none"}`} disabled={offered.length === 0} onPress={pick} style={({ pressed }) => [st.pill, pressed && { opacity: 0.6 }]}>
-              {choice ? (
-                <>
-                  <ProviderMark mark={found(choice)?.group.mark} />
-                  <Text style={st.pillText} numberOfLines={1}>{found(choice)?.model.name ?? choice.model}</Text>
-                  {choice.fast ? <Bolt className="size-icon-xs text-glyph-5" /> : null}
-                  {choice.effort ? <Text style={[st.pillText, { color: color.mutedForeground }]}>{effortLabel(choice.effort)}</Text> : null}
-                </>
-              ) : (
-                <Text style={st.pillText} numberOfLines={1}>{groups ? "No model available" : "Loading models…"}</Text>
-              )}
-            </Pressable>
+            <View style={st.pills}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Model: ${choice ? shown(choice) : "none"}`} disabled={offered.length === 0} onPress={pick} style={({ pressed }) => [st.pill, pressed && { opacity: 0.6 }]}>
+                {choice ? (
+                  <>
+                    <ProviderMark mark={found(choice)?.group.mark} />
+                    <Text style={st.pillText} numberOfLines={1}>{found(choice)?.model.name ?? choice.model}</Text>
+                    {choice.fast ? <Bolt className="size-icon-xs text-glyph-5" /> : null}
+                    {choice.effort ? <Text style={[st.pillText, { color: color.mutedForeground }]}>{effortLabel(choice.effort)}</Text> : null}
+                  </>
+                ) : (
+                  <Text style={st.pillText} numberOfLines={1}>{groups ? "No model available" : "Loading models…"}</Text>
+                )}
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Base branch: ${base ?? repo?.current ?? "none"}`} disabled={listed.length === 0} onPress={pickBase} style={({ pressed }) => [st.pill, pressed && { opacity: 0.6 }]}>
+                <Text style={st.pillText} numberOfLines={1}>{base ?? repo?.current ?? (repo ? "No branch" : "Loading branches…")}</Text>
+              </Pressable>
+            </View>
             <Pressable accessibilityRole="button" accessibilityLabel="Start" disabled={!ready} onPress={start} style={({ pressed }) => [st.send, (pressed || !ready) && { opacity: 0.4 }]}>
               <ArrowUp className="size-icon-md text-primary-fg" />
             </Pressable>
@@ -259,6 +276,7 @@ const st = StyleSheet.create({
   field: { flex: 1, borderRadius: 20, borderWidth: 1, borderColor: color.border, backgroundColor: color.codeSurface, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8, gap: 8 },
   input: { ...text.base, flex: 1, color: color.foreground, padding: 0, textAlignVertical: "top" },
   bar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  pills: { flexDirection: "row", gap: 8, flexShrink: 1 },
   pill: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 999, backgroundColor: color.fill, paddingHorizontal: 12, paddingVertical: 6, maxWidth: 260 },
   pillText: { ...text.sm, color: color.foreground },
   send: { width: 32, height: 32, borderRadius: 16, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },

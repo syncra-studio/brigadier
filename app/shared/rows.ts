@@ -147,3 +147,8 @@ export type WorkerRow = {
   /** Its newest call at work, while it works [D143]. */
   now?: { step: StepKind; name: string; input: string; description?: string | null } | null;
 };
+
+/** What Rust read of a project's repository: `projects branches`. */
+export type RepoInfo = { current: string | null; branches: string[]; worktrees: { path: string; branch: string | null }[] };
+/** A new worktree's bases as both apps list them: the checked-out branch first, then by name. */
+export const baseBranches = (info: RepoInfo) => [...info.branches].sort((a, b) => Number(b === info.current) - Number(a === info.current) || a.localeCompare(b));

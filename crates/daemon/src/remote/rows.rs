@@ -1,7 +1,7 @@
-//! The allowlist's rows that start or fork an agent, attach files, read a checkout's diffs or set
-//! a session's model (remote design §4.1, with msgs/w40-outline.md §R2's `source` rows)
-//! [beat-competitors D51]. A start, a side session and a creating fork each need a fresh
-//! signature (§4.2); an image outside the project is power (e).
+//! The allowlist's rows that start or fork an agent, attach files, read a checkout's diffs or a
+//! project's branches, or set a session's model (remote design §4.1, with msgs/w40-outline.md
+//! §R2's `source` rows) [beat-competitors D51]. A start, a side session and a creating fork each
+//! need a fresh signature (§4.2); an image outside the project is power (e).
 
 use super::allow::{
     Ctx, Fail, Flags, REFUSED, draft_target, has_files, json_of, number, parts, plain, words,
@@ -9,6 +9,7 @@ use super::allow::{
 use super::fresh::{self, Need};
 use super::{devices, powers};
 use brigadier_core::git::{self, Target};
+use brigadier_core::{projects, worktrees};
 use std::path::{Component, Path, PathBuf};
 
 /// Power (e)'s image named other than as its resolved path; the answer carries that path.
@@ -60,6 +61,13 @@ fn outside(cx: &Ctx, path: &str, own: Option<PathBuf>) -> Result<(), Fail> {
     Ok(())
 }
 
+/// A known project's local branches, read as `projects branches` reads them.
+fn branches(cx: &Ctx, p: &str) -> Result<serde_json::Value, Fail> {
+    cx.project(p)?;
+    let folder = projects::get(cx.data, p).map_err(|_| REFUSED)?.folder;
+    worktrees::branches(cx.data, Path::new(&folder)).map_err(|_| REFUSED)
+}
+
 pub(super) fn row(
     cx: &Ctx,
     args: &[String],
@@ -83,7 +91,18 @@ pub(super) fn row(
             f.get("--backend").map(plain).transpose()?;
             f.get("--model").map(reference).transpose()?;
             f.get("--effort").map(plain).transpose()?;
-            f.get("--base").map(reference).transpose()?;
+            // A plain ref (never an option, whatever git lets a branch be called) that the
+            // project's own branch list holds, as the desktop's pick offers.
+            if let Some(b) = f.get("--base") {
+                reference(b)?;
+                let repo = branches(cx, f.get("--project").ok_or(REFUSED)?)?;
+                if !repo["branches"]
+                    .as_array()
+                    .is_some_and(|l| l.iter().any(|x| x == b))
+                {
+                    return Err(REFUSED);
+                }
+            }
             f.get("--parts").map(|p| parts(cx, None, p)).transpose()?;
             (*need, *slot) = (fresh::signed(args), true);
         }
@@ -224,6 +243,8 @@ pub(super) fn row(
                 f.get("--effort").map(plain).transpose()?;
             }
         }
+        // The new chat's branch pick, read only, as the desktop's `projects branches` answers.
+        "projects" if n == 3 && a(1)? == "branches" => cx.project(a(2)?)?,
         // An instant command the agent lists: the CLI refuses any other name.
         "command" if n == 3 => {
             cx.visible(a(1)?)?;

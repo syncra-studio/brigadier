@@ -8,9 +8,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "../components/popover";
 import { Branch, Check, Folder } from "../icons";
 import { errorText, run } from "../onboarding/api";
 import { PickerSearch, RAIL_PILL, type WorkIn } from "./pills";
+import { baseBranches, type RepoInfo } from "../../../shared/rows";
 
-/** What Rust read of a project's repository: `projects branches`. */
-export type RepoInfo = { current: string | null; branches: string[]; worktrees: { path: string; branch: string | null }[] };
+export type { RepoInfo };
 export type RepoState = { info?: RepoInfo; error?: string; loading: boolean; refresh: () => void };
 
 /** The project's branches and worktrees, read again each time a picker opens. */
@@ -80,9 +80,7 @@ export function BranchPicker({
     ? []
     : existing
       ? info.worktrees.map(({ path, branch }) => ({ key: path, label: folderName(path), detail: branch ?? "No branch" })).toSorted((a, b) => a.label.localeCompare(b.label))
-      : info.branches
-          .map((each) => ({ key: each, label: each, detail: undefined }))
-          .toSorted((a, b) => Number(b.key === info.current) - Number(a.key === info.current) || a.key.localeCompare(b.key));
+      : baseBranches(info).map((each) => ({ key: each, label: each, detail: undefined }));
   const needle = query.trim().toLowerCase();
   const matches = rows.filter((row) => `${row.label} ${row.detail ?? ""}`.toLowerCase().includes(needle));
   const highlighted = Math.min(at, matches.length - 1);

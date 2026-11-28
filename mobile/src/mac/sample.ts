@@ -56,6 +56,7 @@ const FILE = { path: "src/auth/login.test.ts", from: null, status: "modified", i
 const REPLIES: [string, Record<string, any>][] = [
   ["draft @home:p1", { ok: true, rev: 1, draft: JSON.stringify({ parts: ["Add a dark mode switch to Settings, and remember the choice"], attachmentIds: [] }) }],
   ["models --project p1", { ok: true, groups: [{ provider: "claude", label: "Claude Code", short: "Claude", mark: null, unavailable: null, models: [{ id: "opus", name: "Opus 4.5", efforts: ["low", "medium", "high"], default_effort: "high", fast: null, legacy: false }, { id: "sonnet", name: "Sonnet 4.5", efforts: [], default_effort: null, fast: null, legacy: false }] }] }],
+  ["projects branches p1", { ok: true, repo: { current: "main", branches: ["fix/login-redirect", "main", "release/1.4"], worktrees: [] } }],
   ["source s1 status", { ok: true, git: { head: { branch: "brigadier/fix-the-failing-login-test" } } }],
   ["source s1 review last", { ok: true, review: { scope: "last", files: [FILE, { ...FILE, path: "src/auth/login.ts", insertions: 1, deletions: 1 }], insertions: 4, deletions: 3, turn: { before: "a1", after: "b2" } } }],
   ["source s1 review-file", { ok: true, contents: { before: BEFORE, after: AFTER, hunks: [{ id: "h1", header: "@@ -3,4 +3,5 @@" }] } }],
