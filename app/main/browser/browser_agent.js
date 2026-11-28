@@ -1,7 +1,7 @@
 // The browser tool's hand in a Browser tab's page (see `browser_agent.rs`): one call reads the
 // page or acts on one of its controls, and returns what came of it. It runs fresh for each call,
 // keeping nothing in the page but each control's ref, so a page can't stand in for it between
-// calls. The test page (fixtures/agent-browser.html) runs this same file.
+// calls.
 //
 // Ops: { kind: "read", max } -> { url, title, text }
 //        (a control with no role reads as "clickable"; `handled`: where the page's own click handlers are, from the shell)
