@@ -13,7 +13,7 @@
     "ios": {
       "bundleIdentifier": "sh.brigadier.mobile",
       "appleTeamId": "7JQSPMWT79",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "supportsTablet": false,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
