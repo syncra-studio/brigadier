@@ -124,6 +124,15 @@ fn left_running(
 ) -> Vec<Job> {
     #[cfg(windows)]
     let all = &with_leaders(dir, all);
+    // The same stand-in parents, so `kept`'s walk from one of `mine` takes them too.
+    #[cfg(windows)]
+    let mine = &(mine.iter())
+        .map(|p| {
+            *all.iter()
+                .find(|q| (q.pid, q.start_us) == (p.pid, p.start_us))
+                .unwrap_or(p)
+        })
+        .collect::<Vec<_>>();
     let below: BTreeSet<i32> = (child.map(|c| procs::descendants(all, c)))
         .into_iter()
         .flatten()
@@ -232,7 +241,6 @@ fn left_running(
     left
 }
 
-/// A job's command: a shell's own child when it has one, else the shell's script.
 /// Windows: one whose parent Cygwin's exec left gone walks up through the group leader it was put
 /// back by, as its shell is its parent on macOS, so what an MCP server started stays [D114].
 #[cfg(windows)]
@@ -249,6 +257,7 @@ fn with_leaders(dir: &Path, all: &[procs::Proc]) -> Vec<procs::Proc> {
         .collect()
 }
 
+/// A job's command: a shell's own child when it has one, else the shell's script.
 fn label(all: &[procs::Proc], mut pid: i32) -> String {
     loop {
         let argv = procs::args(pid).map(|a| a.0).unwrap_or_default();

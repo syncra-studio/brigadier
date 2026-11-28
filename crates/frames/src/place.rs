@@ -85,10 +85,13 @@ pub fn place(dir: &Path, min_us: u64) -> Vec<(i32, u64)> {
         }
     }
     // Each Cygwin process's group leader when that one runs, and whether it carries the mark.
-    let (mut leader, mut cygwin_marked) = (HashMap::new(), HashSet::new());
+    let (mut leader, mut cygwin_marked, mut failed) = (HashMap::new(), HashSet::new(), false);
     for bin in &installs {
         state.reads += 1;
-        let ids = read(bin);
+        let Some(ids) = read(bin) else {
+            failed = true;
+            continue;
+        };
         for id in ids.values() {
             if let Some(lead) = ids.get(&id.pgid) {
                 leader.insert(id.winpid, lead.winpid);
@@ -125,6 +128,12 @@ pub fn place(dir: &Path, min_us: u64) -> Vec<(i32, u64)> {
         if !more {
             break;
         }
+    }
+    // A read that failed decided nothing: what's still out is looked at again next time.
+    if failed {
+        (waiting.iter())
+            .filter(|(p, _)| !placed.contains(&(p.pid as u32)))
+            .for_each(|(p, _)| _ = state.done.remove(&(p.pid, p.start_us)));
     }
     write(dir, state);
     let ours = |p: &Proc, marked: bool| marked || cygwin_marked.contains(&(p.pid as u32));
@@ -183,8 +192,8 @@ pub fn leaders(dir: &Path) -> HashMap<(i32, u64), i32> {
 }
 
 /// One install's processes from its own `/proc`, by Cygwin pid: their Windows pid, process group
-/// and mark. Nothing when it can't be read in 2 s.
-fn read(bin: &Path) -> HashMap<u32, Ids> {
+/// and mark. None when it can't be read in 2 s.
+fn read(bin: &Path) -> Option<HashMap<u32, Ids>> {
     let mut sh = Command::new(bin.join("sh.exe"));
     let marks = format!("grep -a -o -H '{MARK}[^[:cntrl:]]*' /proc/[0-9]*/environ");
     sh.args([
@@ -196,9 +205,7 @@ fn read(bin: &Path) -> HashMap<u32, Ids> {
     .stderr(Stdio::null());
     // CREATE_NO_WINDOW
     std::os::windows::process::CommandExt::creation_flags(&mut sh, 0x0800_0000);
-    let Ok(mut child) = sh.spawn() else {
-        return HashMap::new();
-    };
+    let mut child = sh.spawn().ok()?;
     let (tx, rx) = mpsc::channel();
     let mut out = child.stdout.take();
     thread::spawn(move || {
@@ -206,10 +213,11 @@ fn read(bin: &Path) -> HashMap<u32, Ids> {
         let _ = out.as_mut().map(|o| o.read_to_string(&mut text));
         let _ = tx.send(text);
     });
-    let text = rx.recv_timeout(Duration::from_secs(2)).unwrap_or_default();
+    let text = rx.recv_timeout(Duration::from_secs(2));
     // Our own child, by its handle.
     let _ = child.kill();
     let _ = child.wait();
+    let text = text.ok()?;
     let mut ids: HashMap<u32, Ids> = HashMap::new();
     for line in text.lines() {
         let Some((path, value)) = line.split_once(':') else {
@@ -229,5 +237,5 @@ fn read(bin: &Path) -> HashMap<u32, Ids> {
         }
     }
     ids.retain(|_, e| e.winpid != 0);
-    ids
+    Some(ids)
 }
