@@ -15,7 +15,7 @@ import { openProject } from "../projects/store";
 import type { Project } from "../projects/projects";
 import { readRemoval } from "../projects/remove";
 import { useMark } from "../session/turn";
-import { closed } from "../sessions/archive";
+import { closed } from "../../../shared/session/actions";
 import { ClosedMenuItems } from "../sessions/archived";
 import { openSettings } from "../settings/shell";
 import { RowMenuItems } from "./menu";

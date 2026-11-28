@@ -3,18 +3,21 @@ import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, View } from "re
 import type { Frame } from "../../../app/shared/client";
 import { Button } from "../Button";
 import { color, text, fontWeight, mono } from "../theme";
+import { macNow } from "../link";
 import { signed } from "./act";
 
 /**
  * The one sheet before every fresh signature (lasting answers, starts, the powers): what will happen, the exact
  * command or path whole, then Face ID. `onDone` gets the Mac's reply, or null when cancelled here.
  */
-export function Confirm({ title, body, shown, args, onDone }: {
+export function Confirm({ title, body, shown, args, mac, onDone }: {
   title: string;
   body?: string;
   /** Shown whole and as is: the `!` line, the resolved path, or the answer. */
   shown: string;
   args: string[];
+  /** The Mac it was asked on: on any other, nothing is signed or sent. */
+  mac?: string;
   onDone: (reply: Frame | null) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -26,7 +29,7 @@ export function Confirm({ title, body, shown, args, onDone }: {
     going.current = true;
     setBusy(true);
     setError(null);
-    const reply = await signed(args);
+    const reply = mac !== undefined && macNow() !== mac ? { ok: false, error: "closed" } : await signed(args);
     going.current = false;
     setBusy(false);
     // Nothing was sent: the sheet stays, so the user can try again or cancel.

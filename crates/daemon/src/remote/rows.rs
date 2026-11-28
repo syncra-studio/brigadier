@@ -1,10 +1,12 @@
 //! The allowlist's rows that start or fork an agent, attach files, read a checkout's diffs or a
-//! project's branches, or set a session's model (remote design §4.1, with msgs/w40-outline.md
-//! §R2's `source` rows) [beat-competitors D51]. A start, a side session and a creating fork each
-//! need a fresh signature (§4.2); an image outside the project is power (e).
+//! project's branches, set a session's model, or archive, restore, pin, rename or delete a
+//! session, as the desktop's sidebar sends them (remote design §4.1, with msgs/w40-outline.md
+//! §R2's `source` rows) [beat-competitors D51]. A start, a side session, a creating fork and a
+//! delete (it removes a worktree) each need a fresh signature (§4.2); an image outside the project
+//! is power (e).
 
 use super::allow::{
-    Ctx, Fail, Flags, REFUSED, draft_target, has_files, json_of, number, parts, plain, words,
+    Ctx, Fail, Flags, REFUSED, draft_target, has_files, ids, json_of, number, parts, plain, words,
 };
 use super::fresh::{self, Need};
 use super::{devices, powers};
@@ -188,7 +190,7 @@ pub(super) fn row(
                         &[("--backend", true), ("--in", true), ("--data", true)],
                     )?;
                     f.get("--backend").map(plain).transpose()?;
-                    f.get("--in").map(super::allow::ids).transpose()?;
+                    f.get("--in").map(ids).transpose()?;
                     let data = f.get("--data").ok_or(REFUSED)?;
                     if data.len() > MAX_B64 || data.starts_with("--") {
                         return Err(REFUSED);
@@ -261,6 +263,37 @@ pub(super) fn row(
         }
         // The new chat's branch pick, read only, as the desktop's `projects branches` answers.
         "projects" if n == 3 && a(1)? == "branches" => cx.project(a(2)?)?,
+        // The sidebar's own marks on one visible session (`sidebar/actions.ts`); archive's
+        // `--named` workers only narrow which of its finished workers lose their ignored files.
+        "pin" if n == 2 || n == 3 && a(2)? == "--off" => drop(cx.visible(a(1)?)?),
+        "restore" if n == 2 => drop(cx.visible(a(1)?)?),
+        "archive" if n == 3 => {
+            cx.visible(a(1)?)?;
+            match a(2)?.strip_prefix("--named=") {
+                Some("") => {}
+                Some(named) => ids(named)?,
+                None if a(2)? == "--check" => {}
+                None => return Err(REFUSED),
+            }
+        }
+        // Rust picks the branch's new name itself; `--branch` only pins the preview's (`-`: none).
+        "rename" if n <= 5 => {
+            cx.visible(a(1)?)?;
+            words(a(2)?)?;
+            match (args.get(3).map(String::as_str), args.get(4)) {
+                (None, None) | (Some("--preview"), None) => {}
+                (Some("--branch"), Some(b)) if b == "-" => {}
+                (Some("--branch"), Some(b)) => reference(b)?,
+                _ => return Err(REFUSED),
+            }
+        }
+        // Delete's confirm reads whose workers it stops; the delete itself keeps the branch, as
+        // the desktop's, and is signed afresh.
+        "delete" if n == 3 && a(2)? == "--check" => drop(cx.visible(a(1)?)?),
+        "delete" if n == 4 && a(2)? == "--branch" && a(3)? == "keep" => {
+            cx.visible(a(1)?)?;
+            *need = fresh::signed(args);
+        }
         // An instant command the agent lists: the CLI refuses any other name.
         "command" if n == 3 => {
             cx.visible(a(1)?)?;

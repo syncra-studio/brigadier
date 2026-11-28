@@ -2,8 +2,8 @@
 //! its allowed fields only, or refused with "Not from the phone". The result is a [`Checked`],
 //! which only this file can make and which is the only thing the bridge writes to a phone's
 //! `ops::serve` [beat-competitors D51]. Rows needing a fresh Face ID signature carry what it must
-//! name (`fresh`); `rows` holds those that start, fork, attach, read diffs or branches, or set a
-//! model.
+//! name (`fresh`); `rows` holds those that start, fork, attach, read diffs or branches, set a
+//! model, or act on a session as the sidebar does.
 
 use super::Host;
 use super::fresh::{self, Need};
@@ -429,7 +429,8 @@ fn run(
             plain(a(3)?)?;
         }
         "answer" | "level" | "overnight" => *need = fresh::row(cx, &args)?,
-        "start" | "side" | "fork" | "attach" | "source" | "set" | "command" | "projects" => {
+        "start" | "side" | "fork" | "attach" | "source" | "set" | "command" | "projects"
+        | "pin" | "restore" | "archive" | "rename" | "delete" => {
             super::rows::row(cx, &args, need, &mut slot)?
         }
         "jobs" => {

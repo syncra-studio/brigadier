@@ -12,6 +12,7 @@ import { useDaemon } from "../daemon";
 import { Archive } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
 import { keysOf, matches } from "../shortcuts";
+import { ARCHIVE_LOSES, archiveAsk, closed, deleting as underWay, type Lost, lostLead, lostText, unchecked, workingLine } from "../../../shared/session/actions";
 import { archive, restore } from "../sidebar/actions";
 import type { SessionRow } from "../sidebar/words";
 
@@ -59,8 +60,6 @@ let view: { active: string | null; onHome: () => void } = { active: null, onHome
  * it deletes for good (or why they couldn't be listed).
  */
 export type ArchiveCheck = { running: string[]; lost: Lost[]; named?: string[] };
-/** `repos`: a delete's, the repositories in what it takes. */
-export type Lost = { ids: string[]; files?: string[]; repos?: string[]; error?: string };
 type Asking = { rows: SessionRow[]; focus: Element | null; check?: ArchiveCheck; error?: string };
 const asking = store<Asking | null>(null);
 /** Rows Rust checks or the confirm asks about: hidden at once [D198], back on Cancel or a failed check. */
@@ -129,20 +128,12 @@ function archiveNow(rows: SessionRow[], focus: Element | null, named: string[]) 
 const titleOf = (row: SessionRow | undefined) => `“${row?.title || "New session"}”`;
 
 /** What one folder loses for good, in archive's and delete's confirm, or why it couldn't be listed. */
-export function LostLine({ lost: { files, repos, error }, whose, more = "" }: { lost: Lost; whose: string; more?: string }) {
-  if (error !== undefined) return <ErrorLine error={`${whose}Couldn't list its ignored files: ${error}`} />;
+export function LostLine({ lost, whose, more = "" }: { lost: Lost; whose: string; more?: string }) {
+  if (lost.error !== undefined) return <ErrorLine error={whose + lostText(lost)} />;
   return (
     <p className="text-xs break-words text-muted-foreground">
       {whose}
-      {repos ? (
-        <>
-          {repos.length === 1 ? "The repository in it is" : `The ${repos.length} repositories in it are`} deleted for good, even if a branch is kept: <span className="text-foreground">{named(repos)}</span>.
-        </>
-      ) : (
-        <>
-          Its ignored files are deleted for good{more}: <span className="text-foreground">{named(files ?? [])}</span>.
-        </>
-      )}
+      {lostLead(lost, more)}: <span className="text-foreground">{named(lost.repos ?? lost.files ?? [])}</span>.
     </p>
   );
 }
@@ -157,11 +148,12 @@ export function ArchiveForm({ rows, check, error, onConfirm, onCancel }: { rows:
   const all = useDaemon().rows as SessionRow[] | undefined;
   const byId = (id: string) => rows.find((row) => row.id === id) ?? all?.find((row) => row.id === id);
   const whose = (ids: string[]) => (one && ids.every((id) => id === rows[0]!.id) ? "" : `${ids.map((id) => titleOf(byId(id))).join(", ")}: `);
+  const words = archiveAsk(rows);
   return (
     <ConfirmForm
-      title={one ? "Archive session?" : `Archive ${rows.length} sessions?`}
-      description={one ? `This archives ${titleOf(rows[0])}. Restore brings it back.` : "Restore brings each one back."}
-      confirm="Archive"
+      title={words.title}
+      description={words.description}
+      confirm={words.confirm}
       destructive={!!check?.lost.some((each) => each.files)}
       onConfirm={onConfirm}
       onCancel={onCancel}
@@ -169,11 +161,11 @@ export function ArchiveForm({ rows, check, error, onConfirm, onCancel }: { rows:
       <ConfirmLines>
         {(check?.running ?? []).map((id) => (
           <p key={id} className="text-xs text-muted-foreground">
-            {one ? "Its agent is working and will be stopped." : `${titleOf(byId(id))} is working; its agent will be stopped.`}
+            {workingLine(one ? undefined : titleOf(byId(id)))}
           </p>
         ))}
-        {(check?.lost ?? []).map((each, at) => <LostLine key={at} lost={each} whose={whose(each.ids)} more=", and restore won't bring them back" />)}
-        <ErrorLine error={error && `Couldn't check what archiving loses: ${error}`} />
+        {(check?.lost ?? []).map((each, at) => <LostLine key={at} lost={each} whose={whose(each.ids)} more={ARCHIVE_LOSES} />)}
+        <ErrorLine error={error && unchecked(error)} />
       </ConfirmLines>
     </ConfirmForm>
   );
@@ -290,15 +282,12 @@ export const hideDeleting = (id: string, on: boolean) => {
   deleting.set(next);
 };
 
-/** Archived, or a delete that left something: among the archived, not the live rows. */
-export const closed = (row: SessionRow) => Boolean(row.archived) || row.lifecycle?.op === "delete";
-
 /**
  * The live rows and the archived ones. A delete under way is hidden; one that left something comes back
  * among the archived with what stayed (Rust's `lifecycle.left`) [D35].
  */
 export function useArchiveSplit(rows: SessionRow[] | undefined): { live: SessionRow[] | undefined; archived: SessionRow[] } {
   const gone = deleting.use();
-  const shown = rows?.filter((row) => !gone.has(row.id) && !(row.lifecycle?.op === "delete" && !row.lifecycle.left));
+  const shown = rows?.filter((row) => !gone.has(row.id) && !underWay(row));
   return { live: shown?.filter((row) => !closed(row)), archived: (shown ?? []).filter(closed).toSorted((a, b) => (b.archived ?? 0) - (a.archived ?? 0)) };
 }

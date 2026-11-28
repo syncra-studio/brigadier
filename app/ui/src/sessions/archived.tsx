@@ -12,12 +12,12 @@ import { ask } from "../daemon";
 import { Archive, Trash, Unarchive } from "../icons";
 import { errorText, run, store } from "../onboarding/api";
 import type { Project } from "../sidebar/words";
+import { deleteAsk, deleteFailed } from "../../../shared/session/actions";
 import { restore } from "../sidebar/actions";
 import { ArchivedActions } from "../sidebar/flyout";
 import { SessionRowItem } from "../sidebar/row";
 import { useStored } from "../sidebar/sidebar";
 import type { SessionRow } from "../sidebar/words";
-import { plural } from "../projects/remove";
 import { hideDeleting } from "./archive";
 
 /*
@@ -25,7 +25,6 @@ import { hideDeleting } from "./archive";
  * archived. Its rows open read-only; their menu has Restore and Delete, as every live row's menu has Delete [D3101].
  */
 
-const titleOf = (row: { title: string }) => row.title || "New session";
 
 export function ArchivedSection({
   rows,
@@ -139,9 +138,7 @@ export function DeleteForm({ rows, onClose }: { rows: Deleted[]; onClose: () => 
       live = false;
     };
   }, [rows]);
-  const one = rows.length === 1 ? rows[0]! : null;
-  const many = `${rows.length} sessions`;
-  const stop = running > 0 ? ` ${one ? "Its" : "Their"} ${plural(running, "running worker stops", "running workers stop")}.` : "";
+  const words = deleteAsk(rows, running);
   const confirm = () => {
     onClose();
     for (const row of rows) {
@@ -149,16 +146,15 @@ export function DeleteForm({ rows, onClose }: { rows: Deleted[]; onClose: () => 
       ask({ op: "run", args: ["delete", row.id, "--branch", "keep"] }, (reply) => {
         if (reply.ok) return;
         hideDeleting(row.id, false);
-        const why = reply.left?.[0] ?? (reply.error === "disconnected" ? "Brigadier isn't running" : (reply.message ?? reply.error ?? "it failed"));
-        showToast(`Couldn't delete “${titleOf(row)}”: ${why}`, { tone: "error" });
+        showToast(deleteFailed(row, reply), { tone: "error" });
       });
     }
   };
   return (
     <ConfirmForm
-      title={one ? `Delete “${titleOf(one)}”?` : `Delete ${many}?`}
-      description={`This can't be undone.${stop}`}
-      confirm={one ? "Delete session" : `Delete ${many}`}
+      title={words.title}
+      description={words.description}
+      confirm={words.confirm}
       destructive
       onConfirm={confirm}
       onCancel={onClose}

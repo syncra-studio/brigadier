@@ -3,6 +3,7 @@ import { createContext, type ReactNode, useState } from "react";
 import { ConfirmForm } from "../confirm-dialog";
 import { ErrorLine } from "../error-line";
 import { Radio, RadioGroup } from "../radio";
+import { listed } from "../../../../shared/session/actions";
 import { REWIND_CANT as CANT } from "../../../../shared/words";
 import type { RewindPreview } from "../../../../shared/session/rewind";
 
@@ -16,7 +17,7 @@ export const RewindContext = createContext<{
 
 type FormProps = { preview: RewindPreview; error?: string; sharerName?: string; onKeep: () => void; onRestore: () => void; onCancel: () => void };
 
-export const named = (paths: string[]) => (paths.length > 5 ? `${paths.slice(0, 5).join(", ")} and ${paths.length - 5} more` : paths.join(", "));
+export const named = listed;
 export const files = (n: number) => (n === 1 ? "1 file" : `${n} files`);
 
 function Note({ children }: { children: ReactNode }) {

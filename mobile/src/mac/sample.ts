@@ -26,6 +26,8 @@ const row = (id: string, title: string, project: string | null, mark: Row["mark"
 export function loadSample(powers = false, reply = false) {
   lists.set({
     ready: true,
+    // No Mac is connected in a sample: its rows act as the connected Mac's ("").
+    mac: "",
     projects: [
       { id: "p1", name: "brigadier", folder: "", trusted: true, setup: "", include: [], added: 0 },
       { id: "p2", name: "website", folder: "", trusted: true, setup: "", include: [], added: 0 },
@@ -42,8 +44,9 @@ export function loadSample(powers = false, reply = false) {
         : row("s1", "Fix the failing login test", "p1", "needs", 2),
       row("s2", "Speed up the session list", "p1", "working", 5),
       row("s3", "Write the release notes", "p1", "unread", 50),
-      row("s4", "New pricing page", "p2", null, 60 * 26),
+      { ...row("s4", "New pricing page", "p2", null, 60 * 26), pinned: Date.now() - 60_000 },
       row("s5", "What is IKpsk2?", null, null, 60 * 24 * 3),
+      { ...row("s6", "Old onboarding copy", "p2", null, 60 * 24 * 9), archived: Date.now() - 3_600_000 },
     ],
   });
   const items = (reply ? markdown.items : [...message.items, ...group.items, ...tool.items, ...file.items, ...(powers ? shell.items : [])]) as Item[];

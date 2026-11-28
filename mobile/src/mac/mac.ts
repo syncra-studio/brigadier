@@ -2,11 +2,13 @@
 // pushes naming what changed by id; a gap asks for a fresh snapshot.
 import type { Frame } from "../../../app/shared/client";
 import { applyListFrame, type Project, type Row } from "../../../app/shared/rows";
+import { deleting } from "../../../app/shared/session/actions";
 import { store } from "../../../app/shared/store";
 import { applyThreadFrame, mergePage, type Session } from "../../../app/shared/thread";
-import { onPush, request } from "../link";
+import { macNow, onPush, request } from "../link";
 
-export const lists = store<{ rows: Row[]; projects: Project[]; ready: boolean }>({ rows: [], projects: [], ready: false });
+/** `mac`: the key of the Mac the rows came from, "" once its stream ended; rows of no Mac now connected are inert. */
+export const lists = store<{ rows: Row[]; projects: Project[]; ready: boolean; mac: string }>({ rows: [], projects: [], ready: false, mac: "" });
 
 export type Thread =
   | { id: string; status: "loading"; session: Session | null }
@@ -44,7 +46,7 @@ export function start() {
 export function stop() {
   onPush(null);
   [n, threadN, olderRe] = [undefined, undefined, 0];
-  lists.set({ ...lists.get(), ready: false });
+  lists.set({ ...lists.get(), ready: false, mac: "" });
 }
 
 function subscribe() {
@@ -54,7 +56,7 @@ function subscribe() {
     rows = new Map((reply.rows as Row[]).map((row) => [row.id, row]));
     projects = new Map((reply.projects as Project[]).map((p) => [p.id, p]));
     n = reply.n;
-    lists.set({ rows: [...rows.values()], projects: [...projects.values()], ready: true });
+    lists.set({ rows: [...rows.values()], projects: [...projects.values()], ready: true, mac: macNow() });
   });
 }
 
@@ -108,7 +110,7 @@ function onFrame(frame: Frame) {
   if (frame.n !== n + 1) return subscribe();
   n = frame.n;
   applyListFrame(frame, rows, projects);
-  lists.set({ rows: [...rows.values()], projects: [...projects.values()], ready: true });
+  lists.set({ ...lists.get(), rows: [...rows.values()], projects: [...projects.values()], ready: true });
 }
 
 function applyThread(frame: Frame) {
@@ -124,6 +126,6 @@ function applyThread(frame: Frame) {
   thread.set({ ...open, session: applyThreadFrame(open.session, frame, open.session.before ?? null, null) });
 }
 
-/** The rows the lists show: not archived, not a note's side chat, not a worker (those sit in their lead's thread). */
-export const shown = (row: Row) => !row.archived && !row.noteChat && !row.worker;
+/** The rows the lists show: not archived (search reaches those), not a note's side chat, not a worker (those sit in their lead's thread), no delete under way. */
+export const shown = (row: Row) => !row.archived && !row.noteChat && !row.worker && !deleting(row);
 export const needsYou = (row: Row) => row.mark === "needs" || row.mark === "amber";

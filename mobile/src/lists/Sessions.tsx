@@ -2,14 +2,21 @@
 // components/nav.tsx): Pinned projects, Projects by name, each folding its chats under it, then Chats, the sessions in
 // no project; rows by the user's last send, newest first, each with its one trailing mark [D30 D31 D63 D173].
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Pressable, SectionList, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, SectionList, StyleSheet, Text, TextInput, View } from "react-native";
 import { attentionOf, hueOf, type Hit, type Project, projectInitials, type Row, statusWords } from "../../../app/shared/rows";
+import { deleteAsk, deleteFailed, laidOver } from "../../../app/shared/session/actions";
+import { store } from "../../../app/shared/store";
 import { newSessionIn, SIDEBAR_WORDS } from "../../../app/shared/words";
 import { Chat, ChevronDown, ComposeEditSquare, MagnifyingGlassSearch, SidebarSpinner } from "../../../app/ui/src/icons";
+import { Confirm } from "../act/Confirm";
 import { Spin } from "../compose/motion";
-import { ask } from "../link";
+import { ask, macNow } from "../link";
 import { lists, shown } from "../mac/mac";
 import { color, fontWeight, radius, space, spacing, text, touch } from "../theme";
+import { actionsOf, deleting, rowMenu } from "./actions";
+
+/** No Mac's queue: nothing pending, nothing to catch. */
+const IDLE = { queues: store(new Map()), caught: () => {} };
 
 // The tiles' hues in theme.css's order, which is the desktop's TAGS (sidebar/row.tsx) [D283].
 const TILES = Object.keys(color).filter((name) => name.startsWith("tile") && name !== "tileInk").map((name) => color[name]!);
@@ -56,11 +63,20 @@ const byLastSend = (a: Row, b: Row) => b.sent - a.sent || b.id.localeCompare(a.i
 
 /**
  * The Mac's sessions, as the desktop's sidebar by projects. A tap on a section's title or a project folds it; each
- * project's pencil starts a new session there. A search, as the desktop's ⌘K, lists those whose title has the words, then
+ * project's pencil starts a new session there. A held row offers its own actions (`actions.ts`), each shown at once
+ * till Rust's row has it. A search, as the desktop's ⌘K, lists those whose title has the words, then
  * those whose messages do, Rust's best message under each (`search`).
  */
 export function Sessions({ onOpen, onSamples, onNew }: { onOpen: (row: Row) => void; onSamples: () => void; onNew: (project: Project) => void }) {
-  const { rows, projects, ready } = useSyncExternalStore(lists.subscribe, lists.get);
+  const { rows: rust, projects, ready, mac } = useSyncExternalStore(lists.subscribe, lists.get);
+  // Rows from a Mac no longer connected (shown till the new one's snapshot comes) are inert.
+  const stale = mac !== macNow();
+  const actions = (stale ? null : actionsOf()) ?? IDLE;
+  const pending = useSyncExternalStore(actions.queues.subscribe, actions.queues.get);
+  useEffect(() => actions.caught(rust), [rust, actions]);
+  const rows = laidOver(rust, pending)!;
+  const asked = useSyncExternalStore(deleting.subscribe, deleting.get);
+  const words = asked && deleteAsk([asked.row], asked.running);
   // What's folded, by the desktop's keys: "pinned", "projects", "none" and `project:<id>`.
   const [folded, setFolded] = useState<string[]>([]);
   const isOpen = (key: string) => !folded.includes(key);
@@ -106,6 +122,7 @@ export function Sessions({ onOpen, onSamples, onNew }: { onOpen: (row: Row) => v
           section("none", SIDEBAR_WORDS.chats, homeless.length ? homeless.map((row): Line => ({ kind: "row", row, indent: false })) : [{ kind: "empty", words: SIDEBAR_WORDS.noChatsYet, indent: false, of: "none" }]),
         ];
   return (
+    <>
     <SectionList
       style={st.page}
       contentContainerStyle={st.list}
@@ -133,7 +150,7 @@ export function Sessions({ onOpen, onSamples, onNew }: { onOpen: (row: Row) => v
         item.kind === "project" ? (
           <ProjectRow project={item.project} open={item.open} dot={item.dot} onToggle={() => toggle(`project:${item.project.id}`)} onNew={() => onNew(item.project)} />
         ) : item.kind === "row" ? (
-          <SessionRow row={item.row} indent={item.indent} snippet={item.snippet} onPress={() => onOpen(item.row)} />
+          <SessionRow row={item.row} indent={item.indent} snippet={item.snippet} onPress={stale ? undefined : () => onOpen(item.row)} onLongPress={stale ? undefined : () => rowMenu(item.row, mac)} />
         ) : (
           <Text style={[st.empty, item.indent && st.indent, !item.indent && { color: color.quietForeground }]}>{item.words}</Text>
         )
@@ -145,6 +162,20 @@ export function Sessions({ onOpen, onSamples, onNew }: { onOpen: (row: Row) => v
         </Pressable>
       }
     />
+    {asked && words && asked.mac === macNow() && (
+      <Confirm
+        mac={asked.mac}
+        title={words.title}
+        body={words.description}
+        shown={asked.row.folder ?? asked.row.title ?? SIDEBAR_WORDS.untitled}
+        args={["delete", asked.row.id, "--branch", "keep"]}
+        onDone={(reply) => {
+          deleting.set(null);
+          if (reply && !reply.ok) Alert.alert(deleteFailed(asked.row, reply));
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -173,11 +204,11 @@ function ProjectRow({ project, open, dot, onToggle, onNew }: { project: Project;
 }
 
 /** A session on one line, the desktop's SessionRowItem: its title and its mark; under its project, at the name's x. A search's hit has its message under the title. */
-function SessionRow({ row, indent, snippet, onPress }: { row: Row; indent: boolean; snippet?: string; onPress: () => void }) {
+function SessionRow({ row, indent, snippet, onPress, onLongPress }: { row: Row; indent: boolean; snippet?: string; onPress?: () => void; onLongPress?: () => void }) {
   const title = row.title || SIDEBAR_WORDS.untitled;
   const words = statusWords(row);
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={[title, words].filter(Boolean).join(", ")} onPress={onPress} style={({ pressed }) => [st.row, indent && st.indent, pressed && st.pressed]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={[title, words].filter(Boolean).join(", ")} accessibilityHint={onLongPress && "Hold for its actions"} accessibilityActions={onLongPress && [{ name: "longpress", label: "Actions" }]} onAccessibilityAction={onLongPress} onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [st.row, indent && st.indent, pressed && st.pressed]}>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={[st.chatTitle, row.archived ? { color: color.markerForeground } : null]} numberOfLines={1}>{title}</Text>
         {snippet ? <Text style={st.snippet} numberOfLines={1}>{snippet}</Text> : null}
