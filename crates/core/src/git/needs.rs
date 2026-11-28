@@ -9,7 +9,6 @@ use super::risk::{LOCKS, flag, is_test};
 use crate::fold::runs::Run;
 use serde_json::Value;
 use std::collections::HashSet;
-use std::process::Command;
 
 /// How its HEAD log names a commit the worktree made itself.
 const OWN: &[&str] = &[
@@ -52,11 +51,14 @@ pub enum Need {
 fn git(dir: &str, args: &[&str], input: Vec<u8>) -> Option<Vec<u8>> {
     use std::io::Write;
     use std::process::Stdio;
-    let mut child = (Command::new("git").arg("-C").arg(dir).args(args))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .ok()?;
+    let mut child = (brigadier_frames::spawn::windowless("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args))
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .spawn()
+    .ok()?;
     // Written beside the read, so a long list never fills both pipes.
     let mut stdin = child.stdin.take()?;
     let writer = std::thread::spawn(move || stdin.write_all(&input));

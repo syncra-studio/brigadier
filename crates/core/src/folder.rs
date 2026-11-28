@@ -9,7 +9,6 @@ use serde_json::{Value, json};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::AtomicBool;
 
 pub const KIND: &str = "folder";
@@ -251,7 +250,7 @@ pub fn claim(spec: &Spec, name: &str) -> io::Result<String> {
         .display()
         .to_string();
     let dirty = (from.as_deref().and_then(worktrees::folder)).is_some_and(|f| {
-        Command::new("git")
+        brigadier_frames::spawn::windowless("git")
             .arg("-C")
             .arg(f)
             .args(["status", "--porcelain"])

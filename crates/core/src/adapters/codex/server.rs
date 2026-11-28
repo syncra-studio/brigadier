@@ -9,7 +9,7 @@ use crate::adapters::{unwrap_shell, uuid};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead, BufReader, Write};
-use std::process::{self, ChildStdin, Command, Stdio};
+use std::process::{self, ChildStdin, Stdio};
 use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -66,7 +66,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         .first()
         .ok_or("usage: brigadier helper codex <codex>")?;
     // `-c`, not `--enable`: a feature a later Codex dropped is then ignored, not fatal.
-    let mut child = Command::new(exe)
+    let mut child = brigadier_frames::spawn::windowless(exe)
         .args([
             "app-server",
             "-c",

@@ -3,7 +3,7 @@
 use serde_json::{Map, Value};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::Duration;
 
 /// A server's refusal of what it was sent with; a library one's sign-in is retried once on it.
@@ -18,7 +18,7 @@ fn post(
     msg: &Value,
     wait: Duration,
 ) -> Result<Vec<Value>, String> {
-    let mut c = Command::new(brigadier_frames::curl());
+    let mut c = brigadier_frames::spawn::windowless(brigadier_frames::curl());
     c.args([
         "-sS",
         "--suppress-connect-headers",

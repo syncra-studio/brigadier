@@ -36,7 +36,6 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 /// A worker's reservation, in its parent's `workers/` folder: all its making needs, so a restart
@@ -182,7 +181,7 @@ pub(crate) fn closing(data: &Path, id: &str) -> bool {
 }
 
 pub(crate) fn git(dir: &str, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
+    let out = brigadier_frames::spawn::windowless("git")
         .arg("-C")
         .arg(dir)
         .args(args)

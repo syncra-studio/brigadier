@@ -5,7 +5,7 @@
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 /// A pre-registered public client: GitHub offers neither CIMD nor DCR [wave4 D2045, D312].
 const GITHUB: &str = "https://github.com/login/oauth";
@@ -50,7 +50,7 @@ pub(super) fn fetch(
     kind: Option<&str>,
     body: &str,
 ) -> Result<Reply, String> {
-    let mut c = Command::new(brigadier_frames::curl());
+    let mut c = brigadier_frames::spawn::windowless(brigadier_frames::curl());
     c.args([
         "-sS",
         "--suppress-connect-headers",

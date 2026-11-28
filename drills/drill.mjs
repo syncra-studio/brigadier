@@ -4,7 +4,7 @@
 // client sees.
 //
 //   BIN=<dir with brigadier, brigadier-host, brigadier-fake, brigadier-procs, brigadierd> node drills/drill.mjs <drill> [minutes]
-//   drills: killloop, hang, procs, detach, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck, npmfind, ghlogins, noidentity
+//   drills: killloop, hang, procs, detach, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck, npmfind, ghlogins, noidentity, consoles
 //   killloop: BUILDS=<dir>:<dir> (; on Windows) rotates in more builds; OLD_BIN=<dir> adds hosts and the first
 //   daemon from a previous release's code.
 //
@@ -2406,9 +2406,29 @@ async function noIdentity() {
   if (process.env.KEEP !== '1') [DATA, work].forEach(drop)
 }
 
+// Windows: what Brigadier starts from a process with no console (the app's daemon) opens no window, which the
+// default terminal would show. A fake `claude` notes its window at every start while `agents`, started detached as
+// the app starts the daemon, checks it, model read included.
+async function consoles() {
+  if (!WIN) return log({ summary: 'consoles', pass: true, skipped: 'Windows only' })
+  freshData('consoles')
+  const home = `${DATA}/home`
+  const bin = `${home}/.local/bin`
+  fs.mkdirSync(bin, { recursive: true })
+  fs.mkdirSync(`${DATA}/appdata`)
+  fs.copyFileSync(`${BIN}/brigadier-fake${EXE}`, `${bin}/claude.exe`)
+  fs.writeFileSync(`${bin}/consoles.log`, '')
+  const env = { ...process.env, BRIGADIER_DATA: DATA, HOME: home, USERPROFILE: home, APPDATA: `${DATA}/appdata`.replaceAll('/', path.sep) }
+  await new Promise((res) => spawn(`${BIN}/brigadier`, ['agents'], { env, detached: true, stdio: 'ignore', windowsHide: true }).on('close', res))
+  const starts = fs.readFileSync(`${bin}/consoles.log`, 'utf8').trim().split('\n').filter(Boolean)
+  const shown = starts.filter((l) => !l.endsWith(' window=0'))
+  log({ summary: 'consoles', pass: starts.some((l) => l.startsWith('-p ')) && !shown.length, starts, shown })
+  if (process.env.KEEP !== '1') drop(DATA)
+}
+
 const [drill, arg] = process.argv.slice(2)
 if (!BIN) throw new Error('set BIN to a folder with the brigadier binaries')
 fs.mkdirSync(ROOT, { recursive: true })
-const run = { killloop: () => killloop(+(arg ?? 30)), hang, procs: procsDrill, detach, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed, agentcheck: agentCheck, npmfind: npmFind, ghlogins: ghLogins, noidentity: noIdentity }[drill]
-if (!run) throw new Error('drills: killloop [minutes], hang, procs, detach, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck, npmfind, ghlogins, noidentity')
+const run = { killloop: () => killloop(+(arg ?? 30)), hang, procs: procsDrill, detach, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed, agentcheck: agentCheck, npmfind: npmFind, ghlogins: ghLogins, noidentity: noIdentity, consoles }[drill]
+if (!run) throw new Error('drills: killloop [minutes], hang, procs, detach, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck, npmfind, ghlogins, noidentity, consoles')
 await run()

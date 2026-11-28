@@ -9,7 +9,7 @@ use super::http::Server;
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::{self, BufRead, Write};
-use std::process::{self, Child, Command};
+use std::process::{self, Child};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{mem, thread};
@@ -71,7 +71,11 @@ pub(super) fn start(
 ) -> Result<(Arc<Server>, Shared, Option<process::ChildStdin>), String> {
     std::fs::create_dir_all(super::super::home_path(".local/share/opencode"))
         .map_err(|e| e.to_string())?;
-    let mut child = super::models::serve(&mut Command::new(exe), password, false)?;
+    let mut child = super::models::serve(
+        &mut brigadier_frames::spawn::windowless(exe),
+        password,
+        false,
+    )?;
     let lease = child.stdin.take();
     let (mut out, server) = super::models::dial(child.stdout.take(), password)?;
     thread::spawn(move || io::copy(&mut out, &mut io::stderr()));

@@ -420,6 +420,18 @@ fn limited() -> bool {
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
+    // The consoles drill: each start, and whether it got a console window, in a consoles.log beside it.
+    #[cfg(windows)]
+    if let Some(at) = (env::current_exe().ok())
+        .map(|e| e.with_file_name("consoles.log"))
+        .filter(|p| p.exists())
+    {
+        unsafe extern "system" {
+            fn GetConsoleWindow() -> isize;
+        }
+        let window = unsafe { GetConsoleWindow() };
+        append(&at, &format!("{} window={window}", args.join(" ")));
+    }
     match args.first().map(String::as_str) {
         // A stand-in sign-in for drills and demos: a mark in the account's home, never a secret.
         Some(cmd @ ("login" | "logout")) => {

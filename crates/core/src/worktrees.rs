@@ -87,7 +87,7 @@ pub(crate) fn command(dir: &Path) -> Command {
 
 /// `command` with the repository's own hooks, for a trusted project's push (Git LFS's pre-push).
 pub(crate) fn with_hooks(dir: &Path) -> Command {
-    let mut command = Command::new("git");
+    let mut command = brigadier_frames::spawn::windowless("git");
     for key in [
         "GIT_DIR",
         "GIT_WORK_TREE",

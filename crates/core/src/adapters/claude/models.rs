@@ -9,7 +9,7 @@ use crate::Spec;
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::mpsc::channel;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -66,7 +66,7 @@ fn asked<T>(
         "--settings",
         r#"{"autoMemoryEnabled":false,"disableAllHooks":true}"#,
     ];
-    let mut child = Command::new(exe)
+    let mut child = brigadier_frames::spawn::windowless(exe)
         .args(args)
         .env_clear()
         .envs(super::control::env(spec, exe))

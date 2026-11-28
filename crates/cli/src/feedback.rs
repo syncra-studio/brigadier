@@ -462,7 +462,7 @@ fn details(data: &Path) -> (String, Vec<String>) {
     }
     // Windows' `ver` says "Microsoft Windows [Version 10.0.26100.4061]".
     #[cfg(windows)]
-    if let Ok(o) = Command::new("cmd").args(["/c", "ver"]).output()
+    if let Ok(o) = setup::run(Command::new("cmd").args(["/c", "ver"]), 5)
         && let Some(v) = String::from_utf8_lossy(&o.stdout).split("Version ").nth(1)
     {
         out.push(format!("Windows {} ({chip})", v.trim().trim_matches(']')));
