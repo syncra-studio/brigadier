@@ -25,7 +25,7 @@ let mac = "";
 export const macNow = () => mac;
 let frames: Frame[] = [];
 let waiting: ((f: Frame | null) => void) | null = null;
-const closed = new Set<() => void>();
+const closed = new Set<(paused?: number) => void>();
 
 // Once signed in, the Mac's pushes go here instead of to `next`.
 let pushes: ((f: Frame) => void) | null = null;
@@ -55,10 +55,10 @@ function lost() {
 }
 
 Link.addListener("data", ({ b, n }) => n === stream && wire.receive(fromBase64(b)));
-Link.addListener("closed", ({ n }) => {
+Link.addListener("closed", ({ n, paused }) => {
   if (n !== stream) return;
   lost();
-  for (const f of closed) f();
+  for (const f of closed) f(paused);
 });
 
 export async function connect(...args: Parameters<typeof Link.connect>) {
@@ -125,8 +125,8 @@ export function next(ms = 30_000): Promise<Frame | null> {
   });
 }
 
-/** Called when the open stream ends; returns the unsubscribe. */
-export function onClosed(f: () => void) {
+/** Called when the open stream ends, with until when the relay paused it (unix s; 0: no date) if it did; returns the unsubscribe. */
+export function onClosed(f: (paused?: number) => void) {
   closed.add(f);
   return () => void closed.delete(f);
 }

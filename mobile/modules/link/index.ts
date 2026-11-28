@@ -9,7 +9,7 @@ export type Found = { name: string; pk: string; open: "0" | "1" };
 
 /** Events carry their stream's number, so a superseded stream's are dropped. */
 /** `path`: the network changed (Wi-Fi joined or left). */
-declare class Link extends NativeModule<{ data: (e: { b: string; n: number }) => void; closed: (e: { n: number }) => void; path: () => void }> {
+declare class Link extends NativeModule<{ data: (e: { b: string; n: number }) => void; closed: (e: { n: number; paused?: number }) => void; path: () => void }> {
   /** A screen to open at launch, from the `-screen` launch argument (simulator screenshots only). */
   screen: string | null;
   /** This app's build number. */
@@ -21,14 +21,15 @@ declare class Link extends NativeModule<{ data: (e: { b: string; n: number }) =>
   /**
    * Opens the stream: targets are "ip:port", "bonjour:<name>" or a relay's phone socket URL, tried in order. `secret`
    * is the QR's `s` or the normalised code; "device" uses the saved psk. `seen`: the relay has no Mac now, and last had
-   * it then (unix s, 0 if never).
+   * it then (unix s, 0 if never). `paused`: the relay carries none of this Mac's streams until then (unix s; 0 with no
+   * date: the relay's budget is spent).
    */
   connect(
     mode: "qr" | "code" | "device",
     mac: string,
     targets: string[],
     secret: string | null,
-  ): Promise<{ check?: string; stream?: number; error?: "unreachable" | "refused" | "closed"; seen?: number }>;
+  ): Promise<{ check?: string; stream?: number; error?: "unreachable" | "refused" | "closed"; seen?: number; paused?: number }>;
   /** Plain bytes into the stream, base64. */
   write(b64: string): void;
   close(): void;

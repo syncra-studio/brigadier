@@ -41,7 +41,7 @@ public class LinkModule: Module {
         // mode "qr" (secret: the QR's `s`), "code" (secret: the normalised code) or "device" (the saved psk). Returns
         // `check`, the 6 digits, and `stream`, or `error`: "unreachable", "refused" (a Mac answered, but not with this
         // psk, or the relay refused it), "closed" (`close` or another `connect` came first), with `seen` when the relay
-        // knows when the Mac was last online.
+        // knows when the Mac was last online, or `paused` (until, unix s; 0 with no date) when it carries none now.
         AsyncFunction("connect") { (mode: String, mac: String, targets: [String], secret: String?) -> [String: Any] in
             let n = self.drop()
             guard let macKey = Derive.base64url(mac), macKey.count == 32 else { throw Exception(name: "Mac", description: "bad key") }
@@ -77,12 +77,14 @@ public class LinkModule: Module {
                 return ["error": "unreachable"]
             } catch let Channel.Failure.offline(seen) {
                 return ["error": "unreachable", "seen": seen]
+            } catch let Channel.Failure.paused(until) {
+                return ["error": "unreachable", "paused": until]
             }
             channel.onData = { data in self.sendEvent("data", ["b": data.base64EncodedString(), "n": n]) }
             // Strong: the stream's read task ends when it closes, and nothing else keeps the stream.
-            channel.onClosed = {
+            channel.onClosed = { paused in
                 self.lock.withLock { if self.stream == n { self.channel = nil } }
-                self.sendEvent("closed", ["n": n])
+                self.sendEvent("closed", paused.map { ["n": n, "paused": $0] } ?? ["n": n])
             }
             let mine = self.lock.withLock { () -> Bool in
                 guard self.stream == n else { return false }

@@ -2,6 +2,7 @@
 // connections-device.tsx, parts.tsx SettingsPage, components/settings-card.tsx): the page's title with Add at its end,
 // then one card, a row each, hairlines between.
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { pausedLine } from "../../../app/shared/away";
 import { CONNECTION_WORDS, sentAt } from "../../../app/shared/words";
 import type { Mac } from "../../modules/link";
 import { DialogButton } from "../Button";
@@ -9,11 +10,14 @@ import { PROBLEMS } from "../Notice";
 import type { Problem } from "../pair/pair";
 import { color, fontWeight, radius, space, text } from "../theme";
 
-/** `seen`: the relay says the Mac is offline, and when it was last there (unix s, 0 if never). */
-export type Status = "connecting" | "connected" | Problem | "cancelled" | { seen: number };
+/**
+ * `seen`: the relay says the Mac is offline, and when it was last there (unix s, 0 if never). `paused`: the relay
+ * carries none of its streams until then (0: no date).
+ */
+export type Status = "connecting" | "connected" | Problem | "cancelled" | { seen: number } | { paused: number };
 
-const said = (s: Status) =>
-  typeof s === "object" ? (s.seen ? `Offline · last online ${sentAt(s.seen * 1000)}` : "Offline")
+const said = (s: Status, name: string) =>
+  typeof s === "object" ? ("paused" in s ? pausedLine(s.paused, name) : s.seen ? `Offline · last online ${sentAt(s.seen * 1000)}` : "Offline")
   : s === "connected" ? CONNECTION_WORDS.ready : s === "connecting" ? CONNECTION_WORDS.connecting : s === "cancelled" ? "Not connected" : PROBLEMS[s].title;
 
 /** The paired Macs: each one's name, how it stands, Open or Try again, and Forget this Mac, as a device's row and its Revoke access. */
@@ -37,7 +41,8 @@ export function Macs({ macs, status, onConnect, onForget, onAdd }: {
             <View key={mac.pk} style={st.row}>
               <View style={st.rowText}>
                 <Text style={st.rowTitle}>{mac.name}</Text>
-                <Text style={st.rowLine}>{said(s)}</Text>
+                {/* Paused: the desktop's Away from home notice, its row's description in warning. */}
+                <Text style={[st.rowLine, typeof s === "object" && "paused" in s && st.warning]}>{said(s, mac.name)}</Text>
               </View>
               {s === "connected" && <DialogButton title="Open" variant="soft" size="sm" onPress={() => onConnect(mac)} />}
               {s !== "connected" && s !== "connecting" && <DialogButton title="Try again" variant="soft" size="sm" onPress={() => onConnect(mac)} />}
@@ -66,4 +71,5 @@ const st = StyleSheet.create({
   rowText: { flexGrow: 1, flexShrink: 1, flexBasis: "40%", gap: space(1) },
   rowTitle: { ...text.label, fontWeight: fontWeight.medium, color: color.foreground },
   rowLine: { ...text.xs, color: color.quietForeground },
+  warning: { color: color.warning },
 });

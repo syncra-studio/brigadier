@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { COST_STEP, month, nextMonth, paid, prices } from "./budget";
 import {
   CLOSE,
   DATA,
@@ -8,6 +9,7 @@ import {
   OFFLINE,
   OPEN,
   PASS,
+  PAUSED,
   REFUSED,
   REPLACED,
   b64,
@@ -25,8 +27,21 @@ import {
   utf8,
 } from "./wire";
 
-// A socket's state lives in its attachment, so it survives hibernation. `ok`: proven or admitted.
-type Mac = { mac: true; ok: boolean; room: string; addr: string; at: number; nonce: string; bytes: number };
+// A socket's state lives in its attachment, so it survives hibernation. `ok`: proven or admitted. The computer's
+// carries the room's month: bytes `used` (`kept`: as last stored), cost not yet reported, and the budget's last answer.
+type Mac = {
+  mac: true;
+  ok: boolean;
+  room: string;
+  addr: string;
+  at: number;
+  nonce: string;
+  month: string;
+  used: number;
+  kept: number;
+  cost: number;
+  free: boolean;
+};
 type Phone = { mac: false; ok: boolean; stream: number; addr: string; at: number };
 type Seat = Mac | Phone;
 
@@ -39,6 +54,9 @@ const MAX_MESSAGE = 65_535;
 // Text is bounded before it is parsed: 4 KB from anyone, 16 KB from a proven computer (100 token hashes are ~7 KB).
 const MAX_TEXT = 4_096;
 const MAX_MAC_TEXT = 16_384;
+// The count is stored at every MB of it, and at 80% and 100% of the ceiling.
+const MB = 1_000_000;
+const step = (used: number, ceiling: number) => (ceiling ? [0.8, 1].filter((f) => used >= f * ceiling).length : 0);
 
 const seat = (ws: WebSocket) => ws.deserializeAttachment() as Seat;
 
@@ -52,6 +70,14 @@ function shut(ws: WebSocket, code: number) {
 
 // One computer's room: its socket, its phones' sockets, and the little it must remember. Never a message.
 export class Room extends DurableObject<Env> {
+  private price = prices(this.env);
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    // Nothing about whose room: it shows hibernation's wakes on the local emulator.
+    console.log("a room woke");
+  }
+
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     const addr = req.headers.get("CF-Connecting-IP") ?? "";
@@ -61,7 +87,7 @@ export class Room extends DurableObject<Env> {
       const nonce = b64(crypto.getRandomValues(new Uint8Array(32)));
       const room = url.searchParams.get("room") ?? "";
       this.ctx.acceptWebSocket(server, ["mac"]);
-      server.serializeAttachment({ mac: true, ok: false, room, addr, at, nonce, bytes: 0 } satisfies Mac);
+      server.serializeAttachment({ mac: true, ok: false, room, addr, at, nonce, month: "", used: 0, kept: 0, cost: 0, free: true } satisfies Mac);
       server.send(JSON.stringify({ t: "challenge", nonce }));
     } else {
       const stream = this.freeStream();
@@ -122,8 +148,12 @@ export class Room extends DurableObject<Env> {
       }
     }
     await store.put({ key: p.key, seen: now() });
-    ws.serializeAttachment({ ...s, ok: true, nonce: "" } satisfies Mac);
+    const held = await store.get<{ month: string; used: number; cost: number }>("usage");
+    const used = held?.month === month() ? held.used : 0;
+    const cost = (held?.cost ?? 0) + this.price.request;
+    ws.serializeAttachment({ ...s, ok: true, nonce: "", month: month(), used, kept: used, cost, free: true } satisfies Mac);
     ws.send(JSON.stringify({ t: "ready", seen }));
+    await this.settle(ws, 0, this.price.message, true);
   }
 
   private async verify(s: Mac, key64: string, sig64: string) {
@@ -140,16 +170,24 @@ export class Room extends DurableObject<Env> {
   }
 
   private async fromMac(ws: WebSocket, s: Mac, msg: string | ArrayBuffer) {
-    if (typeof msg === "string") return this.control(ws, s, msg);
+    if (typeof msg === "string") {
+      // Controls cost like any message, but don't count toward the ceiling.
+      await this.settle(ws, 0, this.price.message);
+      return this.control(ws, s, msg);
+    }
     const b = new Uint8Array(msg);
     if (b.length < 5 || b.length > MAX_MESSAGE + 5 || b[4] > CLOSE) return this.gone(ws, MALFORMED);
-    ws.serializeAttachment({ ...s, bytes: s.bytes + b.length } satisfies Mac);
     const stream = new DataView(msg).getUint32(0);
     // A stream already gone has its close on the way to the computer.
     const phone = this.ctx.getWebSockets(`s${stream}`).find((w) => seat(w).ok);
     if (!phone) return;
-    if (b[4] === DATA) phone.send(b.subarray(5));
-    else if (b[4] === CLOSE) {
+    if (b[4] === DATA) {
+      const held = this.paused(s);
+      if (held) return this.cut(held);
+      const why = await this.settle(ws, b.length - 5, this.price.message);
+      phone.send(b.subarray(5));
+      if (why) this.cut(why);
+    } else if (b[4] === CLOSE) {
       phone.serializeAttachment({ ...seat(phone), ok: false });
       shut(phone, 1000);
     }
@@ -196,6 +234,13 @@ export class Room extends DurableObject<Env> {
       ws.send(JSON.stringify({ t: "offline", seen: (await this.ctx.storage.get<number>("seen")) ?? 0 }));
       return shut(ws, OFFLINE);
     }
+    // Every new stream is reported, so a spent budget is known before it carries anything.
+    const why = await this.settle(mac, 0, this.price.request + this.price.message, true);
+    if (why) {
+      ws.send(JSON.stringify({ t: "paused", until: why === "ceiling" ? nextMonth() : 0 }));
+      shut(ws, PAUSED);
+      return this.cut(why);
+    }
     ws.serializeAttachment({ ...s, ok: true } satisfies Phone);
     ws.send(JSON.stringify({ t: "ok" }));
     mac.send(frame(s.stream, OPEN, utf8(s.addr)));
@@ -205,10 +250,10 @@ export class Room extends DurableObject<Env> {
     if (typeof msg === "string" || msg.byteLength > MAX_MESSAGE) return this.gone(ws, MALFORMED);
     const mac = this.mac();
     if (!mac) return this.gone(ws, OFFLINE);
-    const f = frame(s.stream, DATA, new Uint8Array(msg));
-    const m = seat(mac) as Mac;
-    mac.serializeAttachment({ ...m, bytes: m.bytes + f.length } satisfies Mac);
-    mac.send(f);
+    if (this.paused(seat(mac) as Mac)) return this.gone(ws, PAUSED);
+    const why = await this.settle(mac, msg.byteLength, this.price.message);
+    mac.send(frame(s.stream, DATA, new Uint8Array(msg)));
+    if (why) this.cut(why);
   }
 
   // Every end of an admitted socket comes here, so a closing one never carries another byte.
@@ -221,16 +266,85 @@ export class Room extends DurableObject<Env> {
     this.mac()?.send(frame(s.stream, CLOSE));
   }
 
-  // The computer socket is done: its bytes and time are kept, its phones' streams end with it.
+  // The computer socket is done: its count and time are kept, its phones' streams end with it.
   private async retire(ws: WebSocket, s: Mac) {
     ws.serializeAttachment({ ...s, ok: false } satisfies Mac);
-    const bytes = (await this.ctx.storage.get<number>("bytes")) ?? 0;
-    await this.ctx.storage.put({ bytes: bytes + s.bytes, seen: now() });
+    await this.ctx.storage.put({ usage: { month: s.month, used: s.used, cost: s.cost }, seen: now() });
     for (const phone of this.ctx.getWebSockets("phone")) {
       const p = seat(phone);
       if (!p.ok) continue;
       phone.serializeAttachment({ ...p, ok: false });
       shut(phone, OFFLINE);
+    }
+  }
+
+  /**
+   * Counts `n` relayed bytes and `cost` on the computer's socket before they are forwarded, and brings its month up
+   * to date. Stored at every MB, ceiling step and new month; reported to the budget then, at every COST_STEP and when
+   * `report`. The computer hears its usage at each of those and at each change of pause. Returns why phones can't
+   * pass now, or null. Only `report` (a new stream or computer) waits for the budget's answer: a frame never waits on
+   * it, so frames are forwarded in the order they came; a pause it brings is applied when it comes.
+   */
+  private async settle(mac: WebSocket, n: number, cost: number, report = false) {
+    const was = seat(mac) as Mac;
+    const s = { ...was, cost: was.cost + cost };
+    if (s.month !== month()) Object.assign(s, { month: month(), used: 0, kept: 0 });
+    s.used += n;
+    const c = this.ceiling();
+    const write = s.month !== was.month || s.used - s.kept >= MB || step(s.used, c) !== step(was.used, c);
+    const ask = Boolean(this.env.BUDGET_USD) && (report || write || s.cost >= COST_STEP);
+    const owed = s.cost;
+    if (ask) s.cost = 0;
+    if (write) s.kept = s.used;
+    mac.serializeAttachment(s satisfies Mac);
+    if (write) await this.ctx.storage.put("usage", { month: s.month, used: s.used, cost: s.cost });
+    const why = this.paused(s);
+    if (write || report || ask || why !== this.paused(was)) mac.send(this.usage(s));
+    if (!ask) return why;
+    // The socket's state is written before this wait, so a message handled meanwhile is never lost.
+    const answer = this.env.BUDGET.get(this.env.BUDGET.idFromName("all"))
+      .add(owed)
+      .then((free) => this.answer(mac, free), () => this.paused(seat(mac) as Mac));
+    return report ? answer : why;
+  }
+
+  // The budget's answer: a change of pause tells the computer, and a pause cuts every phone stream.
+  private answer(mac: WebSocket, free: boolean) {
+    const was = seat(mac) as Mac;
+    if (!was.ok) return null;
+    const s = { ...was, free };
+    mac.serializeAttachment(s satisfies Mac);
+    const why = this.paused(s);
+    if (why !== this.paused(was)) mac.send(this.usage(s));
+    if (why) this.cut(why);
+    return why;
+  }
+
+  // Why this room's phones can't pass now: its ceiling this month, or the relay's budget (or FREE_OPEN off).
+  private paused(s: Mac) {
+    if (paid(s.room)) return null;
+    if (this.env.FREE_OPEN === "0" || !s.free) return "budget";
+    const c = this.ceiling();
+    return c && s.used >= c ? "ceiling" : null;
+  }
+
+  private usage(s: Mac) {
+    const ceiling = paid(s.room) ? 0 : this.ceiling();
+    return JSON.stringify({ t: "usage", month: s.month, used: s.used, ceiling, until: nextMonth(), paused: this.paused(s) });
+  }
+
+  // 0: no ceiling (a user's own relay).
+  private ceiling() {
+    return Number(this.env.CEILING) || 0;
+  }
+
+  // Every phone stream ends with the paused code, told until when first (0: no date); the computer hears each close.
+  private cut(why: "ceiling" | "budget") {
+    const paused = JSON.stringify({ t: "paused", until: why === "ceiling" ? nextMonth() : 0 });
+    for (const phone of this.ctx.getWebSockets("phone")) {
+      if (!seat(phone).ok) continue;
+      phone.send(paused);
+      void this.gone(phone, PAUSED);
     }
   }
 

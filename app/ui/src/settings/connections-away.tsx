@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { current, nearly, nearlyLine, pausedLine, type Usage, used } from "../../../shared/away";
 import { CONNECTION_WORDS } from "../../../shared/words";
 import { Button } from "../components/button";
 import { ConfirmDialog } from "../components/confirm-dialog";
@@ -9,12 +10,13 @@ import { Input } from "../components/input";
 import { type Choice, Segmented } from "../components/segmented";
 import { SettingsCard } from "../components/settings-card";
 import { SettingsRow } from "../components/settings-row";
+import { UsageBar } from "../components/usage-bar";
 import { run } from "../onboarding/api";
 import { useSave } from "./general";
 import { SettingsSection } from "./parts";
 
-/** `remote status`'s relay: what is chosen, the address the gateway was given, and how its socket is. `closed` is null until it closes once. */
-export type Relay = { mode: Mode; url: string | null; ready: boolean; room: string | null; seen: number; closed: number | null };
+/** `remote status`'s relay: what is chosen, the address the gateway was given, and how its socket is. `closed` is null until it closes once; `usage` until the relay first says it. */
+export type Relay = { mode: Mode; url: string | null; ready: boolean; room: string | null; seen: number; closed: number | null; usage: Usage | null };
 
 type Mode = "off" | "hosted" | "own";
 
@@ -29,11 +31,28 @@ const MODES: readonly Choice<Mode>[] = [
 /** The relay's close codes the computer can do something about; 0 is the gateway's own, for no answer. */
 const CLOSED: Record<number, string> = {
   0: "Can't reach the relay",
+  4402: "The relay has paused this computer's connections",
   4403: "This relay doesn't admit this computer yet",
   4409: "Another computer used this computer's relay room",
 };
 
 const DEPLOY = "https://deploy.workers.cloudflare.com/?url=https://github.com/syncra-studio/brigadier/tree/main/relay";
+
+/** This month's relayed bytes against the ceiling, and the notice from 80% and at the ceiling (or a spent budget). */
+function UsageRow({ usage: last }: { usage: Usage }) {
+  const usage = current(last);
+  const paused = usage.paused !== null;
+  const share = usage.ceiling ? Math.min(100, (usage.used / usage.ceiling) * 100) : 0;
+  const notice = paused ? pausedLine(usage.paused === "budget" ? 0 : usage.until) : nearly(usage) ? nearlyLine(usage) : null;
+  return (
+    <SettingsRow
+      label={used(usage)}
+      description={notice && <span className={cx(paused && "text-warning")}>{notice}</span>}
+    >
+      {usage.ceiling > 0 && <UsageBar value={share} fill={paused || share >= 80 ? "bg-warning" : "bg-foreground"} label="Used this month" className="w-40" />}
+    </SettingsRow>
+  );
+}
 
 /** Settings › Connections › Away from home: no relay, Brigadier's, or one the user deployed; how its socket is, and its room. `offline`: the daemon's status can't be read now, so the last one isn't shown as current. */
 export function AwaySection({ relay, paired, load, offline }: { relay: Relay; paired: boolean; load: () => Promise<unknown>; offline: boolean }) {
@@ -92,6 +111,7 @@ export function AwaySection({ relay, paired, load, offline }: { relay: Relay; pa
         >
           <Segmented label="Relay" value={mode} options={MODES} disabled={busy || offline} onChange={choose} />
         </SettingsRow>
+        {shown && relay.usage && <UsageRow usage={relay.usage} />}
         {mode === "own" && (
           <div className="flex flex-col gap-3 px-4 py-3">
             <ol className="flex list-decimal flex-col gap-1.5 ps-5 text-label">

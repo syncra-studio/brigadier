@@ -1,3 +1,4 @@
+import type { Budget } from "./budget";
 import type { Lookup } from "./lookup";
 import type { Quota } from "./quota";
 import type { Room } from "./room";
@@ -6,14 +7,23 @@ export interface Env {
   ROOM: DurableObjectNamespace<Room>;
   LOOKUP: DurableObjectNamespace<Lookup>;
   QUOTA: DurableObjectNamespace<Quota>;
+  BUDGET: DurableObjectNamespace<Budget>;
   OPENS: RateLimit;
   LOOKUPS: RateLimit;
   HOSTED?: string;
   ROOMS?: string;
+  // Hosted only. Bytes a free room may carry a month (none when unset); the relay's monthly budget in dollars (none
+  // when unset); "0" stops all free traffic at once.
+  CEILING?: string;
+  BUDGET_USD?: string;
+  FREE_OPEN?: string;
+  PRICE_REQUESTS?: string;
+  PRICE_GB_S?: string;
 }
 
 export const MALFORMED = 4400;
 export const REFUSED = 4401;
+export const PAUSED = 4402;
 export const NOT_ADMITTED = 4403;
 export const OFFLINE = 4404;
 export const REPLACED = 4409;

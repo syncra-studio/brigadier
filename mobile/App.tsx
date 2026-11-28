@@ -125,9 +125,10 @@ export default function App() {
       if (mac && shown && !busy) void reach(mac);
       else now.current.again = true;
     });
-    const unsubscribe = onClosed(() => {
+    const unsubscribe = onClosed((paused) => {
       stop();
-      setStatus((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, v === "connected" ? "lost" : v])));
+      const ended: Status = paused === undefined ? "lost" : { paused };
+      setStatus((s) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, v === "connected" ? ended : v])));
     });
     return () => {
       path.remove();

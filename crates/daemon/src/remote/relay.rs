@@ -41,6 +41,9 @@ pub(super) struct Relay {
     /// since this relay was chosen, so a first try reads apart from "can't reach" (0).
     seen: u64,
     closed: Option<u64>,
+    /// The relay's last `usage` frame for this room: this month's bytes, its ceiling, and whether
+    /// phones are paused. Kept across reconnects; a new relay choice drops it.
+    usage: Option<Value>,
     /// Kept across reconnects, so a removal made while away still goes out.
     sent: Lists,
 }
@@ -174,6 +177,7 @@ pub(super) fn pass(s: &mut State, data: &Path) {
         }
         let r = &mut s.relay;
         (r.told, r.ready, r.trying, r.retry, r.closed) = (want, false, false, None, None);
+        r.usage = None;
         r.wait = Duration::from_secs(1);
     }
     let due = s.relay.retry.is_none_or(|t| Instant::now() >= t);
@@ -307,6 +311,7 @@ pub(super) fn from_relay(s: &mut State, bytes: &[u8]) {
             (r.ready, r.fresh, r.wait) = (true, true, Duration::from_secs(1));
             r.seen = frame["seen"].as_u64().unwrap_or(0);
         }
+        Some("usage") => s.relay.usage = Some(frame),
         // A replaced attempt's end, crossing the newer URL on its way: not this one's.
         Some("closed") if frame["n"].as_u64() != Some(s.relay.named) => {}
         Some("closed") => {
@@ -351,8 +356,10 @@ pub(super) fn hello(s: &State) -> Option<Value> {
 /// The gateway went: whatever it was told goes with it, but not what the relay still holds.
 pub(super) fn reset(s: &mut State) {
     let sent = std::mem::take(&mut s.relay.sent);
+    let usage = s.relay.usage.take();
     s.relay = Relay {
         sent,
+        usage,
         ..Relay::default()
     };
 }
@@ -367,5 +374,5 @@ pub(super) fn shown(s: &State, data: &Path) -> Value {
         .unwrap_or("off");
     let room = s.relay.key.as_ref().map(|k| devices::hex(&room(k)));
     json!({"mode": mode, "url": s.relay.told, "ready": s.relay.ready, "room": room,
-        "seen": s.relay.seen, "closed": s.relay.closed})
+        "seen": s.relay.seen, "closed": s.relay.closed, "usage": s.relay.usage})
 }

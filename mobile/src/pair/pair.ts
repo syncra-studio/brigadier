@@ -146,16 +146,18 @@ async function pairing(own: Own, how: { offer: Offer } | { code: string }, onChe
 
 /**
  * Signs in to a paired Mac: found again on Bonjour by its key, else at the addresses kept, else through its relay.
- * `resume` first, then Face ID. `seen`: the relay has no Mac now, and last had it then (unix s).
+ * `resume` first, then Face ID. `seen`: the relay has no Mac now, and last had it then (unix s). `paused`: the relay
+ * carries none of its streams until then (0: no date).
  */
 export const signIn = (mac: Mac) => guarded((own) => signingIn(own, mac));
 
-async function signingIn(own: Own, mac: Mac): Promise<"ok" | Problem | "cancelled" | { seen: number }> {
+async function signingIn(own: Own, mac: Mac): Promise<"ok" | Problem | "cancelled" | { seen: number } | { paused: number }> {
   const { found, denied } = await Link.browse(1500);
   const near = found.filter((f) => f.pk === mac.pk).map((f) => `bonjour:${f.name}`);
   // The pass as the last `hello` left it, which may be newer than the record shown.
   const pass = (await Link.macs()).find((m) => m.pk === mac.pk)?.relay;
   const r = await opened(own, "device", mac.pk, [...near, ...mac.addresses, ...socket(pass)], null);
+  if (r.paused !== undefined) return { paused: r.paused };
   if (r.seen !== undefined) return { seen: r.seen };
   if (r.error) return r.error === "closed" ? "cancelled" : r.error === "refused" ? "notPaired" : denied ? "localNetwork" : "unreachable";
   send({ resume: true });

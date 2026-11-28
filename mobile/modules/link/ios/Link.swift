@@ -8,7 +8,8 @@ import Network
 final class Channel {
     /// `refused`: a Mac was reached but no message 2 opened (no open offer, another psk, an unknown device), or the
     /// relay refused this phone's token or invite. `offline`: the relay has no computer; when it last had one (unix s).
-    enum Failure: Error { case unreachable, refused, closed, offline(Int) }
+    /// `paused`: the relay carries none of this Mac's streams now, until then (unix s; 0 with no date).
+    enum Failure: Error { case unreachable, refused, closed, offline(Int), paused(Int) }
     static let service = "_brigadier._tcp"
 
     let noise: BrigadierNoise
@@ -19,7 +20,8 @@ final class Channel {
     private let conn: NWConnection
     private let queue: DispatchQueue
     var onData: ((Data) -> Void)?
-    var onClosed: (() -> Void)?
+    /// With the relay's pause, until when (unix s; 0 with no date), when that is why the stream ended.
+    var onClosed: ((Int?) -> Void)?
 
     private init(_ conn: NWConnection, _ queue: DispatchQueue, _ noise: BrigadierNoise, _ mac: [UInt8], relayed: Bool) {
         (self.conn, self.queue, self.noise, self.mac, self.relayed) = (conn, queue, noise, mac, relayed)
@@ -38,7 +40,7 @@ final class Channel {
     static func open(_ targets: [String], mac: [UInt8], psk: [UInt8], static key: Curve25519.KeyAgreement.PrivateKey,
                      payload: [UInt8], ticket: String) async throws -> Channel {
         var reached = false
-        var seen: Int?
+        var seen: Int?, paused: Int?
         let started = Date(), viaRelay = targets.contains(where: isRelay)
         for target in targets {
             let relayed = isRelay(target)
@@ -65,6 +67,7 @@ final class Channel {
                 switch error {
                 case Failure.refused: reached = true
                 case let Failure.offline(at): seen = at
+                case let Failure.paused(until): paused = until
                 case Failure.unreachable: break
                 // The Mac closed it or its message 2 didn't open: another psk, an unknown phone, no open offer.
                 default: if open && !queue.sync(execute: { late.set }) { reached = true }
@@ -72,7 +75,7 @@ final class Channel {
             }
         }
         if reached { throw Failure.refused }
-        throw seen.map(Failure.offline) ?? Failure.unreachable
+        throw paused.map(Failure.paused) ?? seen.map(Failure.offline) ?? Failure.unreachable
     }
 
     /// The typed code's offer at the first of `relays` (their "ws(s)://host" addresses) that holds it: the computer's Noise
@@ -105,13 +108,16 @@ final class Channel {
     /// Reads until the stream ends, once `onData` and `onClosed` are set; a failed write or `close` ends it too.
     func run() {
         Task {
-            while let m = try? await Self.message(conn, relayed) {
+            var paused: Int?
+            while true {
+                let m: [UInt8]
+                do { m = try await Self.message(conn, relayed) } catch let Failure.paused(until) { paused = until; break } catch { break }
                 // A message that doesn't open means the stream can't be trusted any more.
                 guard let plain = try? noise.open(m) else { break }
                 onData?(Data(plain))
             }
             close()
-            onClosed?()
+            onClosed?(paused)
         }
     }
 
@@ -148,7 +154,7 @@ final class Channel {
     }
 
     /// The relay's first exchange: this phone's token or invite, then `ok`, or `offline` with when the computer was
-    /// last there; 4401 is a refusal, any other close a relay that can't carry the stream now.
+    /// last there, or `paused` with until when; 4401 is a refusal, any other close a relay that can't carry it now.
     private static func hello(_ conn: NWConnection, _ ticket: String) async throws {
         put(conn, true, Array(#"{"t":"hello","v":"\#(ticket)"}"#.utf8), text: true)
         let (data, meta) = try await receive(conn)
@@ -156,6 +162,7 @@ final class Channel {
         let said = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         if said?["t"] as? String == "ok" { return }
         if said?["t"] as? String == "offline" { throw Failure.offline(said?["seen"] as? Int ?? 0) }
+        if said?["t"] as? String == "paused" { throw Failure.paused(said?["until"] as? Int ?? 0) }
         throw Failure.unreachable
     }
 
@@ -194,15 +201,20 @@ final class Channel {
     }
 
     private static func message(_ conn: NWConnection, _ relayed: Bool) async throws -> [UInt8] {
+        var until = 0
         while relayed {
             // Only the Mac's own close (1000, its stream's end) is its answer; 4404 is the computer gone, anything else
-            // the relay's trouble: neither is a refusal.
+            // the relay's trouble: neither is a refusal. 4402 is the relay's pause, told until when just before.
             guard let (data, meta) = try? await receive(conn) else { throw Failure.unreachable }
             switch meta?.opcode {
             case .binary?: if !data.isEmpty { return Array(data) } else { throw Failure.closed }
-            case .text?, .ping?, .pong?, .cont?: continue  // a later relay may say more; only binary is the Mac's
+            case .text?:
+                let said = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                if said?["t"] as? String == "paused" { until = said?["until"] as? Int ?? 0 }
+            case .ping?, .pong?, .cont?: continue  // a later relay may say more; only binary is the Mac's
             case .close?:
                 if meta?.closeCode == .privateCode(4404) { throw Failure.offline(0) }
+                if meta?.closeCode == .privateCode(4402) { throw Failure.paused(until) }
                 throw meta?.closeCode == .protocolCode(.normalClosure) ? Failure.closed : Failure.unreachable
             default: throw Failure.unreachable
             }

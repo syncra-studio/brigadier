@@ -1,5 +1,6 @@
 import { type Env, LIMITED, NOT_ADMITTED, OPEN_PROOF, PASS, doorRoom, now, source } from "./wire";
 
+export { Budget } from "./budget";
 export { Lookup } from "./lookup";
 export { Quota } from "./quota";
 export { Room } from "./room";
