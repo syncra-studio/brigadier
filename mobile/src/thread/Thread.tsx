@@ -10,7 +10,7 @@ import type { Screens } from "../mac/MacScreens";
 import { Sheets } from "../sheets/Sheets";
 import { color, space, text } from "../theme";
 import { Cards } from "./Cards";
-import { type Line, lineMaker, workKey } from "../../../app/shared/lines";
+import { type Line, lineMaker, withSetup } from "../../../app/shared/lines";
 import { Row } from "./Row";
 
 /** The open session's thread, read only: its rows as the desktop draws them, its waiting cards under them. */
@@ -77,7 +77,7 @@ export function Rows({ session, onOlder = older }: { session: Session; onOlder?:
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
   const turns = useMemo(() => new Map(session.turns.map((t) => [t.id, t])), [session.turns]);
   const work = useMemo(() => new Map((session.work ?? []).map((w) => [w.turnId, w])), [session.work]);
-  const lines = withSetup(make(session.items, turns, work, opened), session);
+  const lines = setupRow(make(session.items, turns, work, opened), session);
   const dated = useMemo(() => datedMessages(session.items), [session.items]);
   // Inverted, so it opens at the newest row and stays there as rows come.
   const data = useMemo(() => lines.slice().reverse(), [lines]);
@@ -106,25 +106,9 @@ export function Rows({ session, onOlder = older }: { session: Session; onOlder?:
   );
 }
 
-/** The worktree's setup row under its input, as the desktop's thread.tsx places it [D70, D77, D85]. */
-function withSetup(rows: Line[], session: Session): Line[] {
-  const setup = session.setup;
-  if (!setup) return rows;
-  // Before its input is in (a start still setting up, or one that failed doing it), it is the newest row.
-  if (setup.after === null) return [...rows, { type: "setup", id: `${session.id}:setup`, gap: rows.length ? "turn" : "first", setup }];
-  const at = rows.findIndex((row) => row.id === setup.after);
-  if (at < 0) return rows;
-  // Its turn's work's first item: folded away with it.
-  const next = rows[at + 1];
-  if (next?.type === "work" && next.open === false) return rows;
-  const input = rows[at]!;
-  const turn = input.type === "item" ? input.turn : undefined;
-  const line: Line = { type: "setup", id: `${session.id}:setup`, gap: next?.type === "work" || turn ? "part" : "turn", setup };
-  if (next?.type === "work") return [...rows.slice(0, at + 2), line, ...rows.slice(at + 2)];
-  if (!turn) return [...rows.slice(0, at + 1), line, ...rows.slice(at + 1)];
-  const head: Line = { type: "work", id: workKey(turn.id), gap: "turn", turn, work: undefined, open: null };
-  return [...rows.slice(0, at + 1), head, line, ...rows.slice(at + 1)];
-}
+/** The worktree's setup row under its input (app/shared/lines.ts); before its input is in (a start still setting up, or one that failed doing it), the newest row. */
+const setupRow = (rows: Line[], session: Session): Line[] =>
+  session.setup?.after === null ? [...rows, { type: "setup", id: `${session.id}:setup`, gap: rows.length ? "turn" : "first", setup: session.setup }] : withSetup(rows, session.id, session.setup);
 
 function Centered({ children }: { children: React.ReactNode }) {
   return <View style={[styles.page, { alignItems: "center", justifyContent: "center", padding: space(6) }]}>{children}</View>;

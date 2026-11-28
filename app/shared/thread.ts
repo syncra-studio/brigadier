@@ -325,3 +325,66 @@ export type Kind = Item["kind"];
 
 /** Whether a finished worker merged its branch back into its parent's, by Rust's result [D97]. */
 export type Merge = { into: string; ok: boolean };
+
+/**
+ * A thread push put into the rows held, for both apps' stores: `before` and `after` are the held pages' ends (null
+ * for none), `at` each held row's place, kept up to date. A row older than the pages held, or newer than an island's,
+ * comes with its page; under an island a new turn does too, so the turns stay in order.
+ */
+export function applyThreadFrame(session: Session, frame: Record<string, any>, before: number | null, after: number | null, at = new Map(session.items.map((item, i) => [item.id, i]))): Session {
+  const items = frame.items.length ? session.items.slice() : session.items;
+  for (const item of frame.items as Item[]) {
+    const i = at.get(item.id);
+    if (i === undefined && before !== null && item.n !== undefined && item.n < before) continue;
+    if (i === undefined && after !== null && item.n !== undefined && item.n >= after) continue;
+    if (i === undefined) at.set(item.id, items.push(item) - 1);
+    else items[i] = item;
+  }
+  let turns = session.turns;
+  for (const turn of frame.turns as Turn[]) {
+    const i = turns.findIndex((each) => each.id === turn.id);
+    if (i < 0 && after !== null) continue;
+    turns = i < 0 ? [...turns, turn] : turns.map((each, j) => (j === i ? turn : each));
+  }
+  const work = after === null ? (frame.work as Work[]) : (frame.work as Work[]).filter((each) => turns.some((turn) => turn.id === each.turnId));
+  return {
+    ...session,
+    items,
+    turns,
+    work: work.length ? [...(session.work ?? []), ...work] : session.work,
+    setup: "setup" in frame ? frame.setup : session.setup,
+    approvals: frame.approvals ?? session.approvals,
+    questions: frame.questions ?? session.questions,
+    rewind: frame.rewind ?? session.rewind,
+  };
+}
+
+/**
+ * A page or an island put with the rows held (`before`, `after`: their ends): where they touch, one run of rows by
+ * `n`, the page's copies winning (it was read after them); where they don't (`touch` false), the island alone, and
+ * the rows newer than it come as the view gets there.
+ */
+export function mergePage(session: Session, frame: Record<string, any>, before: number | null, after: number | null): { session: Session; touch: boolean } {
+  const got = frame.items as Item[];
+  const [first, end] = [session.items[0]?.n ?? Infinity, after ?? Infinity];
+  const [from, to] = [got[0]?.n ?? Infinity, (frame.after as number | null) ?? Infinity];
+  const touch = from <= end && to >= first;
+  const above = from < first;
+  const byId = new Map(touch ? session.items.map((item) => [item.id, item]) : []);
+  for (const item of got) byId.set(item.id, item);
+  const items = touch && got.length === 0 ? session.items : [...byId.values()].sort((a, b) => (a.n ?? 0) - (b.n ?? 0));
+  if (!touch || above) before = frame.before;
+  if (!touch) after = frame.after;
+  else if (frame.after === null || after === null) after = null;
+  else after = Math.max(after, frame.after);
+  const join = <T>(have: readonly T[], come: readonly T[], key: (each: T) => string): T[] => {
+    if (!touch) return [...come];
+    const fresh = new Map(come.map((each) => [key(each), each]));
+    const kept = new Set(have.map(key));
+    const extra = come.filter((each) => !kept.has(key(each)));
+    const now = have.map((each) => fresh.get(key(each)) ?? each);
+    return above ? [...extra, ...now] : [...now, ...extra];
+  };
+  const turns = join(session.turns, frame.turns as Turn[], (turn) => turn.id);
+  return { session: { ...session, before, after, items, turns, work: join(session.work ?? [], frame.work as Work[], (each) => each.turnId) }, touch };
+}

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import type { Draft } from "../../../app/shared/draft";
 import { REWIND_CANT } from "../../../app/shared/words";
+import { previewOf, type RewindPreview, why } from "../../../app/shared/session/rewind";
 import { Button } from "../Button";
 import { forMac, newId } from "../compose/state";
 import { store } from "../../../app/shared/store";
@@ -13,18 +14,8 @@ import { lists, thread } from "../mac/mac";
 import { color } from "../theme";
 import { Sheet, st } from "../sheets/Sheet";
 
-type Preview = { paths: string[]; hand: string[]; leftOut: string[]; nested: string[]; stale: string[]; commits: boolean; sharer?: { id: string; now: boolean }; why?: string };
-
-const why = (reply: Record<string, any>) => (reply.error === "disconnected" ? "Brigadier isn't running, so the outcome isn't known yet." : String(reply.message ?? reply.error ?? "Refused"));
 const named = (paths: string[]) => (paths.length > 5 ? `${paths.slice(0, 5).join(", ")} and ${paths.length - 5} more` : paths.join(", "));
 const files = (n: number) => (n === 1 ? "1 file" : `${n} files`);
-
-function previewOf(reply: Record<string, any>): Preview {
-  const none = { paths: [], hand: [], leftOut: [], nested: [], stale: [], commits: false };
-  if (reply.restore === true) return { paths: reply.paths ?? [], hand: reply.hand ?? [], leftOut: reply.leftOut ?? [], nested: reply.nested ?? [], stale: reply.stale ?? [], commits: reply.commits === true };
-  // Another session in the folder keeps the files [D1078]; else Rust's reason [D384].
-  return typeof reply.with === "string" ? { ...none, sharer: { id: reply.with, now: reply.why === "busy" } } : { ...none, why: String(reply.why) };
-}
 
 function said(reply: Record<string, any>, restore: boolean): string {
   if (reply.already) return "Rewound · check your files";
@@ -43,7 +34,7 @@ const keepLost = (op: string, each: Lost | null) => lostRewinds.set([...lostRewi
 
 export function Rewind({ id, cid, text, draft, lost: was, onClose }: { id: string; cid: string; text: string; draft?: Draft | null; lost?: Lost; onClose: () => void }) {
   const { run, drafts } = forMac();
-  const [preview, setPreview] = useState<Preview | null>(null);
+  const [preview, setPreview] = useState<RewindPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [restore, setRestore] = useState(false);
   const [busy, setBusy] = useState(false);

@@ -1,9 +1,9 @@
 // The signed-in Mac's lists and the open thread, as the desktop's daemon.ts keeps them: a snapshot, then numbered
 // pushes naming what changed by id; a gap asks for a fresh snapshot.
 import type { Frame } from "../../../app/shared/client";
-import type { Project, Row } from "../../../app/shared/rows";
+import { applyListFrame, type Project, type Row } from "../../../app/shared/rows";
 import { store } from "../../../app/shared/store";
-import type { Item, Session, Turn, Work } from "../../../app/shared/thread";
+import { applyThreadFrame, mergePage, type Session } from "../../../app/shared/thread";
 import { onPush, request } from "../link";
 
 export const lists = store<{ rows: Row[]; projects: Project[]; ready: boolean }>({ rows: [], projects: [], ready: false });
@@ -95,20 +95,8 @@ export function older(): boolean {
     olderRe = 0;
     const now = thread.get();
     if (!reply.ok || now?.id !== id || now.status !== "ready") return;
-    const s = now.session;
-    const have = new Set(s.items.map((item) => item.id));
-    const turns = new Set(s.turns.map((t) => t.id));
-    const work = new Set((s.work ?? []).map((w) => w.turnId));
-    thread.set({
-      ...now,
-      session: {
-        ...s,
-        before: reply.before,
-        items: [...(reply.items as Item[]).filter((item) => !have.has(item.id)), ...s.items],
-        turns: [...(reply.turns as Turn[]).filter((t) => !turns.has(t.id)), ...s.turns],
-        work: [...(reply.work as Work[]).filter((w) => !work.has(w.turnId)), ...(s.work ?? [])],
-      },
-    });
+    // The desktop's page merge (app/shared/thread.ts): the page's copies win, the rows by `n`.
+    thread.set({ ...now, session: mergePage(now.session, reply, now.session.before ?? null, null).session });
   });
   olderRe = re;
   return re !== 0;
@@ -119,10 +107,7 @@ function onFrame(frame: Frame) {
   if (frame.re !== undefined || typeof frame.n !== "number" || n === undefined) return;
   if (frame.n !== n + 1) return subscribe();
   n = frame.n;
-  for (const row of frame.rows as Row[]) rows.set(row.id, row);
-  for (const id of frame.gone as string[]) rows.delete(id);
-  for (const p of (frame.projects ?? []) as Project[]) projects.set(p.id, p);
-  for (const id of (frame.projects_gone ?? []) as string[]) projects.delete(id);
+  applyListFrame(frame, rows, projects);
   lists.set({ rows: [...rows.values()], projects: [...projects.values()], ready: true });
 }
 
@@ -135,36 +120,8 @@ function applyThread(frame: Frame) {
   if (open.status !== "ready" || threadN === undefined) return;
   if (frame.n !== threadN + 1) return watch(open.id, open.session);
   threadN = frame.n;
-  const s = open.session;
-  const before = s.before ?? null;
-  const items = s.items.slice();
-  const at = new Map(items.map((item, i) => [item.id, i]));
-  for (const item of frame.items as Item[]) {
-    const i = at.get(item.id);
-    // A row older than the pages held comes with its page.
-    if (i === undefined && before !== null && item.n !== undefined && item.n < before) continue;
-    if (i === undefined) at.set(item.id, items.push(item) - 1);
-    else items[i] = item;
-  }
-  let turns = s.turns;
-  for (const turn of frame.turns as Turn[]) {
-    const i = turns.findIndex((each) => each.id === turn.id);
-    turns = i < 0 ? [...turns, turn] : turns.map((each, j) => (j === i ? turn : each));
-  }
-  const work = frame.work as Work[];
-  thread.set({
-    ...open,
-    session: {
-      ...s,
-      items,
-      turns,
-      work: work.length ? [...(s.work ?? []), ...work] : s.work,
-      setup: "setup" in frame ? frame.setup : s.setup,
-      approvals: frame.approvals ?? s.approvals,
-      questions: frame.questions ?? s.questions,
-      rewind: frame.rewind ?? s.rewind,
-    },
-  });
+  // No island here: the phone holds its newest rows.
+  thread.set({ ...open, session: applyThreadFrame(open.session, frame, open.session.before ?? null, null) });
 }
 
 /** The rows the lists show: not archived, not a note's side chat, not a worker (those sit in their lead's thread). */

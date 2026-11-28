@@ -7,7 +7,7 @@ import { useKept } from "../../thread/kept";
 import { type Group, type Line, running } from "../../thread/lines";
 import { Markdown } from "../../thread/markdown";
 import { AnswerRefs } from "../../thread/refs";
-import { tidy } from "../../thread/tidy";
+import { tidy } from "../../../../shared/markdown";
 import { useAgentLabel } from "../../onboarding/api";
 import { describe } from "../composer/approval";
 import { SentAttachments } from "../composer/attachments";

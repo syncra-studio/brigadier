@@ -2,7 +2,7 @@ import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, 
 import { Virtualizer, type CacheSnapshot, type VirtualizerHandle } from "virtua";
 
 import type { Session } from "./item";
-import { lineMaker, workKey, type Line } from "./lines";
+import { lineMaker, withSetup, type Line } from "./lines";
 import { MessageRail } from "./rail";
 import { LineRow } from "./rows";
 import { COLUMN } from "../components/composer/composer";
@@ -103,23 +103,7 @@ export function Thread({ id, source, footer, ref }: { id?: string; source: Sourc
   const dated = useMemo(() => datedMessages(items ?? []), [items]);
   const threadRows = useMemo(() => (items ? lines(items, turns, work, open) : []), [lines, items, turns, work, open]);
   const setup = session?.setup;
-  const all = useMemo(() => {
-    const rows = threadRows;
-    // Under its input, first in that turn [D70]; until the input's row is in, the footer draws it.
-    const at = setup?.after ? rows.findIndex((row) => row.id === setup.after) : -1;
-    if (!setup || at < 0) return rows;
-    // It's its turn's work's first item: folded away with it, and under its header opened [D77].
-    const next = rows[at + 1];
-    if (next?.type === "work" && next.open === false) return rows;
-    const input = rows[at]!;
-    const turn = input.type === "item" ? input.turn : undefined;
-    const line: Line = { type: "setup", id: `${session.id}:setup`, gap: next?.type === "work" || turn ? "part" : "turn", setup };
-    if (next?.type === "work") return [...rows.slice(0, at + 2), line, ...rows.slice(at + 2)];
-    if (!turn) return [...rows.slice(0, at + 1), line, ...rows.slice(at + 1)];
-    // The header is there before the turn's first step, under the id that step's header has, so nothing moves when it comes [D85].
-    const head: Line = { type: "work", id: workKey(turn.id), gap: "turn", turn, work: undefined, open: null };
-    return [...rows.slice(0, at + 1), head, line, ...rows.slice(at + 1)];
-  }, [threadRows, setup, session?.id]);
+  const all = useMemo(() => withSetup(threadRows, session?.id ?? "", setup), [threadRows, setup, session?.id]);
   // Older rows arriving above: Virtua keeps what is on screen in place when told the list grew at its start, but until
   // its next scroll end it holds every resize to the list's end, so a row growing below would move the screen. So when
   // rows arrive above, everything stays as drawn for one painted frame, in which Virtua measures what was drawn before

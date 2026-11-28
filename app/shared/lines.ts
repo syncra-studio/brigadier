@@ -1,6 +1,6 @@
 // Which rows the list draws, from the session and what the user has opened: drawing only, no thread rules.
 // Rust sends groups and work folds ready-made; this hides what a closed one covers and places the work header.
-import type { Item, Session, Turn, Work } from "./thread";
+import type { Item, Session, Setup, Turn, Work } from "./thread";
 
 export type Group = Extract<Item, { kind: "group" }>;
 
@@ -191,4 +191,24 @@ function lines({ items, out, starts, counts }: Walk, from: number, turns: Readon
   }
   bare();
   end();
+}
+
+/**
+ * The worktree's setup row under its input, first in that turn [D70]: folded away with its turn's work, and under its
+ * header opened [D77]. Until the input's row is in, `rows` as they are (the desktop's footer draws it, the phone's
+ * newest row).
+ */
+export function withSetup(rows: Line[], id: string, setup: Setup | null | undefined): Line[] {
+  const at = setup?.after ? rows.findIndex((row) => row.id === setup.after) : -1;
+  if (!setup || at < 0) return rows;
+  const next = rows[at + 1];
+  if (next?.type === "work" && next.open === false) return rows;
+  const input = rows[at]!;
+  const turn = input.type === "item" ? input.turn : undefined;
+  const line: Line = { type: "setup", id: `${id}:setup`, gap: next?.type === "work" || turn ? "part" : "turn", setup };
+  if (next?.type === "work") return [...rows.slice(0, at + 2), line, ...rows.slice(at + 2)];
+  if (!turn) return [...rows.slice(0, at + 1), line, ...rows.slice(at + 1)];
+  // The header is there before the turn's first step, under the id that step's header has, so nothing moves when it comes [D85].
+  const head: Line = { type: "work", id: workKey(turn.id), gap: "turn", turn, work: undefined, open: null };
+  return [...rows.slice(0, at + 1), head, line, ...rows.slice(at + 1)];
 }

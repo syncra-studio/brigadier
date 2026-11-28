@@ -154,3 +154,11 @@ export type RepoInfo = { current: string | null; branches: string[]; worktrees: 
 export const baseBranches = (info: RepoInfo) => [...info.branches].sort((a, b) => Number(b === info.current) - Number(a === info.current) || a.localeCompare(b));
 /** A session whose messages hold every word (`search`): the best message's snippet, and where the words are in it (UTF-16). */
 export type Hit = { id: string; snippet: string; at: [number, number][] };
+
+/** A list push put into the rows and projects held, by id. */
+export function applyListFrame(frame: Record<string, any>, rows: Map<string, Row>, projects: Map<string, Project>): void {
+  for (const row of frame.rows as Row[]) rows.set(row.id, row);
+  for (const id of frame.gone as string[]) rows.delete(id);
+  for (const project of (frame.projects ?? []) as Project[]) projects.set(project.id, project);
+  for (const id of (frame.projects_gone ?? []) as string[]) projects.delete(id);
+}

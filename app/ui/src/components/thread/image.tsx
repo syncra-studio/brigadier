@@ -10,6 +10,7 @@ import { ErrorLine } from "../error-line";
 import { ImageContextMenu, ImagePreview } from "../image-viewer";
 import { showToast } from "../toast";
 import { IMAGE_WORDS } from "../../../../shared/words";
+import { pathOf } from "../../../../shared/markdown";
 
 type Size = { width: number; height: number };
 type Made = Extract<Item, { kind: "image" }>;
@@ -108,16 +109,6 @@ function pictureOf(key: string, owner: string, src: string, streaming: boolean) 
   const entry: { picture?: Picture; read: Promise<Picture> } = { read };
   pictures.set(key, entry);
   return entry;
-}
-
-/** An image's address as its path: `file:///a%20b.png` is `/a b.png`. */
-function pathOf(src: string): string {
-  const path = src.replace(/^file:(\/\/(localhost)?)?(?=\/)/i, "");
-  try {
-    return decodeURIComponent(path);
-  } catch {
-    return path;
-  }
 }
 
 /** A thread's image by a path on disk or in its checkout, from the session's own copy, drawn as one the agent makes; nothing until it can be. */

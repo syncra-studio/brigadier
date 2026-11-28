@@ -1,7 +1,8 @@
 import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { Dialog, DialogContent } from "../components/dialog";
-import { files, named, RewindContext, RewindForm, type RewindPreview } from "../components/thread/rewind";
+import { files, named, RewindContext, RewindForm } from "../components/thread/rewind";
+import { previewOf, type RewindPreview, why } from "../../../shared/session/rewind";
 import { showToast, toastManager } from "../components/toast";
 import { threadSource, useDaemon } from "../daemon";
 import type { Source } from "../thread/thread";
@@ -19,16 +20,6 @@ const FRAME = "max-w-card-narrow gap-4 p-5";
 /** How long an answer stands before the pointer coming back asks again. */
 const FRESH_MS = 2_000;
 type Running = { cid: string; n: number | undefined; replied: boolean };
-
-const why = (reply: Record<string, any>) => (reply.error === "disconnected" ? "Brigadier isn't running, so the outcome isn't known yet." : String(reply.message ?? reply.error ?? "Refused"));
-
-function previewOf(reply: Record<string, any>): RewindPreview {
-  const none = { paths: [], hand: [], leftOut: [], nested: [], commits: false };
-  if (!reply.ok) return { ...none, error: why(reply) };
-  if (reply.restore === true) return { paths: reply.paths ?? [], hand: reply.hand ?? [], leftOut: reply.leftOut ?? [], nested: reply.nested ?? [], stale: reply.stale ?? [], commits: reply.commits === true };
-  // Another session in the folder keeps the files [D1078]; else Rust's reason [D384].
-  return typeof reply.with === "string" ? { ...none, sharer: { id: reply.with, now: reply.why === "busy" } } : { ...none, why: String(reply.why) };
-}
 
 function said(reply: Record<string, any>, restore: boolean): string {
   if (reply.already) return "Rewound · check your files";

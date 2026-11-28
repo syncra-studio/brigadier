@@ -1,8 +1,9 @@
 import { useSyncExternalStore } from "react";
 
-import type { Daemon, Project, Row } from "../../shared/rows";
+import { applyListFrame, type Daemon, type Project, type Row } from "../../shared/rows";
 import { client } from "../../shared/client";
-import type { Item, Session, Turn, Work } from "./thread/item";
+import type { Session } from "./thread/item";
+import { applyThreadFrame, mergePage } from "../../shared/thread";
 import { pruneUncertain } from "./session/uncertain";
 import { asStopped, markStop } from "./thread/stopping";
 import type { Source } from "./thread/thread";
@@ -92,42 +93,14 @@ function setThread(next: ThreadState | undefined, nextSession = session): void {
   for (const listener of threadListeners) listener();
 }
 
-/**
- * A page or an island put with the rows held: where they touch, one run of rows by `n`, the page's copies winning (it
- * was read after them); where they don't, the island alone, and the rows newer than it come as the view gets there.
- */
+/** A page or an island put with the rows held (app/shared/thread.ts). */
 function merge(frame: Record<string, any>): void {
   if (!thread || !session) return;
-  const got = frame.items as Item[];
-  const [first, end] = [session.items[0]?.n ?? Infinity, after ?? Infinity];
-  const [from, to] = [got[0]?.n ?? Infinity, (frame.after as number | null) ?? Infinity];
-  const touch = from <= end && to >= first;
-  const above = from < first;
+  const { session: next, touch } = mergePage(session, frame, before, after);
   if (!touch) rowsRun++;
-  const byId = new Map(touch ? session.items.map((item) => [item.id, item]) : []);
-  for (const item of got) byId.set(item.id, item);
-  const items = touch && got.length === 0 ? session.items : [...byId.values()].sort((a, b) => (a.n ?? 0) - (b.n ?? 0));
-  if (!touch || above) before = frame.before;
-  if (!touch) after = frame.after;
-  else if (frame.after === null || after === null) after = null;
-  else after = Math.max(after, frame.after);
-  const join = <T,>(have: readonly T[], come: readonly T[], key: (each: T) => string): T[] => {
-    if (!touch) return [...come];
-    const fresh = new Map(come.map((each) => [key(each), each]));
-    const kept = new Set(have.map(key));
-    const extra = come.filter((each) => !kept.has(key(each)));
-    const now = have.map((each) => fresh.get(key(each)) ?? each);
-    return above ? [...extra, ...now] : [...now, ...extra];
-  };
-  itemAt = new Map(items.map((item, at) => [item.id, at]));
-  setThread(thread, {
-    ...session,
-    before,
-    after,
-    items,
-    turns: join(session.turns, frame.turns as Turn[], (turn) => turn.id),
-    work: join(session.work ?? [], frame.work as Work[], (each) => each.turnId),
-  });
+  [before, after] = [next.before as number | null, next.after as number | null];
+  itemAt = new Map(next.items.map((item, at) => [item.id, at]));
+  setThread(thread, next);
 }
 
 /** An older page came (`before`: the new first row's `n`, null once the whole history is in), or why not. */
@@ -197,30 +170,7 @@ function applyThread(frame: Record<string, any>): void {
   if (!session || threadN === undefined) return;
   if (frame.n !== threadN + 1) return watch(reachOf(session));
   threadN = frame.n;
-  const items = frame.items.length ? session.items.slice() : session.items;
-  for (const item of frame.items as Item[]) {
-    const at = itemAt.get(item.id);
-    // A row older than the pages held, or newer than an island's, comes with its page.
-    if (at === undefined && before !== null && item.n !== undefined && item.n < before) continue;
-    if (at === undefined && after !== null && item.n !== undefined && item.n >= after) continue;
-    if (at === undefined) itemAt.set(item.id, items.push(item) - 1);
-    else items[at] = item;
-  }
-  let turns = session.turns;
-  for (const turn of frame.turns as Turn[]) {
-    const at = turns.findIndex((each) => each.id === turn.id);
-    // Under an island a new turn comes with the page that reaches it, so the turns stay in order.
-    if (at < 0 && after !== null) continue;
-    turns = at < 0 ? [...turns, turn] : turns.with(at, turn);
-  }
-  const work = after === null ? (frame.work as Work[]) : (frame.work as Work[]).filter((each) => turns.some((turn) => turn.id === each.turnId));
-  setThread(thread, {
-    ...session, items, turns, work: work.length ? [...(session.work ?? []), ...work] : session.work,
-    setup: "setup" in frame ? frame.setup : session.setup,
-    approvals: frame.approvals ?? session.approvals,
-    questions: frame.questions ?? session.questions,
-    rewind: frame.rewind ?? session.rewind,
-  });
+  setThread(thread, applyThreadFrame(session, frame, before, after, itemAt));
 }
 
 function subscribe(): void {
@@ -268,11 +218,8 @@ function onFrame(frame: Record<string, any>): void {
   } else if (frame.re === undefined && typeof frame.n === "number" && n !== undefined) {
     if (frame.n !== n + 1) return subscribe();
     n = frame.n;
-    for (const row of frame.rows as Row[]) rows.set(row.id, row);
-    for (const id of frame.gone as string[]) rows.delete(id);
+    applyListFrame(frame, rows, projects);
     if ((frame.gone as string[]).length > 0) pruneUncertain(new Set(rows.keys()));
-    for (const project of (frame.projects ?? []) as Project[]) projects.set(project.id, project);
-    for (const id of (frame.projects_gone ?? []) as string[]) projects.delete(id);
     set({ rows: [...rows.values()], projects: [...projects.values()], lid: frame.lid });
   }
 }

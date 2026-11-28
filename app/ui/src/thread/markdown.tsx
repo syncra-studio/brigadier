@@ -4,14 +4,13 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { marked } from "marked";
 
-import { calloutLabel, callouts, calloutWarns, nestUnderItems, type Node, textOf } from "../../../shared/markdown";
+import { calloutLabel, callouts, calloutWarns, fenceWalk, nestUnderItems, type Node, textOf } from "../../../shared/markdown";
 import { SessionOfThread } from "../accounts/limit";
 import { drawable, ImageWords, InLink, ReplyImage, Streaming } from "../components/thread/image";
 import { Code, Compare, Eye, Info, Terminal, Warning } from "../icons";
 import { CodeBlock } from "./code";
 import { Draft, replyCard, replyCardFrame, WritingCard } from "./reply-cards";
 import { linkPath, RefWord, remarkRefs } from "./refs";
-import { fenceWalk } from "./tidy";
 import { PrHoverCard } from "../pull-requests/hover-card";
 import { pastedRef } from "../pull-requests/route";
 

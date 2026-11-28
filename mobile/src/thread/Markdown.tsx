@@ -5,7 +5,7 @@ import { Linking, ScrollView, StyleSheet, Text, type TextStyle, View } from "rea
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
-import { calloutLabel, callouts, calloutWarns, nestUnderItems, type Node, textOf } from "../../../app/shared/markdown";
+import { calloutLabel, callouts, calloutWarns, nestUnderItems, type Node, pathOf, textOf } from "../../../app/shared/markdown";
 import { Check, Info, Warning } from "../../../app/ui/src/icons";
 import { color, fontWeight, leading, mono, radius, space, text as type } from "../theme";
 import { CodeBlock } from "./Code";
@@ -13,16 +13,6 @@ import { CodeBlock } from "./Code";
 /** Shows an image a reply names by its path on the Mac; none where nothing can (the user's own bubble, a thought). */
 export const ViewImage = createContext<((path: string) => void) | null>(null);
 const IMAGE = /\.(png|jpe?g|gif|webp|heic|heif|bmp|tiff?|svg)$/i;
-/** A link's target as a path: `file:///a%20b.png` is `/a b.png`. */
-function pathOf(url: string): string {
-  const path = url.replace(/^file:(\/\/(localhost)?)?(?=\/)/i, "");
-  try {
-    return decodeURIComponent(path);
-  } catch {
-    return path;
-  }
-}
-
 /** The text a block's words take, and whether they sit on the user's bubble. */
 const Look = createContext<{ base: TextStyle; bubble: boolean }>({ base: {}, bubble: false });
 /** How deep a list is (a child bullet list draws circles) and the marker of the item being drawn. */
