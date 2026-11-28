@@ -4,7 +4,7 @@
 // client sees.
 //
 //   BIN=<dir with brigadier, brigadier-host, brigadier-fake, brigadier-procs, brigadierd> node drills/drill.mjs <drill> [minutes]
-//   drills: killloop, hang, procs, detach, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck, npmfind
+//   drills: killloop, hang, procs, detach, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck, npmfind, ghlogins
 //   killloop: BUILDS=<dir>:<dir> (; on Windows) rotates in more builds; OLD_BIN=<dir> adds hosts and the first
 //   daemon from a previous release's code.
 //
@@ -2328,9 +2328,26 @@ async function npmFind() {
   if (process.env.KEEP !== '1') drop(DATA)
 }
 
+// A gh login is read where gh keeps it on this system (Windows: %APPDATA%\\GitHub CLI, elsewhere ~/.config/gh),
+// as a faked hosts.yml with its active login and one more: onboarding's GitHub card names both. Needs gh installed.
+async function ghLogins() {
+  freshData('ghlogins')
+  const appdata = `${DATA}/appdata`
+  const dir = WIN ? `${appdata}/GitHub CLI` : `${process.env.HOME}/.config/gh`
+  fs.mkdirSync(dir, { recursive: true })
+  delete process.env.GH_CONFIG_DIR
+  // wx: a scratch HOME's own gh sign-in is never overwritten.
+  fs.writeFileSync(`${dir}/hosts.yml`, 'github.com:\n    users:\n        drill-a:\n        drill-b:\n    git_protocol: https\n    user: drill-a\n', { flag: 'wx' })
+  const r = await cliAsync(['forges'], { APPDATA: appdata.replaceAll('/', path.sep) })
+  const card = r.forges?.find((f) => f.name === 'github')
+  log({ summary: 'ghlogins', pass: JSON.stringify(card?.logins) === '["drill-a","drill-b"]', cli: card?.cli ?? null, logins: card?.logins ?? null, error: r.error ?? null })
+  if (!WIN) fs.rmSync(`${dir}/hosts.yml`)
+  if (process.env.KEEP !== '1') drop(DATA)
+}
+
 const [drill, arg] = process.argv.slice(2)
 if (!BIN) throw new Error('set BIN to a folder with the brigadier binaries')
 fs.mkdirSync(ROOT, { recursive: true })
-const run = { killloop: () => killloop(+(arg ?? 30)), hang, procs: procsDrill, detach, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed, agentcheck: agentCheck, npmfind: npmFind }[drill]
-if (!run) throw new Error('drills: killloop [minutes], hang, procs, detach, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck, npmfind')
+const run = { killloop: () => killloop(+(arg ?? 30)), hang, procs: procsDrill, detach, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed, agentcheck: agentCheck, npmfind: npmFind, ghlogins: ghLogins }[drill]
+if (!run) throw new Error('drills: killloop [minutes], hang, procs, detach, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck, npmfind, ghlogins')
 await run()

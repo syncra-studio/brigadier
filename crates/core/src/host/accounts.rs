@@ -14,11 +14,12 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Condvar, LazyLock, Mutex};
 use std::{env, fs, io, thread};
 
-/// A CLI's config file: under this variable, else this under XDG_CONFIG_HOME, else these under
-/// home; its hosts' entries at the top (gh) or under `hosts` (glab).
+/// A CLI's config file: under this variable, else this under XDG_CONFIG_HOME, else (Windows) this
+/// under APPDATA, else these under home; its hosts' entries at the top (gh) or under `hosts` (glab).
 pub struct Cli {
     dir_var: &'static str,
     xdg: &'static str,
+    appdata: &'static str,
     homes: &'static [&'static str],
     file: &'static str,
     under: &'static [&'static str],
@@ -27,6 +28,7 @@ pub struct Cli {
 pub const GH: Cli = Cli {
     dir_var: "GH_CONFIG_DIR",
     xdg: "gh",
+    appdata: "GitHub CLI",
     homes: &[".config/gh"],
     file: "hosts.yml",
     under: &[],
@@ -35,6 +37,7 @@ pub const GH: Cli = Cli {
 pub const GLAB: Cli = Cli {
     dir_var: "GLAB_CONFIG_DIR",
     xdg: "glab-cli",
+    appdata: "glab-cli",
     homes: &["Library/Application Support/glab-cli", ".config/glab-cli"],
     file: "config.yml",
     under: &["hosts"],
@@ -46,6 +49,10 @@ pub fn logins(cli: &Cli, host: &str) -> Vec<String> {
     let home = adapters::home_path("");
     let dirs = (env::var_os(cli.dir_var).map(PathBuf::from).into_iter())
         .chain(env::var_os("XDG_CONFIG_HOME").map(|x| Path::new(&x).join(cli.xdg)))
+        .chain(
+            (env::var_os("APPDATA").filter(|_| cfg!(windows)))
+                .map(|a| Path::new(&a).join(cli.appdata)),
+        )
         .chain(cli.homes.iter().map(|h| home.join(h)));
     let file = dirs.map(|d| d.join(cli.file)).find(|p| p.is_file());
     let text = file
