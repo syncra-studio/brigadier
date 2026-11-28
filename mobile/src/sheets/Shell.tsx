@@ -1,18 +1,24 @@
-// A `!` command's output, as the desktop's session/bang-row.tsx reads it: whole every 2 s while it runs, with Stop.
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Text } from "react-native";
+// A `!` command's output, as the desktop's session/bang-row.tsx shows it opened: "Running", then "Ran", its Shell box
+// read whole every 2 s while it runs, and Stop.
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { ActivityIndicator } from "react-native";
 import { failure } from "../../../app/shared/session/run";
-import { Button } from "../Button";
+import { VERBS } from "../../../app/shared/words";
+import { DialogButton } from "../Button";
 import { forMac } from "../compose/state";
+import { thread } from "../mac/mac";
 import { color } from "../theme";
-import { Box, Capped } from "../thread/rows/parts";
-import { Sheet, st } from "./Sheet";
+import { ErrorLine } from "../thread/rows/parts";
+import { ShellBox } from "../thread/rows/tool";
+import { Sheet } from "./Sheet";
 
 export function ShellOutput({ id, cmd, command, onClose }: { id: string; cmd: string; command: string; onClose: () => void }) {
   const { run } = forMac();
   const [out, setOut] = useState<{ output: string; running: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
+  // How it ended, from its row in the thread.
+  const item = useSyncExternalStore(thread.subscribe, () => thread.get()?.session?.items.find((each) => each.kind === "shell" && each.cmd === cmd));
   useEffect(() => {
     let live = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -38,12 +44,11 @@ export function ShellOutput({ id, cmd, command, onClose }: { id: string; cmd: st
       setError(failure(reply));
     });
   };
+  const ended = item?.kind === "shell" && item.progress !== "running" ? item : null;
   return (
-    <Sheet title={out?.running === false ? "Ran" : "Running"} onClose={onClose}>
-      <Box title="Command"><Text selectable style={{ fontFamily: "Menlo", fontSize: 12.5, color: color.foreground }}>{command}</Text></Box>
-      {out ? <Box title="Output">{out.output ? <Capped keep={`${cmd}:sheet`} text={out.output} tail /> : <Text style={st.muted}>No output yet</Text>}</Box> : !error && <ActivityIndicator color={color.mutedForeground} />}
-      {error && <Text style={st.error}>{error}</Text>}
-      {out?.running && <Button title={stopping ? "Stopping…" : "Stop"} disabled={stopping} onPress={stop} />}
+    <Sheet title={VERBS.run[out?.running === false ? 1 : 0]} onClose={onClose} footer={out?.running ? <DialogButton title={stopping ? "Stopping…" : "Stop"} variant="ghost" disabled={stopping} onPress={stop} /> : undefined}>
+      {out ? <ShellBox keep={`${cmd}:sheet`} command={command} output={out.output} progress={out.running ? "running" : (ended?.progress ?? "done")} exitCode={ended?.exitCode ?? null} /> : !error && <ActivityIndicator color={color.mutedForeground} />}
+      <ErrorLine error={error} />
     </Sheet>
   );
 }

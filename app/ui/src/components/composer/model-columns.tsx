@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type ReactElement, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactElement, type ReactNode, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 
 import { Bolt, Check, ChevronDown, MagnifyingGlassSmSearch, Star, StarFilled } from "../../icons";
 import { run } from "../../onboarding/api";
@@ -10,9 +10,8 @@ import { RowAction } from "../row-action";
 import { Switch } from "../switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { fuzzyMatch, MatchedText } from "./menus";
-import { favorites, star } from "./model-keys";
 import { effortLabel, type Model, type ModelGroup, type PickerProps, ProviderMark } from "./model-picker";
-import { effortOf } from "../../../../shared/session/model";
+import { effortOf, favorites, isOld as old, star } from "../../../../shared/session/model";
 import { MODEL_WORDS, noFast, noMatch, notSetUp, showOlder } from "../../../../shared/session/composer";
 import { type Quota, QuotaLeft } from "./quota-lines";
 import { SwitchAgentDialog } from "./switch-agent";
@@ -25,7 +24,7 @@ export type ColumnsProps = PickerProps & { close: () => void };
 
 /** The menu's state: the agent browsed, the search, the row under the keyboard, picks. */
 function useColumns({ groups, value, onChange, close, asksSwitch = true }: ColumnsProps) {
-  const stars = favorites.use();
+  const stars = useSyncExternalStore(favorites.subscribe, favorites.get);
   const all: Row[] = groups.flatMap((each) => (each.unavailable ? [] : each.models.map((model) => ({ group: each, model }))));
   const inUseKey = `${value.provider}/${value.model}`;
   // A value no agent lists (Add model's nothing yet) browses the first agent.
@@ -44,7 +43,7 @@ function useColumns({ groups, value, onChange, close, asksSwitch = true }: Colum
     : tab === FAVORITES
       ? all.filter((row) => stars.includes(keyOf(row)))
       : all.filter((row) => row.group.provider === tab).toSorted((a, b) => Number(a.model.legacy ?? false) - Number(b.model.legacy ?? false));
-  const isOld = (row: Row) => !needle && tab !== FAVORITES && row.model.legacy === true && keyOf(row) !== inUseKey && !stars.includes(keyOf(row));
+  const isOld = (row: Row) => !needle && tab !== FAVORITES && old(row.model, keyOf(row) === inUseKey, stars.includes(keyOf(row)));
   const hidden = rows.filter(isOld).length;
   const shown = older ? rows : rows.filter((row) => !isOld(row));
   const found = shown.findIndex((row) => keyOf(row) === cursor);
@@ -139,8 +138,8 @@ function Search({ picker, className }: { picker: Picker; className?: string }) {
         value={picker.query}
         onChange={(event) => (picker.setQuery(event.target.value), picker.setCursor(null))}
         onKeyDown={picker.searchKeys}
-        placeholder="Search all models"
-        aria-label="Search all models"
+        placeholder={MODEL_WORDS.search}
+        aria-label={MODEL_WORDS.search}
         aria-controls={picker.id}
         aria-activedescendant={picker.at >= 0 ? `${picker.id}-${picker.at}` : undefined}
         autoComplete="off"
@@ -186,10 +185,10 @@ function Models({ picker, onSetUp }: ColumnsProps & { picker: Picker }) {
           >
             <ProviderMark mark={row.group.mark} className="size-icon-md" />
             <span className="min-w-0 py-1 wrap-break-word">{needle ? <MatchedText text={row.model.name} query={needle} hit="font-semibold text-foreground" /> : row.model.name}</span>
-            {used && <Check aria-label="In use" className="size-icon-sm text-foreground" />}
-            {row.model.legacy && mixed && <span className="text-xs text-placeholder">Older</span>}
+            {used && <Check aria-label={MODEL_WORDS.inUse} className="size-icon-sm text-foreground" />}
+            {row.model.legacy && mixed && <span className="text-xs text-placeholder">{MODEL_WORDS.older}</span>}
             <RowAction
-              aria-label={starred ? "Remove from favorites" : "Add to favorites"}
+              aria-label={starred ? MODEL_WORDS.unstar : MODEL_WORDS.star}
               aria-pressed={starred}
               className={cx("ms-auto", !starred && "opacity-0 group-hover/row:opacity-100 group-data-highlighted/row:opacity-100")}
               onClick={(event) => (event.stopPropagation(), star(key))}
@@ -209,7 +208,7 @@ function Models({ picker, onSetUp }: ColumnsProps & { picker: Picker }) {
       {!needle && group?.unavailable && <NotSetUp group={group} onSetUp={onSetUp} />}
       {!needle && group && !group.unavailable && shown.length === 0 && <p className={note}>{MODEL_WORDS.noneListed}</p>}
       {needle && shown.length === 0 && <p className={note}>{noMatch(needle)}</p>}
-      {!needle && tab === FAVORITES && shown.length === 0 && <p className={note}>Star a model and it shows here.</p>}
+      {!needle && tab === FAVORITES && shown.length === 0 && <p className={note}>{MODEL_WORDS.noFavorites}</p>}
     </div>
   );
 }
@@ -242,7 +241,7 @@ function EffortRows({ picker, row, value }: ColumnsProps & { picker: Picker; row
         return (
           <button key={level} type="button" role="radio" data-item="" aria-checked={on} tabIndex={on || (!used && index === 0) ? 0 : -1} onClick={() => picker.pick(row, { effort: level })} className={cx(itemBase, "w-full pe-2 text-start hover:bg-fill focus-visible:bg-fill")}>
             <span className="flex-1 truncate">{effortLabel(level)}</span>
-            {on ? <Check aria-hidden className="size-icon-sm text-foreground" /> : level === model.defaultEffort && <span className="text-xs text-placeholder">Default</span>}
+            {on ? <Check aria-hidden className="size-icon-sm text-foreground" /> : level === model.defaultEffort && <span className="text-xs text-placeholder">{MODEL_WORDS.defaultEffort}</span>}
           </button>
         );
       })}
@@ -258,8 +257,8 @@ function Rail({ picker, groups }: ColumnsProps & { picker: Picker }) {
   const on = (id: string) => !picker.needle && picker.tab === id;
   return (
     <div data-part="agents" role="toolbar" aria-label="Agents" aria-orientation="vertical" onKeyDown={picker.columnKeys("ArrowRight")} className="flex shrink-0 flex-col gap-1 overflow-y-auto p-1 hide-scrollbar">
-      <Tip tip="Favorites">
-        <button type="button" data-item="" aria-label="Favorites" aria-pressed={on(FAVORITES)} tabIndex={on(FAVORITES) ? 0 : -1} onClick={() => picker.browse(FAVORITES)} className={RAIL_BUTTON}>
+      <Tip tip={MODEL_WORDS.favorites}>
+        <button type="button" data-item="" aria-label={MODEL_WORDS.favorites} aria-pressed={on(FAVORITES)} tabIndex={on(FAVORITES) ? 0 : -1} onClick={() => picker.browse(FAVORITES)} className={RAIL_BUTTON}>
           <StarFilled aria-hidden className="size-icon-lg" />
           {line(on(FAVORITES))}
         </button>
@@ -292,7 +291,7 @@ function Columns({ picker, ...props }: ColumnsProps & { picker: Picker }) {
       </div>
       {props.efforts !== false && (
         <div className="flex w-36 shrink-0 flex-col border-s border-divider">
-          <div className="mx-3 flex h-10 shrink-0 items-center border-b border-divider text-label text-muted-foreground">Effort</div>
+          <div className="mx-3 flex h-10 shrink-0 items-center border-b border-divider text-label text-muted-foreground">{MODEL_WORDS.effort}</div>
           {picker.inHand && (
             <>
               <div className="px-3 pt-2 text-xs text-placeholder">{picker.inHand.model.name}</div>
@@ -314,8 +313,8 @@ function FastSwitch({ picker, value, row, className }: ColumnsProps & { picker: 
   return (
     <label title={model.fast ?? noFast(model.name)} className={cx("flex items-center gap-1.5 text-label", model.fast ? "cursor-pointer" : "text-placeholder", className)}>
       <Bolt aria-hidden className={cx("size-icon-sm", on ? "text-glyph-5" : "text-placeholder")} />
-      <span className="flex-1">Fast</span>
-      <Switch aria-label="Fast" checked={on} disabled={!model.fast} onCheckedChange={(fast) => picker.pick(row, { fast }, true)} />
+      <span className="flex-1">{MODEL_WORDS.fast}</span>
+      <Switch aria-label={MODEL_WORDS.fast} checked={on} disabled={!model.fast} onCheckedChange={(fast) => picker.pick(row, { fast }, true)} />
     </label>
   );
 }

@@ -9,7 +9,7 @@ import { named, useClosesOnTyping } from "./model-keys";
 import type { Model, ModelChoice, ModelGroup } from "../../../../shared/session/model";
 export type { Model, ModelChoice, ModelGroup } from "../../../../shared/session/model";
 
-import { effortLabel } from "../../../../shared/session/composer";
+import { effortLabel, MODEL_WORDS } from "../../../../shared/session/composer";
 export { effortLabel } from "../../../../shared/session/composer";
 
 /** An agent's mark, from its adapter (trusted, built in); without one, a terminal. */
@@ -24,7 +24,7 @@ export function ProviderMark({ mark, className }: { mark: string | null; classNa
 export function ModelLabel({ groups, value, efforts = true, mark = "size-icon-md" }: { groups: ModelGroup[]; value: ModelChoice; efforts?: boolean; mark?: string }) {
   const group = groups.find((entry) => entry.provider === value.provider);
   const model = group?.models.find((entry) => entry.id === value.model);
-  const word = !efforts ? null : value.effort ? effortLabel(value.effort) : model && model.efforts.length > 0 ? "Default" : null;
+  const word = !efforts ? null : value.effort ? effortLabel(value.effort) : model && model.efforts.length > 0 ? MODEL_WORDS.defaultEffort : null;
   return (
     <span className="flex min-w-0 items-center gap-1">
       <ProviderMark mark={group?.mark ?? null} className={mark} />
@@ -38,7 +38,7 @@ export function ModelLabel({ groups, value, efforts = true, mark = "size-icon-md
 /** Its words for a screen reader: "Model: GPT-5.5, Fast, High". */
 export function modelWords(groups: ModelGroup[], value: ModelChoice): string {
   const model = groups.find((entry) => entry.provider === value.provider)?.models.find((entry) => entry.id === value.model);
-  const word = value.effort ? effortLabel(value.effort) : model && model.efforts.length > 0 ? "Default" : null;
+  const word = value.effort ? effortLabel(value.effort) : model && model.efforts.length > 0 ? MODEL_WORDS.defaultEffort : null;
   return `Model: ${named(groups, value.provider, value.model)}${value.fast === true && model?.fast ? ", Fast" : ""}${word ? `, ${word}` : ""}`;
 }
 
@@ -113,7 +113,7 @@ export function ModelPicker({
         align={align}
         anchor={anchor}
         padded={false}
-        aria-label="Model"
+        aria-label={MODEL_WORDS.title}
         data-slot="model-popover"
         initialFocus={() => document.querySelector<HTMLElement>("[data-slot=model-picker] input")}
         finalFocus={finalFocus}

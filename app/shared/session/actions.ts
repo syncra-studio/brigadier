@@ -4,6 +4,7 @@ import type { Frame } from "../client";
 import type { Row } from "../rows";
 import { store } from "../store";
 import { failure, type Runner } from "./run";
+import { named as listed } from "../words";
 
 /** What a change touches on its row: the desktop's rows carry labels too. */
 type Marked = Pick<Row, "id" | "title" | "pinned" | "archived" | "touched"> & { labels?: string[] };
@@ -110,7 +111,8 @@ export const unchecked = (error: string) => `Couldn't check what archiving loses
 /** A working agent archive stops; `title` the session's when several are archived. */
 export const workingLine = (title?: string) => (title === undefined ? "Its agent is working and will be stopped." : `${title} is working; its agent will be stopped.`);
 /** Names in a line: five, then how many more. */
-export const listed = (names: string[]) => (names.length > 5 ? `${names.slice(0, 5).join(", ")} and ${names.length - 5} more` : names.join(", "));
+/** Names in a line, the first five and "and N more". */
+export { listed };
 /** Per folder an archive or delete frees, what it loses for good; `repos`, a delete's repositories in it. */
 export type Lost = { ids: string[]; files?: string[]; repos?: string[]; error?: string };
 /** What one folder loses for good, before the names that follow it: a delete's repositories, else its ignored files. */

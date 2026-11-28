@@ -1,12 +1,11 @@
 // The session's model pill and its sheet, as the desktop's session/model.tsx, model-picker.tsx and model-columns.tsx:
 // the session's own agent's models only, as a phone may set no other [allow.rs `set`]; a worker's shown but fixed [D293].
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
-import { asGroups, choiceOf, effortOf, loadModels, type Model, type ModelChoice, type ModelGroup, type ModelRow, setArgs } from "../../../app/shared/session/model";
+import { Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { asGroups, choiceOf, effortOf, favorites, isOld as old, loadModels, type Model, type ModelChoice, type ModelGroup, type ModelRow, setArgs, star } from "../../../app/shared/session/model";
 import { failure } from "../../../app/shared/session/run";
-import { store } from "../../../app/shared/store";
-import { Button } from "../Button";
-import { color, spacing, radius, text, fontWeight, touch } from "../theme";
+import { MenuLabel, Sheet as Frame } from "../sheets/Sheet";
+import { color, opacity, radius, space, spacing, text, touch } from "../theme";
 import { Bolt, Check, ChevronDown, MagnifyingGlassSmSearch, Star, StarFilled } from "../../../app/ui/src/icons";
 import { ProviderMark } from "./KindIcons";
 import { fuzzyMatch, MatchedText } from "./Menus";
@@ -15,16 +14,7 @@ import type { Runner } from "../../../app/shared/session/run";
 import { forMac, newId } from "./state";
 import { afterTurn, couldntSwitch, effortLabel, MODEL_WORDS, noFast, noMatch, notSetUp, showOlder } from "../../../app/shared/session/composer";
 
-
-const FAVORITES = "favorite-models";
-/** The starred models, "agent/model", as the desktop's model-keys.ts keeps them. */
-// shortcut: the phone's localStorage is state.ts's in-memory one, so stars last till the app quits; upgrade with a storage package.
-const favorites = store<readonly string[]>(JSON.parse(localStorage.getItem(FAVORITES) ?? "[]"));
-function star(key: string) {
-  const now = favorites.get();
-  favorites.set(now.includes(key) ? now.filter((each) => each !== key) : [...now, key]);
-  localStorage.setItem(FAVORITES, JSON.stringify(favorites.get()));
-}
+// shortcut: the shared stars sit in the phone's localStorage, state.ts's in-memory one, so they last till the app quits; upgrade with a storage package.
 
 // The Mac answers `models --fresh` at most once a minute for each phone.
 let freshAt = 0;
@@ -67,7 +57,7 @@ export function ModelPill({ id, row, connected, open: opened = false }: { id: st
   };
   const picked = row?.picked;
   const model = groups?.find((group) => group.provider === value.provider)?.models.find((each) => each.id === value.model);
-  const effort = value.effort ? effortLabel(value.effort) : model && model.efforts.length > 0 ? "Default" : null;
+  const effort = value.effort ? effortLabel(value.effort) : model && model.efforts.length > 0 ? MODEL_WORDS.defaultEffort : null;
   const fast = value.fast === true && Boolean(model?.fast);
   return (
     <>
@@ -99,7 +89,7 @@ function SwitchAfter({ id, name, now, onError }: { id: string; name: string; now
   return (
     <View style={st.switch}>
       <Text style={st.muted} numberOfLines={1}>{afterTurn(name, false)}</Text>
-      <Pressable accessibilityRole="button" onPress={go} hitSlop={12}>
+      <Pressable accessibilityRole="button" onPress={go} hitSlop={space(3)}>
         <Text style={st.link}>{MODEL_WORDS.switchNow}</Text>
       </Pressable>
     </View>
@@ -107,9 +97,10 @@ function SwitchAfter({ id, name, now, onError }: { id: string; name: string; now
 }
 
 /**
- * The agent's models: a search over them, the starred ones first, older ones behind Show N more, a check on the one in
- * use; its effort levels and Fast. A model or a level picks and closes; Fast and a star keep it open. A new model keeps
- * the effort when it has that level, else takes its own default.
+ * The agent's models, as the desktop's model-columns.tsx stacked in a sheet: a search over them, the starred ones first,
+ * older ones behind Show N more, a check on the one in use; its effort levels; Fast in the footer. A model or a level
+ * picks and closes; Fast and a star keep it open. A new model keeps the effort when it has that level, else takes its
+ * own default. One agent only, so no rail: its Favorites and name head its rows.
  */
 function Sheet({ group, value, onPick, onClose }: { group: ModelGroup | undefined; value: ModelChoice; onPick: (choice: ModelChoice) => void; onClose: () => void }) {
   const stars = useSyncExternalStore(favorites.subscribe, favorites.get);
@@ -119,7 +110,7 @@ function Sheet({ group, value, onPick, onClose }: { group: ModelGroup | undefine
   const models = group?.models ?? [];
   const keyOf = (model: Model) => `${group?.provider}/${model.id}`;
   const inUse = (model: Model) => group?.provider === value.provider && model.id === value.model;
-  const isOld = (model: Model) => model.legacy === true && !inUse(model) && !stars.includes(keyOf(model));
+  const isOld = (model: Model) => old(model, inUse(model), stars.includes(keyOf(model)));
   const found = needle
     ? models
         .map((model) => ({ model, rank: fuzzyMatch(model.name, needle)?.rank }))
@@ -140,98 +131,114 @@ function Sheet({ group, value, onPick, onClose }: { group: ModelGroup | undefine
   const row = (model: Model, mixed: boolean) => {
     const on = stars.includes(keyOf(model));
     return (
-      <Pressable key={model.id} accessibilityRole="radio" accessibilityState={{ checked: inUse(model) }} onPress={() => pick(model)} style={({ pressed }) => [st.option, pressed && { backgroundColor: color.fill }]}>
+      <Pressable key={model.id} accessibilityRole="radio" accessibilityState={{ checked: inUse(model) }} onPress={() => pick(model)} style={({ pressed }) => [st.item, pressed && { backgroundColor: color.fill }]}>
         <ProviderMark mark={group?.mark} />
-        <Text style={st.optionText} numberOfLines={2}>
+        <Text style={st.name} numberOfLines={2}>
           {needle ? <MatchedText words={model.name} query={needle} /> : model.name}
         </Text>
-        {inUse(model) ? <Check aria-label="In use" className="size-icon-sm text-foreground" /> : null}
-        {model.legacy && mixed ? <Text style={st.faint}>Older</Text> : null}
-        <Pressable accessibilityRole="button" accessibilityLabel={on ? "Remove from favorites" : "Add to favorites"} accessibilityState={{ selected: on }} onPress={() => star(keyOf(model))} hitSlop={12} style={{ marginLeft: "auto" }}>
-          {on ? <StarFilled className="size-icon-md text-glyph-5" /> : <Star className="size-icon-md text-muted-foreground" />}
+        {inUse(model) ? <Check aria-label={MODEL_WORDS.inUse} className="size-icon-sm text-foreground" /> : null}
+        {model.legacy && mixed ? <Text style={st.faint}>{MODEL_WORDS.older}</Text> : null}
+        <Pressable accessibilityRole="button" accessibilityLabel={on ? MODEL_WORDS.unstar : MODEL_WORDS.star} accessibilityState={{ selected: on }} onPress={() => star(keyOf(model))} hitSlop={space(3)} style={st.star}>
+          {on ? <StarFilled className="size-icon-sm text-glyph-5" /> : <Star className="size-icon-sm text-muted-foreground" />}
         </Pressable>
       </Pressable>
     );
   };
+  const fastOn = Boolean(value.fast && used?.fast);
   return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <ScrollView style={st.page} contentContainerStyle={{ padding: 24, gap: 2 }} keyboardShouldPersistTaps="handled">
-        <Text style={st.title}>Model</Text>
-        {!group || group.unavailable ? (
-          <Text style={st.muted}>{group ? notSetUp(group.label, group.unavailable) : MODEL_WORDS.noneListed}</Text>
-        ) : (
-          <>
+    <Frame title={MODEL_WORDS.title} onClose={onClose}>
+      {!group || group.unavailable ? (
+        <View style={st.notSetUp}>
+          {group ? <View style={{ opacity: opacity.pickerDim }}><ProviderMark mark={group.mark} size={spacing.iconMark} /></View> : null}
+          <Text style={[st.label, st.dim, { textAlign: "center" }]}>{group ? notSetUp(group.label, group.unavailable) : MODEL_WORDS.noneListed}</Text>
+        </View>
+      ) : (
+        <>
+          <View>
             <View style={st.search}>
               <MagnifyingGlassSmSearch className="size-icon-md text-muted-foreground" />
-              <TextInput value={query} onChangeText={setQuery} placeholder="Search all models" placeholderTextColor={color.placeholder} accessibilityLabel="Search all models" autoCorrect={false} autoCapitalize="none" clearButtonMode="while-editing" style={st.searchText} />
+              <TextInput value={query} onChangeText={setQuery} placeholder={MODEL_WORDS.search} placeholderTextColor={color.placeholder} accessibilityLabel={MODEL_WORDS.search} autoCorrect={false} autoCapitalize="none" clearButtonMode="while-editing" style={st.searchText} />
             </View>
-            {needle ? (
-              <>
-                {found.map((model) => row(model, true))}
-                {found.length === 0 ? <Text style={st.note}>{noMatch(needle)}</Text> : null}
-              </>
-            ) : (
-              <>
-                {starred.length > 0 ? <Text style={st.heading}>Favorites</Text> : null}
-                {starred.map((model) => row(model, true))}
-                {starred.length > 0 ? <Text style={st.heading}>{group.label}</Text> : null}
-                {shown.map((model) => row(model, false))}
-                {hidden > 0 ? (
-                  <Pressable accessibilityRole="button" onPress={() => setOlder(!older)} style={({ pressed }) => [st.option, pressed && { backgroundColor: color.fill }]}>
-                    <View style={older && { transform: [{ rotate: "180deg" }] }}>
-                      <ChevronDown className="size-icon-md text-muted-foreground" />
-                    </View>
-                    <Text style={st.muted}>{showOlder(older, hidden)}</Text>
-                  </Pressable>
-                ) : null}
-                {models.length === 0 ? <Text style={st.note}>{MODEL_WORDS.noneListed}</Text> : null}
-              </>
-            )}
-            {used ? (
-              <>
-                <Text style={st.heading}>Effort</Text>
-                <Text style={st.faint}>{used.name}</Text>
+            <View style={st.list}>
+              {needle ? (
+                <>
+                  {found.map((model) => row(model, true))}
+                  {found.length === 0 ? <Text style={st.note}>{noMatch(needle)}</Text> : null}
+                </>
+              ) : (
+                <>
+                  {starred.length > 0 ? <MenuLabel>{MODEL_WORDS.favorites}</MenuLabel> : null}
+                  {starred.map((model) => row(model, true))}
+                  {starred.length > 0 ? <MenuLabel>{group.label}</MenuLabel> : null}
+                  {shown.map((model) => row(model, false))}
+                  {hidden > 0 ? (
+                    <Pressable accessibilityRole="button" onPress={() => setOlder(!older)} style={({ pressed }) => [st.item, pressed && { backgroundColor: color.fill }]}>
+                      <View style={older && { transform: [{ rotate: "180deg" }] }}>
+                        <ChevronDown className="size-icon-md text-muted-foreground" />
+                      </View>
+                      <Text style={[st.label, st.dim]}>{showOlder(older, hidden)}</Text>
+                    </Pressable>
+                  ) : null}
+                  {models.length === 0 ? <Text style={st.note}>{MODEL_WORDS.noneListed}</Text> : null}
+                </>
+              )}
+            </View>
+          </View>
+          {used ? (
+            <View>
+              <View style={st.head}>
+                <Text style={[st.label, st.dim]}>{MODEL_WORDS.effort}</Text>
+              </View>
+              <Text style={st.inHand}>{used.name}</Text>
+              <View style={st.list}>
                 {used.efforts.length === 0 ? <Text style={st.note}>{MODEL_WORDS.noEfforts}</Text> : null}
                 {used.efforts.map((level) => (
-                  <Pressable key={level} accessibilityRole="radio" accessibilityState={{ checked: value.effort === level }} onPress={() => pick(used, { effort: level })} style={({ pressed }) => [st.option, pressed && { backgroundColor: color.fill }]}>
-                    <Text style={st.optionText}>{effortLabel(level)}</Text>
-                    {value.effort === level ? <Check aria-hidden className="size-icon-sm text-foreground" /> : level === used.defaultEffort ? <Text style={st.faint}>Default</Text> : null}
+                  <Pressable key={level} accessibilityRole="radio" accessibilityState={{ checked: value.effort === level }} onPress={() => pick(used, { effort: level })} style={({ pressed }) => [st.item, pressed && { backgroundColor: color.fill }]}>
+                    <Text style={[st.label, { flex: 1 }]} numberOfLines={1}>{effortLabel(level)}</Text>
+                    {value.effort === level ? <Check aria-hidden className="size-icon-sm text-foreground" /> : level === used.defaultEffort ? <Text style={st.faint}>{MODEL_WORDS.defaultEffort}</Text> : null}
                   </Pressable>
                 ))}
-                <View style={[st.option, st.fast]}>
-                  <Bolt className={value.fast && used.fast ? "size-icon-sm text-glyph-5" : "size-icon-sm text-placeholder"} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[st.optionText, !used.fast && { color: color.placeholder }]}>Fast</Text>
-                    <Text style={st.muted}>{used.fast ?? noFast(used.name)}</Text>
-                  </View>
-                  <Switch accessibilityLabel="Fast" value={Boolean(value.fast && used.fast)} disabled={!used.fast} onValueChange={(fast) => pick(used, { fast }, true)} />
-                </View>
-              </>
-            ) : null}
-          </>
-        )}
-        <View style={{ height: 16 }} />
-        <Button title="Done" secondary onPress={onClose} />
-      </ScrollView>
-    </Modal>
+              </View>
+            </View>
+          ) : null}
+          {used ? (
+            <View style={st.footer}>
+              <Bolt className={fastOn ? "size-icon-sm text-glyph-5" : "size-icon-sm text-placeholder"} />
+              <View style={{ flex: 1 }}>
+                <Text style={[st.label, !used.fast && { color: color.placeholder }]}>{MODEL_WORDS.fast}</Text>
+                {/* The desktop's tip on Fast, which a phone has no hover for. */}
+                <Text style={st.faint}>{used.fast ?? noFast(used.name)}</Text>
+              </View>
+              <Switch accessibilityLabel={MODEL_WORDS.fast} value={fastOn} disabled={!used.fast} onValueChange={(fast) => pick(used, { fast }, true)} trackColor={{ true: color.toggleOn, false: color.fillHover }} ios_backgroundColor={color.fillHover} thumbColor={color.foreground} style={!used.fast && { opacity: opacity.switchDisabled }} />
+            </View>
+          ) : null}
+        </>
+      )}
+    </Frame>
   );
 }
 
+// The desktop's itemBase rows (min-h-menu-item, gap-2, ps-2 pe-2, text-label) a finger tall; its columns' h-10 heads
+// with a divider under them, its notes px-2 py-1.5, its footer on fill-faint over a divider.
 const st = StyleSheet.create({
   pillText: { ...text.sm, color: color.foreground, flexShrink: 1 },
   effort: { ...text.sm, color: color.mutedForeground, flexShrink: 0 },
-  switch: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 },
+  switch: { flexDirection: "row", alignItems: "center", gap: space(2), flexShrink: 1 },
   muted: { ...text.sm, color: color.mutedForeground, flexShrink: 1 },
-  faint: { ...text.xs, color: color.placeholder },
   link: { ...text.sm, color: color.link },
   error: { ...text.xs, color: color.destructive, flexShrink: 1 },
-  page: { flex: 1, backgroundColor: color.background },
-  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground, marginBottom: 8 },
-  heading: { ...text.label, color: color.mutedForeground, marginTop: 16, marginBottom: 4 },
-  note: { ...text.label, color: color.mutedForeground, paddingVertical: 8 },
-  search: { flexDirection: "row", alignItems: "center", gap: 8, height: touch, paddingHorizontal: 12, marginBottom: 8, borderRadius: radius.control, backgroundColor: color.fill },
-  searchText: { ...text.sm, color: color.foreground, flex: 1, padding: 0 },
-  option: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: touch, borderRadius: radius.control, paddingHorizontal: 8 },
-  fast: { marginTop: 12, borderTopWidth: 1, borderTopColor: color.border, borderRadius: 0, paddingTop: 8 },
-  optionText: { ...text.sm, color: color.foreground, flexShrink: 1 },
+  label: { ...text.label, color: color.foreground, flexShrink: 1 },
+  dim: { color: color.mutedForeground },
+  faint: { ...text.xs, color: color.placeholder },
+  search: { flexDirection: "row", alignItems: "center", gap: space(2), height: touch, borderBottomWidth: 1, borderBottomColor: color.divider },
+  searchText: { ...text.label, color: color.foreground, flex: 1, padding: 0 },
+  list: { gap: 1, padding: space(1) },
+  item: { flexDirection: "row", alignItems: "center", gap: space(2), minHeight: touch, paddingHorizontal: space(2), borderRadius: radius.menuItem },
+  name: { ...text.label, color: color.foreground, flexShrink: 1, paddingVertical: space(1) },
+  star: { marginStart: "auto" },
+  note: { ...text.label, color: color.mutedForeground, paddingHorizontal: space(2), paddingVertical: space(1.5) },
+  head: { height: space(10), justifyContent: "center", borderBottomWidth: 1, borderBottomColor: color.divider },
+  inHand: { ...text.xs, color: color.placeholder, paddingHorizontal: space(3), paddingTop: space(2) },
+  footer: { flexDirection: "row", alignItems: "center", gap: space(2), paddingHorizontal: space(3), paddingVertical: space(2.5), borderTopWidth: 1, borderTopColor: color.divider, backgroundColor: color.fillFaint },
+  notSetUp: { alignItems: "center", gap: space(3), paddingHorizontal: space(4) },
 });

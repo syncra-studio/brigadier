@@ -1,8 +1,8 @@
 import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { Dialog, DialogContent } from "../components/dialog";
-import { files, named, RewindContext, RewindForm } from "../components/thread/rewind";
-import { previewOf, type RewindPreview, why } from "../../../shared/session/rewind";
+import { RewindContext, RewindForm } from "../components/thread/rewind";
+import { previewOf, redoneWords, REWIND_WORDS, type RewindPreview, rewoundWords, why } from "../../../shared/session/rewind";
 import { showToast, toastManager } from "../components/toast";
 import { threadSource, useDaemon } from "../daemon";
 import type { Source } from "../thread/thread";
@@ -21,23 +21,13 @@ const FRAME = "max-w-card-narrow gap-4 p-5";
 const FRESH_MS = 2_000;
 type Running = { cid: string; n: number | undefined; replied: boolean };
 
-function said(reply: Record<string, any>, restore: boolean): string {
-  if (reply.already) return "Rewound · check your files";
-  if (!restore) return "Rewound · your files are as they were";
-  const count = `${reply.restored} ${reply.restored === 1 ? "file" : "files"} undone`;
-  return reply.complete === false ? `Rewound · ${count}, some stayed as they are` : `Rewound · ${count}`;
-}
-
 /** Redo file changes, from the restore's toast, one deep [D1196, D1246]: shown at once, then what came back and what stayed. */
 function undoRestore(run: Runner, id: string, cid: string, op: string) {
-  const pending = showToast("Putting the agent's changes back…", { stays: true });
+  const pending = showToast(REWIND_WORDS.puttingBack, { stays: true });
   void run(["rewind", id, cid, "--op", op, "--undo"]).then((reply) => {
     toastManager.close(pending);
-    if (!reply.ok) return showToast(`Couldn't put the agent's changes back: ${why(reply)}`, { tone: "error" });
-    const kept: string[] = reply.kept ?? [];
-    const back = `The agent's changes are back · ${files(reply.undone)}`;
-    // Proposed words: what changed since the restore keeps its edit [D1192].
-    showToast(kept.length > 0 ? `${back}, kept as edited since: ${named(kept)}` : back, { tone: kept.length > 0 ? "neutral" : "success" });
+    if (!reply.ok) return showToast(redoneWords(reply), { tone: "error" });
+    showToast(redoneWords(reply), { tone: (reply.kept ?? []).length > 0 ? "neutral" : "success" });
   });
 }
 
@@ -98,8 +88,8 @@ export function RewindProvider({ id, row, offline, children, run = daemonRun, so
       const draft = item?.kind === "message" ? item.draft : null;
       putBack(id, text, true, draft?.shell ? { parts: [`!${draft.shell}`], attachmentIds: [] } : draft);
       // Rewind removes the message itself, so Redo file changes lives on its toast [D1192, D1196, D1246].
-      const actions = restore && reply.restored > 0 ? [{ label: "Redo file changes", run: () => undoRestore(run, id, cid, op) }] : [];
-      showToast(said(reply, restore), { tone: reply.already || (restore && reply.complete === false) ? "neutral" : "success", actions });
+      const actions = restore && reply.restored > 0 ? [{ label: REWIND_WORDS.redo, run: () => undoRestore(run, id, cid, op) }] : [];
+      showToast(rewoundWords(reply, restore), { tone: reply.already || (restore && reply.complete === false) ? "neutral" : "success", actions });
     });
   };
   return (

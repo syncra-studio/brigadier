@@ -3,9 +3,9 @@ import { createContext, type ReactNode, useState } from "react";
 import { ConfirmForm } from "../confirm-dialog";
 import { ErrorLine } from "../error-line";
 import { Radio, RadioGroup } from "../radio";
-import { listed } from "../../../../shared/session/actions";
 import { REWIND_CANT as CANT } from "../../../../shared/words";
-import type { RewindPreview } from "../../../../shared/session/rewind";
+import { REWIND_WORDS as W, type RewindPreview, staysWords } from "../../../../shared/session/rewind";
+export { files, named } from "../../../../shared/words";
 
 /** A user message's rewind: `blocked` says why not right now; `look` asks Rust ahead, so the dialog opens whole. */
 export type RewindOffer = { blocked?: string; open: () => void; look?: () => void };
@@ -17,21 +17,17 @@ export const RewindContext = createContext<{
 
 type FormProps = { preview: RewindPreview; error?: string; sharerName?: string; onKeep: () => void; onRestore: () => void; onCancel: () => void };
 
-export const named = listed;
-export const files = (n: number) => (n === 1 ? "1 file" : `${n} files`);
-
 function Note({ children }: { children: ReactNode }) {
   return <p className="text-xs break-words text-muted-foreground">{children}</p>;
 }
 
 /** What stays as it is: edited since, too big to keep, nested repositories, repos with no snapshot. */
-function Stays({ hand, big, nested, stale = [] }: { hand: string[]; big: string[]; nested: string[]; stale?: string[] }) {
+function Stays(of: { hand: string[]; big: string[]; nested: string[]; stale?: string[] }) {
   return (
     <>
-      {hand.length > 0 && <Note>Left as you edited them: {named(hand)}.</Note>}
-      {big.length > 0 && <Note>Too big to go back: {named(big)}.</Note>}
-      {nested.length > 0 && <Note>Nested repositories stay as they are: {named(nested)}.</Note>}
-      {stale.length > 0 && <Note>No snapshot was taken of these repos for every turn, so they stay as they are: {named(stale)}.</Note>}
+      {staysWords(of).map((line) => (
+        <Note key={line}>{line}</Note>
+      ))}
     </>
   );
 }
@@ -62,34 +58,30 @@ export function RewindForm({ preview, error, sharerName, onKeep, onRestore, onCa
   const cant = preview.why === undefined ? undefined : CANT[preview.why];
   return (
     <ConfirmForm
-      title="Rewind to this message?"
+      title={W.title}
       description={
         <>
-          The chat goes back to just before this message.
+          {W.back}
           <br />
-          Your message returns to the composer.
+          {W.returns}
         </>
       }
-      confirm="Rewind"
+      confirm={W.confirm}
       disabled={preview.error !== undefined}
       onConfirm={can && choice === "restore" ? onRestore : onKeep}
       onCancel={onCancel}
     >
       {can && (
         <RadioGroup value={choice} onValueChange={(value) => setChoice(String(value))} className="flex flex-col gap-3">
-          <Choice value="keep" label="Keep files as they are">
-            <Note>Only the chat goes back.</Note>
+          <Choice value="keep" label={W.keep}>
+            <Note>{W.keepNote}</Note>
           </Choice>
-          <Choice value="restore" label="Undo the agent's file changes">
-            <Note>
-              Undoes {files(paths.length)} changed during these turns: {named(paths)}.
-            </Note>
-            {/* Snapshots can't tell who wrote a file mid-turn, so your edits then are in it [C98]. */}
-            <Note>Edits you made while the agent worked are included, and Redo brings them back.</Note>
+          <Choice value="restore" label={W.restore}>
+            <Note>{W.undoes(paths)}</Note>
+            <Note>{W.yours}</Note>
             <Stays hand={hand} big={big} nested={nested} stale={stale} />
-            {/* Snapshots keep no ignored files, so which ones changed can't be said [D1192]. */}
-            <Note>Ignored files (like .env) aren't in snapshots and stay as they are.</Note>
-            {commits && <Note>Commits made since then stay.</Note>}
+            <Note>{W.ignored}</Note>
+            {commits && <Note>{W.commits}</Note>}
           </Choice>
         </RadioGroup>
       )}
@@ -100,17 +92,14 @@ export function RewindForm({ preview, error, sharerName, onKeep, onRestore, onCa
             <Note>{cant}</Note>
           ) : (
             <>
-              <Note>Files stay: nothing the agent changed can go back.</Note>
+              <Note>{W.nothingBack}</Note>
               <Stays hand={hand} big={big} nested={nested} stale={stale} />
             </>
           )}
         </div>
       )}
       {preview.sharer && (
-        // Proposed words, shown to the owner on screen [D1078].
-        <Note>
-          Files stay: {sharerName ?? "another session"} {preview.sharer.now ? "is working in this folder now" : "was working in this folder during this turn"}.
-        </Note>
+        <Note>{W.sharer(sharerName, preview.sharer.now)}</Note>
       )}
       <ErrorLine error={preview.error ?? error} />
     </ConfirmForm>

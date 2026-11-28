@@ -1,5 +1,7 @@
 import type { Draft } from "../draft";
 import type { Overnight } from "../rows";
+import { store } from "../store";
+import type { ModelRow } from "./model";
 
 // The composer's words, and the small formatting that picks them, for both apps [D58, D103]; each app draws them.
 
@@ -10,6 +12,21 @@ export const LEVEL_WORDS: { level: PermissionLevel; label: string; detail: strin
   { level: "auto", label: "Auto", detail: "Works on its own, asks before risky actions" },
   { level: "full", label: "Full access", detail: "Unrestricted access to the internet and all your files" },
 ];
+/** The levels menu's question, and its line where the folder isn't trusted. */
+export const LEVEL_MENU = { question: "How should the agent’s actions be approved?", untrusted: "This folder isn't trusted, so sessions here ask first. Change it in the project's settings." } as const;
+/** Full Access's confirm and what it reaches. */
+export const FULL_ACCESS_WORDS = { title: "Turn on Full Access?", body: "Agents can use all of these without asking.", confirm: "Turn on Full Access", reaches: ["Files", "Commands", "Internet"] } as const;
+
+/** A session's row with what its next turn runs at, by the rule send uses [D129, D166, D225]. */
+export type LevelRow = ModelRow & {
+  levels?: PermissionLevel[];
+  /** Null when the agent has no levels, or can't run at the one picked (`level_refused` says why). */
+  level?: PermissionLevel | null;
+  level_refused?: string | null;
+  held?: boolean;
+  /** The last level pick Rust took, by the app's op id [D30]. */
+  level_op?: string | null;
+};
 
 /** "xhigh" → "Extra high", "medium" → "Medium". */
 export function effortLabel(effort: string): string {
@@ -67,7 +84,22 @@ export const QUEUE_WORDS = {
 } as const;
 
 /** The model picker's notes; its agent not set up, by why. */
-export const MODEL_WORDS = { noneListed: "No models listed yet", noEfforts: "No effort levels", switchNow: "Switch now" } as const;
+export const MODEL_WORDS = {
+  title: "Model",
+  noneListed: "No models listed yet",
+  noEfforts: "No effort levels",
+  switchNow: "Switch now",
+  search: "Search all models",
+  favorites: "Favorites",
+  noFavorites: "Star a model and it shows here.",
+  star: "Add to favorites",
+  unstar: "Remove from favorites",
+  inUse: "In use",
+  older: "Older",
+  effort: "Effort",
+  defaultEffort: "Default",
+  fast: "Fast",
+} as const;
 export const notSetUp = (label: string, unavailable?: string | null) =>
   unavailable === "install" ? `${label} isn't installed. Install it and its models show here.` : `${label} isn't signed in. Sign in and its models show here.`;
 export const noMatch = (needle: string) => `No models match “${needle}”`;
@@ -127,6 +159,24 @@ export const NIGHT_WORDS = {
   beforeYouGo: "Before you go",
   ready: "That’s all I need",
 } as const;
+
+export type NightAct = "on" | "start" | "off";
+type Taken = { op: string; act: NightAct; at: number };
+/** Each session's last Overnight act, by its op id, till the row's `overnight_op` reaches it [D30]. */
+export const nightActs = store<ReadonlyMap<string, Taken>>(new Map());
+export function putNightAct(id: string, entry: Taken | null): void {
+  const next = new Map(nightActs.get());
+  if (entry) next.set(id, entry);
+  else next.delete(id);
+  nightActs.set(next);
+}
+/** What the session's overnight is, null off: its last act (`mine`) until the row has it (`landed`). */
+export function nightShown(now: Overnight | null, mine: Taken | undefined, landed: boolean): Overnight | null {
+  if (!mine || landed) return now;
+  if (mine.act === "off") return null;
+  if (mine.act === "start") return { ...now, state: "night", since: mine.at };
+  return { ...now, state: "asking" };
+}
 
 /** The field's words while Overnight is on; `asked`: its turn's questions are there already, waiting or answered. */
 export const nightPlaceholder = (now: Overnight | null, busy: boolean, asked: boolean) =>

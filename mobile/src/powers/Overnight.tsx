@@ -5,17 +5,14 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Overnight, Row } from "../../../app/shared/rows";
-import { store } from "../../../app/shared/store";
 import { duration } from "../../../app/shared/words";
-import { NIGHT_WORDS as N, nightProgress } from "../../../app/shared/session/composer";
+import { type NightAct as Act, nightActs as taken, NIGHT_WORDS as N, nightProgress, nightShown, putNightAct as put } from "../../../app/shared/session/composer";
 import { Confirm } from "../act/Confirm";
 import { Moon } from "../../../app/ui/src/icons";
 import { Pill, PillDivider } from "../compose/Pill";
 import { newId } from "../compose/state";
-import { color, spacing, radius, text, opacity } from "../theme";
+import { color, fontWeight, opacity, radius, space, spacing, text, touch } from "../theme";
 import { type Power, refusal } from "./powers";
-
-type Act = "on" | "start" | "off";
 
 /** Each act's sheet words; `night`, the user is back from one. */
 export const nightWords = (act: Act, night: boolean): { title: string; body?: string } =>
@@ -25,15 +22,6 @@ export const nightWords = (act: Act, night: boolean): { title: string; body?: st
       ? { title: "Start night?", body: "This Mac stays awake. It picks what you skip and tells you in the morning." }
       : { title: night ? "I’m back: end the night?" : "Turn Overnight off?" };
 
-/** Each session's last act the Mac took, by its op id, till the row's `overnight_op` reaches it. */
-const taken = store<ReadonlyMap<string, { op: string; act: Act; at: number }>>(new Map());
-function put(id: string, entry: { op: string; act: Act; at: number } | null) {
-  const next = new Map(taken.get());
-  if (entry) next.set(id, entry);
-  else next.delete(id);
-  taken.set(next);
-}
-
 /** What the session's overnight is, null off: the last act taken until the row has it. */
 function useOvernight(id: string, row: Row | undefined): Overnight | null {
   const mine = useSyncExternalStore(taken.subscribe, () => taken.get().get(id));
@@ -41,11 +29,7 @@ function useOvernight(id: string, row: Row | undefined): Overnight | null {
   useEffect(() => {
     if (landed) put(id, null);
   }, [landed, id]);
-  const now = row?.overnight ?? null;
-  if (!mine || landed) return now;
-  if (mine.act === "off") return null;
-  if (mine.act === "start") return { ...now, state: "night", since: mine.at };
-  return { ...now, state: "asking" };
+  return nightShown(row?.overnight ?? null, mine, landed);
 }
 
 /**
@@ -111,7 +95,7 @@ export function OvernightStrip({ night, connected }: { night: Night; connected: 
         {now.since ? `${duration(tick - now.since)} in` : N.pill}
         <Text style={st.muted}>{nightProgress(now)}</Text>
       </Text>
-      <Pressable accessibilityRole="button" disabled={!connected} onPress={() => night.ask("off")} hitSlop={10} style={({ pressed }) => [st.soft, (pressed || !connected) && { opacity: connected ? 0.7 : opacity.disabled }]}>
+      <Pressable accessibilityRole="button" disabled={!connected} onPress={() => night.ask("off")} hitSlop={(touch - spacing.controlXs) / 2} style={({ pressed }) => [st.soft, pressed && { backgroundColor: color.fillHover }, !connected && { opacity: opacity.disabled }]}>
         <Text style={st.softText}>{N.imBack}</Text>
       </Pressable>
     </View>
@@ -123,8 +107,8 @@ export function StartNight({ label, night, connected }: { label: string; night: 
   return (
     <View style={st.actions}>
       <Text style={st.label}>{label}</Text>
-      <Pressable accessibilityRole="button" disabled={!connected} onPress={() => night.ask("start")} hitSlop={6} style={({ pressed }) => [st.primary, (pressed || !connected) && { opacity: connected ? 0.8 : opacity.disabled }]}>
-        <Moon className="size-icon-sm text-primary-fg" />
+      <Pressable accessibilityRole="button" disabled={!connected} onPress={() => night.ask("start")} hitSlop={(touch - spacing.controlSm) / 2} style={({ pressed }) => [st.primary, pressed && { backgroundColor: color.primaryHover }, !connected && { opacity: opacity.disabled }]}>
+        <Moon className="size-icon-md text-primary-fg" />
         <Text style={st.primaryText}>{N.start}</Text>
       </Pressable>
     </View>
@@ -136,24 +120,29 @@ export function NightReady({ night, connected }: { night: Night; connected: bool
   if (night.now?.state !== "ready") return null;
   return (
     <View accessibilityLabel={N.beforeYouGo}>
-      <View style={{ gap: 4, paddingHorizontal: 16, paddingTop: 16 }}>
-        <Text style={[st.words, { fontWeight: "500" }]}>{N.ready}</Text>
-        {night.now.words ? <Text style={[st.label, { flex: 0 }]}>{night.now.words}</Text> : null}
+      <View style={st.ready}>
+        <Text style={st.readyTitle}>{N.ready}</Text>
+        {night.now.words ? <Text style={st.readyWords}>{night.now.words}</Text> : null}
       </View>
       <StartNight label={N.awake} night={night} connected={connected} />
     </View>
   );
 }
 
+// The strip's px-3.5 py-2 row; Start night in an ActionCardActions row (gap-2 px-4 pt-2 pb-4); I'm back the desktop's
+// Button xs soft, Start night its sm default; the ready card's words px-4 pt-4 gap-1.
 const st = StyleSheet.create({
   pillText: { ...text.sm, color: color.mutedForeground, flexShrink: 1 },
-  strip: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 8 },
+  strip: { flexDirection: "row", alignItems: "center", gap: space(2), paddingHorizontal: space(3.5), paddingVertical: space(2) },
   words: { ...text.sm, color: color.foreground, flex: 1 },
   muted: { color: color.mutedForeground },
   label: { ...text.xs, color: color.mutedForeground, flex: 1 },
-  soft: { height: spacing.controlXs, justifyContent: "center", paddingHorizontal: 8, borderRadius: radius.control, backgroundColor: color.fill },
-  softText: { ...text.label, color: color.foreground },
-  actions: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
-  primary: { flexDirection: "row", alignItems: "center", gap: 6, height: spacing.controlSm + 4, paddingHorizontal: 12, borderRadius: radius.control, backgroundColor: color.primary },
-  primaryText: { ...text.sm, fontWeight: "500", color: color.primaryFg },
+  soft: { flexDirection: "row", alignItems: "center", gap: space(1), height: spacing.controlXs, paddingHorizontal: space(2), borderRadius: radius.capsule, backgroundColor: color.fillSubtle },
+  softText: { ...text.xs, fontWeight: fontWeight.normal, color: color.foreground },
+  actions: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space(2), paddingHorizontal: space(4), paddingTop: space(2), paddingBottom: space(4) },
+  primary: { flexDirection: "row", alignItems: "center", gap: space(1), height: spacing.controlSm, paddingHorizontal: space(2.5), borderRadius: radius.capsule, backgroundColor: color.primary },
+  primaryText: { ...text.sm, fontWeight: fontWeight.medium, color: color.primaryFg },
+  ready: { gap: space(1), paddingHorizontal: space(4), paddingTop: space(4) },
+  readyTitle: { ...text.sm, fontWeight: fontWeight.medium, color: color.foreground },
+  readyWords: { ...text.label, color: color.mutedForeground },
 });

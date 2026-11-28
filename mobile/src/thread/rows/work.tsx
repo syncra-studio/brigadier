@@ -11,7 +11,7 @@ import { ThinkingLine } from "./message";
 import { Chevron, s, StepIcon, Toggle, Words } from "./parts";
 
 /** Now, each second while `live`, as the desktop's useSecond. */
-function useSecond(live: boolean) {
+export function useSecond(live: boolean) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (!live) return;

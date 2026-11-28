@@ -1,4 +1,5 @@
 import type { Row } from "../rows";
+import { store } from "../store";
 import type { Runner } from "./run";
 
 // Model and effort choice, for both apps [D58]: the lists Rust sends, what a session runs on and the command a pick sends.
@@ -48,6 +49,19 @@ export type ModelChoice = { provider: string; model: string; effort: string | nu
  */
 export const effortOf = (model: Model, provider: string, value: ModelChoice, inUse: boolean, clicked?: string): string | null =>
   clicked ?? (inUse ? value.effort : provider === value.provider && value.effort && model.efforts.includes(value.effort) ? value.effort : (model.defaultEffort ?? null));
+
+/** An older model, behind Show more: unless it's the one in use or starred. */
+export const isOld = (model: Model, inUse: boolean, starred: boolean): boolean => model.legacy === true && !inUse && !starred;
+
+const FAVORITES = "favorite-models";
+/** The starred models, "agent/model", kept across launches; the phone's localStorage (state.ts's) may not be there yet, and is empty then. */
+export const favorites = store<readonly string[]>(JSON.parse(globalThis.localStorage?.getItem(FAVORITES) ?? "[]"));
+/** Stars a model, or takes its star away. */
+export function star(key: string): void {
+  const now = favorites.get();
+  favorites.set(now.includes(key) ? now.filter((each) => each !== key) : [...now, key]);
+  localStorage.setItem(FAVORITES, JSON.stringify(favorites.get()));
+}
 
 /** One signed-in account's limits as Rust serves them on a model group (C1): `used` and `resets` null where unknown. */
 export type Quota = { account: string; name: string; limits: { name: string; used: number | null; resets: number | null }[] };

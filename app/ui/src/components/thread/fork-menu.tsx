@@ -4,7 +4,6 @@ import { BranchAlt, Spinner } from "../../icons";
 import { type ModelChoice, type ModelGroup, ModelPicker } from "../composer/model-picker";
 import { SwitchAgentDialog } from "../composer/switch-agent";
 import { ErrorLine } from "../error-line";
-import { named } from "./rewind";
 import { TooltipIconButton } from "../icon-button";
 import {
   DropdownMenu,
@@ -15,7 +14,7 @@ import {
   DropdownMenuTrigger,
   MenuRow,
 } from "../menu";
-import { FORK_FILES as FILES, FORK_REPO_FILES as REPO_FILES } from "../../../../shared/words";
+import { forkFiles, FORK_WORDS } from "../../../../shared/words";
 
 /**
  * What Rust's one check offers on an answer [D1068]; the UI writes the words. `worktree`: the new worktree
@@ -38,24 +37,16 @@ export type ForkOffer = {
 /** Where a pick sends the fork; `to`, another agent, model, effort or speed, goes by the one destination rule (proposed). */
 export type ForkPick = { where: "worktree" | "chat" } | { to: ModelChoice };
 
-const detailOf = (offer: ForkOffer) =>
-  offer.worktree === "repos"
-    ? REPO_FILES.map(([files, words]) => [words, (offer.repos ?? []).filter((repo) => repo.files === files).map((repo) => repo.name)] as const)
-        .filter(([, names]) => names.length > 0)
-        .map(([words, names]) => `${words}: ${named(names)}`)
-        .join(" · ")
-    : FILES[offer.worktree ?? "none"];
-
 /** The places a fork can go, from Rust's offer: under an answer and in a session's ⋯ menu alike. */
 export function ForkPlaces({ offer, onPick }: { offer: ForkOffer; onPick: (pick: ForkPick) => void }) {
   return (
     <>
       {offer.worktree && (
-        <Place title={offer.repos ? "Fork to new copies of its repos" : "Fork to a new worktree"} detail={detailOf(offer)} onClick={() => onPick({ where: "worktree" })} />
+        <Place title={offer.repos ? FORK_WORDS.repos : FORK_WORDS.worktree} detail={forkFiles(offer)} onClick={() => onPick({ where: "worktree" })} />
       )}
       {!offer.worktree && (
         <DropdownMenuItem onClick={() => onPick({ where: "chat" })}>
-          <MenuRow icon={<BranchAlt />} title="Fork chat" />
+          <MenuRow icon={<BranchAlt />} title={FORK_WORDS.chat} />
         </DropdownMenuItem>
       )}
     </>

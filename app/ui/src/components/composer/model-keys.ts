@@ -1,7 +1,5 @@
 import { useEffect } from "react";
 
-import { store } from "../../onboarding/api";
-
 const TEXT_FIELD = "input, textarea, [contenteditable=true], [contenteditable='']";
 
 /** Clicking or typing in a field outside the picker (the composer's own) closes it. */
@@ -21,14 +19,4 @@ const NAMES = new Map<string, string>();
 export function named(groups: readonly { provider: string; models: readonly { id: string; name: string }[] }[], provider: string, id: string): string {
   for (const group of groups) for (const each of group.models) NAMES.set(`${group.provider}/${each.id}`, each.name);
   return NAMES.get(`${provider}/${id}`) ?? id;
-}
-
-const FAVORITES = "favorite-models";
-/** The starred models, "agent/model", kept across launches. */
-export const favorites = store<readonly string[]>(JSON.parse(localStorage.getItem(FAVORITES) ?? "[]"));
-/** Stars a model, or takes its star away. */
-export function star(key: string): void {
-  const now = favorites.get();
-  favorites.set(now.includes(key) ? now.filter((each) => each !== key) : [...now, key]);
-  localStorage.setItem(FAVORITES, JSON.stringify(favorites.get()));
 }

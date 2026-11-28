@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react";
 
+import { branchSince, REVIEW_SCOPES, REVIEW_WORDS } from "../../../shared/words";
 import { ChevronDown, ChevronDownUp, ChevronUpDown, Compare, Reload, Text } from "../icons";
 import { cx } from "../components/cx";
 import { ErrorLine } from "../components/error-line";
@@ -54,11 +55,11 @@ export type ReviewTabProps = {
 };
 
 const SCOPES: { value: ReviewScope; label: (base: string | null) => string }[] = [
-  { value: "last", label: () => "Last turn" },
-  { value: "uncommitted", label: () => "Uncommitted changes" },
-  { value: "staged", label: () => "Staged Changes" },
-  { value: "unstaged", label: () => "Changes" },
-  { value: "branch", label: (base) => `Branch since ${base ?? "base"}` },
+  { value: "last", label: () => REVIEW_SCOPES.last },
+  { value: "uncommitted", label: () => REVIEW_SCOPES.uncommitted },
+  { value: "staged", label: () => REVIEW_SCOPES.staged },
+  { value: "unstaged", label: () => REVIEW_SCOPES.unstaged },
+  { value: "branch", label: branchSince },
 ];
 
 export function ReviewTab(props: ReviewTabProps) {
@@ -146,7 +147,7 @@ export function ReviewTab(props: ReviewTabProps) {
         ) : review.none ? (
           <EmptyState variant="centered" title={noTurnWords(review.none)} />
         ) : review.files.length === 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">No changes</p>
+          <p className="p-4 text-sm text-muted-foreground">{REVIEW_WORDS.noChanges}</p>
         ) : (
           review.files.map((file) => (
             <FileSection

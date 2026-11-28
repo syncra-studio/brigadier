@@ -107,6 +107,9 @@ export type KeptPrs = { okAt: number | null; error: string | null; branch?: stri
 type Tree = { pid: number; start_us: number; label: string; ports: number[] };
 /** One process tree a turn left running, and the open apps in it. */
 export type Job = Tree & { apps: Tree[] };
+/** A job's name: its one app's, else its command's. */
+export const jobName = (job: Job) => (job.apps.length === 1 ? job.apps[0]!.label : job.label);
+export const jobPorts = (job: Job) => job.ports.map((port) => `:${port}`);
 
 /**
  * A session's overnight, Rust's, on its row: `asking`, on and its agent asking its last questions; `ready`, all

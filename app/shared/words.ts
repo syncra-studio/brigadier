@@ -137,6 +137,21 @@ export const FORK_REPO_FILES = [
   ["later", "Not copied, claimed after this message"],
 ] as const;
 
+/** Names or paths, five at most, then "and N more". */
+export const named = (names: readonly string[]) => (names.length > 5 ? `${names.slice(0, 5).join(", ")} and ${names.length - 5} more` : names.join(", "));
+export const files = (n: number) => (n === 1 ? "1 file" : `${n} files`);
+
+/** A fork's places, from Rust's offer [D1068]. */
+export const FORK_WORDS = { worktree: "Fork to a new worktree", repos: "Fork to new copies of its repos", chat: "Fork chat" } as const;
+/** Where a fork's files come from, by Rust's offer: the worktree's, or each repo's of a folder chat [D3105]. */
+export const forkFiles = (offer: { worktree: keyof typeof FORK_FILES | "repos" | null; repos?: readonly { name: string; files: (typeof FORK_REPO_FILES)[number][0] }[] }) =>
+  offer.worktree === "repos"
+    ? FORK_REPO_FILES.map(([files, words]) => [words, (offer.repos ?? []).filter((repo) => repo.files === files).map((repo) => repo.name)] as const)
+        .filter(([, names]) => names.length > 0)
+        .map(([words, names]) => `${words}: ${named(names)}`)
+        .join(" · ")
+    : FORK_FILES[offer.worktree ?? "none"];
+
 /** An event the app can't draw yet, opening to the event as it came. */
 export const UNKNOWN_STEP = "This step isn’t shown yet · details inside";
 
@@ -273,6 +288,15 @@ export function duration(ms: number): string {
   if (s < 60) return `${s}s`;
   if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+}
+
+/** How a background run ended, as `jobs <id> history` says [D200]. */
+export const RUN_OUTCOME = { running: "Running", stopped: "Stopped by you", ended: "Ended", unknown: "End not observed" } as const;
+/** How long a background run ran: to its end, so far, or not known. */
+export function ranWords(run: { startedAt: number; endedAt: number | null; status: string }, now: number): string {
+  if (run.endedAt !== null) return duration(run.endedAt - run.startedAt);
+  if (run.status === "running") return `${duration(now - run.startedAt)} so far`;
+  return "Duration unknown";
 }
 
 // ── Lines across the thread, notices, a switch past a limit, sessions started and forked, images, mockups and workers.
@@ -443,3 +467,24 @@ export const CHAT_TAB_WORDS = { untitled: "Chat", actions: "Chat actions" } as c
 
 /** Home's hero over a new session's composer, and what it says while it can't start one [D161, D388]. */
 export const HOME_WORDS = { buildIn: "What should we build in", build: "What should we build?", pickBranch: "Pick a branch", noModel: "No model is available.", pickModel: "Pick a model first", couldntStart: "Couldn't start this conversation." } as const;
+
+/** "1 file", "3 files". */
+export const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+
+/** The Review tab's scopes [D1032]; Branch since names its base once Rust sent it. */
+export const REVIEW_SCOPES = { last: "Last turn", uncommitted: "Uncommitted changes", staged: "Staged Changes", unstaged: "Changes" } as const;
+export const branchSince = (base: string | null) => `Branch since ${base ?? "base"}`;
+
+/** Last turn or a night with nothing to compare: Rust's reason in words (D30). */
+export const NO_TURN_WORDS = {
+  noNight: "This night's start or end wasn't captured, so there's nothing to compare.",
+  noProject: "This chat has no project folder, so there's no turn's files to show.",
+  notGit: "This folder isn't a git checkout, so Review can't show the last turn.",
+  noTurn: "No turn yet. What the next one changes shows here.",
+  midTurn: "The last message was sent while a turn ran, so it has no capture of its own.",
+  noSnapshot: "The last turn's start wasn't captured, so there's nothing to compare.",
+} as const;
+
+/** What the Review tab says of a scope with nothing in it, and of one file's diff. */
+export const REVIEW_WORDS = { noChanges: "No changes", binary: "binary", binaryFile: "Binary file not shown", noContentChanges: "No content changes", loading: "Loading the diff…" } as const;
+export const couldntReadDiff = (error: string) => `Couldn't read this diff: ${error}`;

@@ -1,14 +1,16 @@
 import { useRef, useState } from "react";
-import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Text } from "react-native";
 import type { Frame } from "../../../app/shared/client";
-import { Button } from "../Button";
-import { color, text, fontWeight, mono } from "../theme";
+import { DialogButton } from "../Button";
+import { Sheet } from "../sheets/Sheet";
+import { Box, ErrorLine, s } from "../thread/rows/parts";
 import { macNow } from "../link";
 import { signed } from "./act";
 
 /**
- * The one sheet before every fresh signature (lasting answers, starts, the powers): what will happen, the exact
- * command or path whole, then Face ID. `onDone` gets the Mac's reply, or null when cancelled here.
+ * The one sheet before every fresh signature (lasting answers, starts, the powers), the desktop's confirm dialog
+ * (components/confirm-dialog.tsx): what will happen, the exact command or path whole in a code box, Cancel and Face
+ * ID. `onDone` gets the Mac's reply, or null when cancelled here.
  */
 export function Confirm({ title, body, shown, args, mac, onDone }: {
   title: string;
@@ -38,31 +40,21 @@ export function Confirm({ title, body, shown, args, mac, onDone }: {
     onDone(reply);
   }
   return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { if (!busy) onDone(null); }}>
-      <View style={styles.page}>
-        <View style={styles.top}>
-          <Text style={styles.title}>{title}</Text>
-          {body && <Text style={styles.body}>{body}</Text>}
-          <ScrollView style={styles.box} contentContainerStyle={{ padding: 12 }}>
-            <Text selectable style={styles.mono}>{shown}</Text>
-          </ScrollView>
-          {error && <Text style={styles.body}>{error}</Text>}
-        </View>
-        <View style={styles.bottom}>
-          {busy ? <ActivityIndicator color={color.foreground} /> : <Button title="Confirm with Face ID" onPress={go} />}
-          <Button title="Cancel" secondary disabled={busy} onPress={() => onDone(null)} />
-        </View>
-      </View>
-    </Modal>
+    <Sheet
+      title={title}
+      description={body}
+      onClose={() => !busy && onDone(null)}
+      footer={
+        <>
+          <DialogButton title="Cancel" variant="ghost" disabled={busy} onPress={() => onDone(null)} />
+          <DialogButton title="Confirm with Face ID" busy={busy} onPress={go} />
+        </>
+      }
+    >
+      <Box>
+        <Text selectable style={s.code}>{shown}</Text>
+      </Box>
+      <ErrorLine error={error} xs />
+    </Sheet>
   );
 }
-
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: color.background, padding: 24, justifyContent: "space-between" },
-  top: { gap: 16, flexShrink: 1 },
-  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground },
-  body: { ...text.base, color: color.mutedForeground },
-  box: { backgroundColor: color.surfaceUnder, borderRadius: 12, borderWidth: 1, borderColor: color.border, maxHeight: 320 },
-  mono: { ...text.sm, color: color.foreground, fontFamily: mono },
-  bottom: { gap: 12, paddingBottom: 32 },
-});

@@ -1,28 +1,24 @@
 // The session's permission pill, as the desktop's session/level.tsx and composer/pickers.tsx: its icon and label,
-// orange on Full access; a sheet asking how the agent's actions should be approved, each level with its icon and line
-// and a check on the one in use, Ask alone where the folder isn't trusted. Each change is signed with Face ID (power
-// `level`), Full access with the desktop's confirm words.
+// orange on Full access; its menu from the bottom asking how the agent's actions should be approved, each level with
+// its icon and line and a check on the one in use, Ask alone where the folder isn't trusted. Each change is signed with
+// Face ID (power `level`), Full access with the desktop's confirm words.
 import { useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import type { ModelRow } from "../../../app/shared/session/model";
-import { LEVEL_WORDS, type PermissionLevel as Level } from "../../../app/shared/session/composer";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { FULL_ACCESS_WORDS, LEVEL_MENU, LEVEL_WORDS, type LevelRow, type PermissionLevel as Level } from "../../../app/shared/session/composer";
 import { Confirm } from "../act/Confirm";
-import { Button } from "../Button";
 import { Check, HandRaised, ShieldExclamation, ShieldTerminal } from "../../../app/ui/src/icons";
 import { Pill } from "../compose/Pill";
 import { forMac, newId } from "../compose/state";
-import { color, radius, text, opacity, touch } from "../theme";
+import { MenuSheet, st as menu } from "../sheets/Sheet";
+import { color, space, text, opacity } from "../theme";
 import { refusal } from "./powers";
 
 /** The desktop's Full Access confirm words. */
-export const FULL_ACCESS = { title: "Turn on Full Access?", body: "Agents can use all of these without asking.", shown: "Files · Commands · Internet" };
+export const FULL_ACCESS = { title: FULL_ACCESS_WORDS.title, body: FULL_ACCESS_WORDS.body, shown: FULL_ACCESS_WORDS.reaches.join(" · ") };
 
 /** The desktop's levels (composer/pickers.tsx), each with its icon. */
 const LEVEL_ICONS = { ask: HandRaised, auto: ShieldTerminal, full: ShieldExclamation };
 const LEVELS = LEVEL_WORDS.map((each) => ({ ...each, Icon: LEVEL_ICONS[each.level] }));
-
-/** A session's row with what its next turn runs at; `level_op`, the last pick Rust took [D30]. */
-type LevelRow = ModelRow & { levels?: Level[]; level?: Level | null; level_refused?: string | null; held?: boolean; level_op?: string | null };
 
 export function LevelPill({ id, row, connected }: { id: string; row: LevelRow | undefined; connected: boolean }) {
   const { models } = forMac();
@@ -69,30 +65,28 @@ export function LevelPill({ id, row, connected }: { id: string; row: LevelRow | 
       ) : null}
       {(error ?? row?.level_refused) ? <Text style={st.error} numberOfLines={2}>{error ?? row?.level_refused}</Text> : null}
       {open ? (
-        <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
-          <ScrollView style={st.page} contentContainerStyle={{ padding: 24, gap: 4 }}>
-            <Text style={st.title}>How should the agent’s actions be approved?</Text>
-            {held ? <Text style={st.note}>This folder isn't trusted, so sessions here ask first. Change it in the project's settings.</Text> : null}
+        <MenuSheet onClose={() => setOpen(false)}>
+          <View style={st.menu}>
+            <Text style={st.question}>{LEVEL_MENU.question}</Text>
+            {held ? <Text style={st.untrusted}>{LEVEL_MENU.untrusted}</Text> : null}
             {offered.map((each) => {
               const on = each.level === value;
               const disabled = held && each.level !== "ask";
-              const tone = each.level === "full" ? color.fullAccess : color.foreground;
+              const tone = each.level === "full" ? color.fullAccess : undefined;
               return (
-                <Pressable key={each.level} accessibilityRole="radio" accessibilityState={{ checked: on, disabled }} disabled={disabled} onPress={() => pick(each.level)} style={({ pressed }) => [st.option, pressed && { backgroundColor: color.fill }, disabled && { opacity: opacity.disabled }]}>
-                  <each.Icon className="size-icon-md" color={tone} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[st.optionText, { color: tone }]}>{each.label}</Text>
-                    <Text style={[st.detail, each.level === "full" && { color: color.warning }]}>{each.detail}</Text>
+                <Pressable key={each.level} accessibilityRole="radio" accessibilityState={{ checked: on, disabled }} disabled={disabled} onPress={() => pick(each.level)} style={({ pressed }) => [menu.item, st.row, pressed && { backgroundColor: color.fill }, disabled && { opacity: opacity.disabled }]}>
+                  <each.Icon className="size-icon-md text-muted-foreground" />
+                  <View style={st.words}>
+                    <Text style={[st.name, tone && { color: tone }]}>{each.label}</Text>
+                    <Text style={[st.detail, tone && { color: tone }]}>{each.detail}</Text>
                   </View>
-                  {on ? <Check className="size-icon-md" color={tone} /> : null}
+                  {on ? <View style={st.mark}><Check className="size-icon-md text-muted-foreground" /></View> : null}
                 </Pressable>
               );
             })}
-            <View style={{ height: 16 }} />
-            <Button title="Done" secondary onPress={() => setOpen(false)} />
-          </ScrollView>
+          </View>
           {confirm}
-        </Modal>
+        </MenuSheet>
       ) : (
         confirm
       )}
@@ -100,13 +94,16 @@ export function LevelPill({ id, row, connected }: { id: string; row: LevelRow | 
   );
 }
 
+// The desktop's menu at p-1.5: the sheet's p-1 and half again; its rows py-1.5 with gap-3 and room at the end for the check.
 const st = StyleSheet.create({
   pillText: { ...text.sm, flexShrink: 1 },
   error: { ...text.xs, color: color.destructive, flexShrink: 1 },
-  page: { flex: 1, backgroundColor: color.background },
-  title: { ...text.lg, fontWeight: "600", color: color.foreground, marginBottom: 8 },
-  note: { ...text.xs, color: color.mutedForeground, marginBottom: 8 },
-  option: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: touch, borderRadius: radius.control, paddingHorizontal: 8, paddingVertical: 6 },
-  optionText: { ...text.sm },
-  detail: { ...text.sm, color: color.mutedForeground },
+  menu: { padding: space(0.5) },
+  question: { ...text.sm, color: color.mutedForeground, paddingHorizontal: space(2), paddingTop: space(1), paddingBottom: space(1.5) },
+  untrusted: { ...text.xs, color: color.mutedForeground, paddingHorizontal: space(2), paddingBottom: space(1.5) },
+  row: { gap: space(3), paddingVertical: space(1.5), paddingEnd: space(8) },
+  words: { flex: 1 },
+  name: { ...text.label, color: color.foreground },
+  detail: { ...text.label, color: color.mutedForeground },
+  mark: { position: "absolute", end: space(2) },
 });

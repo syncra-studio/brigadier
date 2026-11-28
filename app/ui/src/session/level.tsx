@@ -2,10 +2,10 @@ import { useRef, useState } from "react";
 
 import { type PermissionLevel, PermissionPicker } from "../components/composer/pickers";
 import { ErrorLine } from "../components/error-line";
-import type { Row } from "../daemon";
 import { errorText, run } from "../onboarding/api";
 import { levelsOf } from "./model";
 import { newId } from "./store";
+import type { LevelRow } from "../../../shared/session/composer";
 
 /**
  * The permission pill a session and Home's draft both mount [D169, D170, D176]: the agent's own levels [D129, D175],
@@ -27,19 +27,6 @@ export function LevelPicker({
   if (levels.length === 0) return null;
   return <PermissionPicker value={level ?? levels[0]!} levels={levels} untrusted={held} onChange={onChange} />;
 }
-
-/** A session's row with what its next turn runs at, by the rule send uses [D129, D166, D225]. */
-type LevelRow = Row & {
-  levels?: PermissionLevel[];
-  /** Null when the agent has no levels, or can't run at the one picked (`level_refused` says why). */
-  level?: PermissionLevel | null;
-  level_refused?: string | null;
-  held?: boolean;
-  /** The model its next turn runs. */
-  model?: string | null;
-  /** The last level pick Rust took, by the app's op id [D30]. */
-  level_op?: string | null;
-};
 
 /**
  * The session's permission pill: a pick shows at once and goes to Rust with its op id, settled when the row's

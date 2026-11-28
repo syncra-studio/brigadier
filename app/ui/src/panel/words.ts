@@ -1,6 +1,8 @@
 /* The right panel's words, written from what Rust sends [D65]. */
 
-export const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+import { plural } from "../../../shared/words";
+
+export { plural };
 
 export function baseName(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);

@@ -14,6 +14,7 @@ import { CardSection } from "./card";
 import { openBackgroundHistory } from "./open";
 import { Line, Rows } from "./source/rows";
 import type { Job } from "./types";
+import { jobName as nameOf, jobPorts as portsOf } from "../../../shared/rows";
 
 /** A process on the card: the session it's left by, and its worker, null for the card's own session. */
 type Process = Job & { session: string; owner: Worker | null };
@@ -21,8 +22,6 @@ type Process = Job & { session: string; owner: Worker | null };
 const keyOf = (job: Job) => `${job.pid}.${job.start_us}`;
 /** Outlived the worker that started it. */
 const left = (job: Process) => job.owner !== null && !onHand(job.owner);
-const nameOf = (job: Job) => (job.apps.length === 1 ? job.apps[0]!.label : job.label);
-const portsOf = (job: Job) => job.ports.map((port) => `:${port}`);
 /**
  * A job that opened several apps is a row each, and one for the ports none of them listens on.
  * shortcut: that one's Stop ends the job, its apps too; upgrade if a job with both shows.

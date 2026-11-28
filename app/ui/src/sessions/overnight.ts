@@ -1,26 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import { showToast } from "../components/toast";
 import type { Row } from "../daemon";
-import { errorText, run, store } from "../onboarding/api";
+import { errorText, run } from "../onboarding/api";
 import { newId } from "../session/store";
 import type { SlashCommand } from "../components/composer/menus";
 
 export type { Overnight } from "../../../shared/rows";
 import type { Overnight } from "../../../shared/rows";
-import { OVERNIGHT_WORDS } from "../../../shared/session/composer";
-
-type Act = "on" | "start" | "off";
+import { nightActs as asked, type NightAct as Act, nightShown, OVERNIGHT_WORDS, putNightAct as put } from "../../../shared/session/composer";
 
 export const OVERNIGHT: SlashCommand = { id: "overnight", kind: "command", ...OVERNIGHT_WORDS, instant: true };
-
-const asked = store<ReadonlyMap<string, { op: string; act: Act; at: number }>>(new Map());
-function put(id: string, entry: { op: string; act: Act; at: number } | null): void {
-  const next = new Map(asked.get());
-  if (entry) next.set(id, entry);
-  else next.delete(id);
-  asked.set(next);
-}
 
 /** Turns it on or off, or starts the night; shown at once, Rust's refusal in a toast [D30]. `first`: what goes before it; refused, this isn't asked. */
 export function overnight(id: string, act: Act, first: Promise<boolean> = Promise.resolve(true)): void {
@@ -42,14 +32,10 @@ export function overnight(id: string, act: Act, first: Promise<boolean> = Promis
 
 /** What the session's overnight is, null off: the user's last act until the row has it. */
 export function useOvernight(id: string, row: Row | undefined): Overnight | null {
-  const mine = asked.use().get(id);
+  const mine = useSyncExternalStore(asked.subscribe, asked.get).get(id);
   const landed = mine !== undefined && row?.overnight_op === mine.op;
   useEffect(() => {
     if (landed) put(id, null);
   }, [landed, id]);
-  const now = row?.overnight ?? null;
-  if (!mine || landed) return now;
-  if (mine.act === "off") return null;
-  if (mine.act === "start") return { ...now, state: "night", since: mine.at };
-  return { ...now, state: "asking" };
+  return nightShown(row?.overnight ?? null, mine, landed);
 }

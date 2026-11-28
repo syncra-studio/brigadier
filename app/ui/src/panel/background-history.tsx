@@ -4,13 +4,12 @@ import { Button } from "../components/button";
 import { Timeline } from "../components/timeline";
 import { useDaemon } from "../daemon";
 import { errorText, run } from "../onboarding/api";
-import { duration, useSecond } from "../thread/words";
+import { useSecond } from "../thread/words";
+import { ranWords, RUN_OUTCOME as OUTCOME } from "../../../shared/words";
 import { useFamily } from "../workers/live";
 
 /** One background run as `jobs <id> history` gives it [D200]; `owner`: the worker that left it, none the session's own. */
 type Run = { owner?: string; label: string; startedAt: number; endedAt: number | null; status: "running" | "stopped" | "ended" | "unknown" };
-
-const OUTCOME: Record<Run["status"], string> = { running: "Running", stopped: "Stopped by you", ended: "Ended", unknown: "End not observed" };
 
 /**
  * The card's Background history, the old app's HistoryTab [D200]: everything that ran in the background of the session
@@ -63,16 +62,10 @@ export function BackgroundHistory({ owner }: { owner: string }) {
             when: each.status === "running" ? "now" : "past",
             time: new Date(each.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
             title: <span title={each.label}>{each.label}</span>,
-            detail: [each.owner, OUTCOME[each.status], took(each, now), new Date(each.startedAt).toLocaleDateString()].filter(Boolean).join(" · "),
+            detail: [each.owner, OUTCOME[each.status], ranWords(each, now), new Date(each.startedAt).toLocaleDateString()].filter(Boolean).join(" · "),
           }))}
         />
       </div>
     </div>
   );
-}
-
-function took(each: Run, now: number): string {
-  if (each.endedAt !== null) return duration(each.endedAt - each.startedAt);
-  if (each.status === "running") return `${duration(now - each.startedAt)} so far`;
-  return "Duration unknown";
 }

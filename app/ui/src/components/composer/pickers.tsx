@@ -8,7 +8,7 @@ import { Dialog, DialogContent } from "../dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../menu";
 import { ComposerPill } from "./composer";
 
-import { LEVEL_WORDS, type PermissionLevel } from "../../../../shared/session/composer";
+import { FULL_ACCESS_WORDS, LEVEL_MENU, LEVEL_WORDS, type PermissionLevel } from "../../../../shared/session/composer";
 export type { PermissionLevel } from "../../../../shared/session/composer";
 
 const LEVEL_ICONS = { ask: HandRaised, auto: ShieldTerminal, full: ShieldExclamation };
@@ -58,12 +58,10 @@ export function PermissionPicker({
           data-slot="permission-menu"
           className="w-125 max-w-full p-1.5"
         >
-          <p className="px-2 pt-1 pb-1.5 text-sm text-muted-foreground">How should the agent’s actions be approved?</p>
+          <p className="px-2 pt-1 pb-1.5 text-sm text-muted-foreground">{LEVEL_MENU.question}</p>
           {untrusted && (
             // As wide as the menu, never widening it.
-            <p className="w-0 min-w-full px-2 pb-1.5 text-xs text-muted-foreground">
-              This folder isn't trusted, so sessions here ask first. Change it in the project's settings.
-            </p>
+            <p className="w-0 min-w-full px-2 pb-1.5 text-xs text-muted-foreground">{LEVEL_MENU.untrusted}</p>
           )}
           <DropdownMenuRadioGroup
             value={value}
@@ -109,11 +107,7 @@ export function PermissionPicker({
 }
 
 /** What Full Access reaches. */
-const REACHES = [
-  { Icon: Folder, label: "Files" },
-  { Icon: Dock, label: "Commands" },
-  { Icon: Globe, label: "Internet" },
-];
+const REACHES = [Folder, Dock, Globe].map((Icon, at) => ({ Icon, label: FULL_ACCESS_WORDS.reaches[at]! }));
 
 /** "Turn on Full Access?" in one sentence and what it reaches (D172). Only Confirm changes the level; Cancel takes the focus. */
 export function FullAccessDialog({
@@ -133,11 +127,11 @@ export function FullAccessDialog({
           title={
             <span className="flex items-center gap-2">
               <Warning className="size-icon-md" />
-              Turn on Full Access?
+              {FULL_ACCESS_WORDS.title}
             </span>
           }
-          description="Agents can use all of these without asking."
-          confirm="Turn on Full Access"
+          description={FULL_ACCESS_WORDS.body}
+          confirm={FULL_ACCESS_WORDS.confirm}
           destructive
           cancelRef={cancel}
           onCancel={onCancel}

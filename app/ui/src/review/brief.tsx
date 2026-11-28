@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 
+import { NO_TURN_WORDS } from "../../../shared/words";
 import { sentAt } from "../components/thread/message";
 import { cx } from "../components/cx";
 import { baseName, plural, type Tone } from "../panel/words";
@@ -55,14 +56,7 @@ export function runWords(run: LastRun | null, now = Date.now()): BriefLine {
 
 /** Last turn or a night with nothing to compare: Rust's reason in words (D30). */
 export function noTurnWords(why: NoTurn): string {
-  return {
-    noNight: "This night's start or end wasn't captured, so there's nothing to compare.",
-    noProject: "This chat has no project folder, so there's no turn's files to show.",
-    notGit: "This folder isn't a git checkout, so Review can't show the last turn.",
-    noTurn: "No turn yet. What the next one changes shows here.",
-    midTurn: "The last message was sent while a turn ran, so it has no capture of its own.",
-    noSnapshot: "The last turn's start wasn't captured, so there's nothing to compare.",
-  }[why];
+  return NO_TURN_WORDS[why];
 }
 
 /** What Last turn's or a night's diff doesn't cover, and how it was taken (D1192). */

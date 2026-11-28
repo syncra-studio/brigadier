@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
+import { couldntReadDiff, REVIEW_WORDS } from "../../../shared/words";
 import { ChevronDown, ChevronRight, ExternalLink, FolderOpen, Folders, Spinner } from "../icons";
 import { FileIcon } from "../icons/file-types";
 import { Button } from "../components/button";
@@ -94,7 +95,7 @@ export function FileSection(props: FileProps) {
         <button type="button" aria-expanded={!collapsed} onClick={onToggle} className="min-w-0 cursor-pointer truncate rounded-control text-left text-foreground focus-visible:focus-ring" title={file.path}>
           {file.from ? `${file.from} → ${file.path}` : file.path}
         </button>
-        {file.binary ? <span className="text-xs text-muted-foreground">binary</span> : <Counts insertions={file.insertions} deletions={file.deletions} />}
+        {file.binary ? <span className="text-xs text-muted-foreground">{REVIEW_WORDS.binary}</span> : <Counts insertions={file.insertions} deletions={file.deletions} />}
         {file.flag && <span className="shrink-0 text-xs text-warning">{fileFact(file.flag)}</span>}
         <span className="flex items-center opacity-0 transition-opacity group-hover/file:opacity-100 group-focus-within/file:opacity-100">
           <CopyButton text={file.path} tooltip="Copy path" size="icon-xs" />
@@ -138,12 +139,12 @@ function FileBody({ file, contents, look, connected, onRetry, comments, onCommen
     if (draft) all.push({ side: draft.endSide ?? draft.side ?? "additions", lineNumber: draft.end, metadata: { kind: "box", range: draft } });
     return all;
   }, [sides, patch, comments, draft, extra]);
-  if (file.binary) return muted("Binary file not shown");
+  if (file.binary) return muted(REVIEW_WORDS.binaryFile);
   if (contents && "error" in contents) {
     return (
       <ErrorLine
         size="sm"
-        error={`Couldn't read this diff: ${contents.error}`}
+        error={couldntReadDiff(contents.error)}
         className="px-3 py-2"
         actions={
           <Button variant="link-blue" size="inline" disabled={!connected} onClick={onRetry}>
@@ -159,11 +160,11 @@ function FileBody({ file, contents, look, connected, onRetry, comments, onCommen
     return (
       <p className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
         <Spinner className="size-icon-sm motion-safe:animate-spin" />
-        Loading the diff…
+        {REVIEW_WORDS.loading}
       </p>
     );
   }
-  if (sides && sides.before === sides.after) return muted("No content changes");
+  if (sides && sides.before === sides.after) return muted(REVIEW_WORDS.noContentChanges);
   // A host's patch has no whole file to quote: its comments go with a review, not as chips [D262].
   const sideLines = (side: "additions" | "deletions") => (sides ? (side === "additions" ? sides.after : sides.before).split("\n") : []);
   const render = ({ metadata }: DiffNote<Note>) =>

@@ -75,7 +75,7 @@ export function loadSheets(screen: string) {
   canned.reply = (args) => REPLIES.find(([at]) => args.join(" ").startsWith(at))?.[1];
   const s1 = lists.get().rows[0]!;
   const extra = {
-    background: [{ pid: 4242, start_us: 1, label: "pnpm dev", ports: [5173], apps: [] }],
+    background: [{ pid: 4242, start_us: (Date.now() - 40 * 60_000) * 1000, label: "pnpm dev", ports: [5173], apps: [] }],
     plan: [{ text: "Reproduce the failing login test", status: "completed" }, { text: "Fix the password check in login.ts", status: "in_progress" }, { text: "Run the whole suite", status: "pending" }],
   };
   lists.set({ ...lists.get(), rows: [{ ...s1, ...extra } as Row, ...lists.get().rows.slice(1)] });
