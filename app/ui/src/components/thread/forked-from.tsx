@@ -1,6 +1,7 @@
 import { BranchAlt } from "../../icons";
 import { ROW } from "./activity-row";
 import { InfoTip } from "./tip";
+import { FORKED_FROM, forkedAfter, forkedSource, tooBigToCopy } from "../../../../shared/words";
 
 /** Where a fork came from, as Rust records it [D48]. `source` is null once that session is gone. */
 type ForkOrigin = {
@@ -22,18 +23,17 @@ export function ForkedFrom({ origin, chat, onOpen }: { origin: ForkOrigin; chat:
     <div data-slot="forked-from" className={ROW}>
       <BranchAlt className="size-icon-sm shrink-0" />
       <span className="min-w-0 truncate">
-        Forked from{" "}
+        {FORKED_FROM}{" "}
         {source ? (
           <button type="button" className="cursor-pointer rounded-control text-foreground hover:underline focus-visible:underline focus-visible:focus-ring" onClick={() => onOpen(source.id)}>
             {source.title}
           </button>
         ) : (
-          `another ${chat ? "chat" : "session"}`
+          forkedSource(chat)
         )}
-        {where === "worktree" && " · works in a new worktree"}
-        {summary && " · started from a summary"}
+        {forkedAfter(where, summary)}
       </span>
-      {leftOut.length > 0 && <InfoTip text={`Too big to copy: ${leftOut.join(", ")}`} />}
+      {leftOut.length > 0 && <InfoTip text={tooBigToCopy(leftOut)} />}
     </div>
   );
 }

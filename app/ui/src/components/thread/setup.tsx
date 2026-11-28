@@ -1,27 +1,13 @@
 import { Branch, Check, Spinner, X } from "../../icons";
-import type { Setup, SetupStep } from "../../thread/item";
+import type { Setup } from "../../thread/item";
 import { useKept } from "../../thread/kept";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../collapsible";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
 import { Chevron, DETAIL, ROW, TOGGLE, Words } from "./activity-row";
-import { SETUP_TITLES as TITLES } from "../../../../shared/words";
+import { SETUP_TITLES as TITLES, setupStepError, setupStepWords as words } from "../../../../shared/words";
 
 const ICONS = { running: Spinner, done: Check, failed: X };
-
-/** The old app's setupStepWords; Rust has already folded the states and ordered the steps. */
-function words(step: SetupStep): string {
-  const { state } = step;
-  switch (step.kind) {
-    case "worktree":
-      // Its name only once made: it's Rust's to pick, so the words never change while it's being made [D85].
-      return state === "running" ? `Creating the branch from ${step.base ?? "branch"}` : state === "done" ? `Created ${step.branch ?? "the branch"} from ${step.base ?? "branch"}` : "Couldn't create the worktree";
-    case "setupScript":
-      return state === "running" ? "Running the setup script" : state === "done" ? "Ran the setup script" : "The setup script failed";
-    case "cli":
-      return state === "running" ? `Starting ${step.cli ?? "the CLI"}` : state === "done" ? `Started ${step.cli ?? "the CLI"}` : `Couldn't start ${step.cli ?? "the CLI"}`;
-  }
-}
 
 /** Its steps open while it runs and when it fails, one line once done; it sits under its message, so nothing above moves [D77]. */
 export function SetupRow({ keep, setup }: { keep: string; setup: Setup }) {
@@ -43,7 +29,7 @@ function Card({ keep, setup, phase }: { keep: string; setup: Setup; phase: Setup
         <div className={DETAIL} data-slot="setup-steps">
           {setup.steps.map((step) => {
             const Icon = ICONS[step.state];
-            const error = step.error || (step.interrupted ? "Interrupted" : step.signal != null ? `Signal ${step.signal}` : step.code != null && step.code !== 0 ? `Exit code ${step.code}` : null);
+            const error = setupStepError(step);
             return (
               <div key={step.kind} data-step={step.kind} data-state={step.state} className="flex min-w-0 flex-col">
                 <span className={ROW}>

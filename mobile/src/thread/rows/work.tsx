@@ -1,20 +1,14 @@
 // A turn's work header and its group lines, after the desktop's components/thread/work.tsx and body.tsx's GroupLine.
 import { useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Item, Turn, Work } from "../../../../app/shared/thread";
-import { duration, groupWords, ORDER, workWords } from "../../../../app/shared/words";
+import { groupWords, ORDER, workHeaderWords } from "../../../../app/shared/words";
 import { Lightbulb, Mcp } from "../../../../app/ui/src/icons";
 import { type Group, running, shutKey, type StepLine, workKey } from "../../../../app/shared/lines";
 import { color } from "../../theme";
 import { Body } from "./body";
 import { ThinkingLine } from "./message";
-import { s, StepIcon, Toggle, Words } from "./parts";
-
-/** Held this long with no word from what holds it, its header says so [D552]. */
-const QUIET_MS = 30 * 60_000;
-
-/** "2 workers", "1 subagent". */
-const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+import { Chevron, s, StepIcon, Toggle, Words } from "./parts";
 
 /** Now, each second while `live`, as the desktop's useSecond. */
 function useSecond(live: boolean) {
@@ -28,28 +22,22 @@ function useSecond(live: boolean) {
 }
 
 /**
- * Over a turn's work: "Working for 12s" ticking from the turn's start [D128], with its subagents running and
- * "· waiting for you" [D551]; then "Worked for 3m 4s ›" (with "· waited for 1m 2s"), which opens and shuts the
- * turn's folded work; while it runs, a tap shuts its work away till it ends [D93].
+ * Over a turn's work, with no hairline [D93]: "Working for 12s" ticking from the turn's start [D128], with what it
+ * waits on and "· waiting for you" [D551]; then "Worked for 3m 4s ›" (with "· waited for 1m 2s"), which opens and shuts
+ * the turn's folded work; while it runs, a tap shuts its work away till it ends [D93].
  * shortcut: no workers' count, which needs the session's worker rows the phone doesn't have yet.
  */
 export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: Work | undefined; open: boolean | null; onToggle: (id: string) => void }) {
   const live = turn.status === "running" || Boolean(turn.held);
   const now = useSecond(live);
-  const subagents = turn.helpers ?? 0;
-  const heard = turn.heardAt ?? turn.endedAt ?? now;
-  const { waitingSince, waitedMs } = turn;
-  const label =
-    workWords(turn, work, now) +
-    (live && subagents ? ` · ${count(subagents, "subagent")} running` : "") +
-    (live && waitingSince != null ? " · waiting for you" : !live && waitedMs !== undefined && waitedMs >= 1000 ? ` · waited for ${duration(waitedMs)}` : "") +
-    (turn.held && waitingSince == null && now - heard >= QUIET_MS ? " · no activity for 30 min" : "");
-  const words = <Text style={[s.row, { color: color.faintForeground }]}>{label}</Text>;
-  if (open === null) return words;
+  const label = workHeaderWords(turn, work, now, 0, 0, turn.heardAt ?? turn.endedAt ?? now);
+  const words = <Text style={st.label}>{label}</Text>;
+  if (open === null) return <View style={st.rule}>{words}</View>;
   return (
-    <Toggle open={open} label={label} onPress={() => onToggle(live ? shutKey(turn.id) : workKey(turn.id))}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ expanded: open }} onPress={() => onToggle(live ? shutKey(turn.id) : workKey(turn.id))} hitSlop={6} style={({ pressed }) => [st.rule, s.with, pressed && { opacity: 0.6 }]}>
       {words}
-    </Toggle>
+      <Chevron open={open} faint />
+    </Pressable>
   );
 }
 
@@ -83,3 +71,8 @@ export function GroupLine({ item, turn, open, steps, live, members, onToggle }: 
     </View>
   );
 }
+
+const st = StyleSheet.create({
+  rule: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", maxWidth: "100%" },
+  label: { ...s.row, flexShrink: 1, color: color.faintForeground, fontVariant: ["tabular-nums"] },
+});

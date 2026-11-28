@@ -59,3 +59,8 @@ export function withChips(message: string, sent: readonly Chip[]): string {
   });
   return [message.trim(), ...blocks].filter(Boolean).join("\n\n");
 }
+
+/** The composer's pasted text: the label that opens editable while it's still the draft's. */
+export const PASTE_LABEL = "Pasted text";
+/** A chip that asks to repair a PR: its sent message is a "PR fix" [D171]. */
+export const PR_FIX = /^(Merge conflicts|Review comments) – PR #\d+$|^\d+ failing checks? · /;

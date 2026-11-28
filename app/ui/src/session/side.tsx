@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import type { Draft } from "../components/composer/draft";
 import type { SlashCommand } from "../components/composer/menus";
-import { StartedLine, type StartedStatus } from "../components/thread/started";
+import { StartedLine } from "../components/thread/started";
 import { threadSource, useDaemon } from "../daemon";
 import { sessionId } from "../home/start";
 import type { Item } from "../thread/item";
@@ -10,6 +10,7 @@ import { type Pending, sideState, type Swap } from "../../../shared/session/side
 import { daemonRun } from "./composer";
 import { newId } from "./store";
 import { NEW_SESSION_WORDS } from "../../../shared/session/composer";
+import { startedStatus, startError } from "../../../shared/words";
 
 // Send as new's logic is app/shared/session/side.ts [D58]; its lines and hooks are here.
 
@@ -74,7 +75,6 @@ export function PendingSideLines({ source }: { source: string }) {
   ));
 }
 
-const STATUS: Record<string, StartedStatus> = { working: "working", needs: "needs", amber: "failed" };
 type Started = Extract<Item, { kind: "started" }>;
 
 /**
@@ -92,13 +92,12 @@ export function SideLine({ item }: { item: Started }) {
     side.replay(daemonRun, source, item.session);
   }, [item.state, item.replay, daemon, source, busy]);
   if (item.state === "failed") {
-    const left = item.left?.length ? ` · left behind: ${item.left.join(", ")}` : "";
-    return <StartedLine title={item.title ?? ""} error={`${item.error ?? "Refused"}${left}`} onPutBack={source && item.text ? () => putBack(source, item.text!) : undefined} />;
+    return <StartedLine title={item.title ?? ""} error={startError(item)} onPutBack={source && item.text ? () => putBack(source, item.text!) : undefined} />;
   }
   const row = rows?.find((each) => each.id === item.session);
   // PROPOSED: any mark but working, needs and amber reads Done, or Stopped once the user stopped it [C99]; no row
   // (deleted) shows no status [D204].
-  const status = item.state === "started" && row ? (STATUS[row.mark ?? ""] ?? (row.state === "stopped" ? "stopped" : "done")) : undefined;
+  const status = item.state === "started" && row ? startedStatus(row) : undefined;
   return (
     <StartedLine
       title={row?.title || item.title || local?.title || ""}

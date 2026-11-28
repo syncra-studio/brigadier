@@ -5,7 +5,9 @@ import { FileChangeItem } from "./file-change";
 import { AssistantMessage, PeerBubble, ThinkingLine, ThoughtRow, UserBubble } from "./message";
 import { ForkedLine, ImageRow, MockupRow, OvernightRow, PeerRow, StartedLine } from "./moments";
 import { ChangeLine, Compaction, NoticeItem, SwitchRow } from "./notices";
-import { OnMac } from "./parts";
+import { Info } from "../../../../app/ui/src/icons";
+import { UNKNOWN_STEP } from "../../../../app/shared/words";
+import { Box, Capped, Opening, StepIcon, Words } from "./parts";
 import { SubagentRow, TeamRow } from "./team";
 import { ShellRow, ToolItem } from "./tool";
 
@@ -62,7 +64,17 @@ export function Body({ item, turn, step, actions = true, batch }: { item: Item; 
     case "image":
       return <ImageRow item={item} />;
     default:
-      // `unknown`, and any kind newer than this app.
-      return <OnMac />;
+      // `unknown`, and any kind newer than this app: the event as it came.
+      return <UnknownRow keep={item.id} raw={"raw" in item ? item.raw : item} />;
   }
+}
+
+/** An event the app can't draw yet, as the desktop's UnknownRow: opening to the event as it came. */
+function UnknownRow({ keep, raw }: { keep: string; raw: unknown }) {
+  return (
+    <Opening keep={keep} label={UNKNOWN_STEP} detail={<Box title="Event"><Capped keep={keep} text={JSON.stringify(raw, null, 2)} /></Box>}>
+      <StepIcon icon={Info} />
+      <Words verb={UNKNOWN_STEP} />
+    </Opening>
+  );
 }

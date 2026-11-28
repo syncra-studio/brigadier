@@ -30,6 +30,7 @@ import { WorkerDetails, WorkerHeader, WorkerThread } from "./view";
 
 export type { WorkerRow } from "../../../shared/rows";
 import type { WorkerRow } from "../../../shared/rows";
+import { UNKNOWN_WORKER } from "../../../shared/workers";
 
 /**
  * The old strip's words for a call: a command reads by what the agent said it does, as its thread row [D214]; one
@@ -85,7 +86,7 @@ function useNamed(ids: readonly string[]): Worker[] {
   const rows = useDaemon().rows ?? [];
   return ids.map((id) => {
     const row = rows.find((each) => each.id === id);
-    return row?.worker ? asWorker(row as Row & { worker: WorkerRow }) : { id, name: "a worker", kind: "stopped", word: "Ended", startedAt: 0 };
+    return row?.worker ? asWorker(row as Row & { worker: WorkerRow }) : { id, name: UNKNOWN_WORKER, kind: "stopped", word: "Ended", startedAt: 0 };
   });
 }
 

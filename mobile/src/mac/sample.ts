@@ -8,6 +8,7 @@ import questions from "../../../app/shared/samples/question-cards.json";
 import type { PendingApproval, PendingQuestion } from "../../../app/shared/cards";
 import file from "../../../app/shared/samples/file-change.json";
 import group from "../../../app/shared/samples/group.json";
+import markdown from "../../../app/shared/samples/markdown.json";
 import message from "../../../app/shared/samples/message.json";
 import shell from "../../../app/shared/samples/shell.json";
 import tool from "../../../app/shared/samples/tool.json";
@@ -20,8 +21,8 @@ import { lists, thread } from "./mac";
 const row = (id: string, title: string, project: string | null, mark: Row["mark"], ago: number): Row =>
   ({ id, title, project, mark, state: "idle", reason: null, resets: null, sent: 0, finished: 0, backend: "claude", updated: Date.now() - ago * 60_000, items: 1, error: null }) as Row;
 
-/** `powers`: s1 has the level and Overnight pills, a night under way, and a `!` command running that a message waits for. */
-export function loadSample(powers = false) {
+/** `powers`: s1 has the level and Overnight pills, a night under way, and a `!` command running that a message waits for; `reply`: s1 is the markdown sample alone. */
+export function loadSample(powers = false, reply = false) {
   lists.set({
     ready: true,
     projects: [
@@ -44,8 +45,8 @@ export function loadSample(powers = false) {
       row("s5", "What is IKpsk2?", null, null, 60 * 24 * 3),
     ],
   });
-  const items = [...message.items, ...group.items, ...tool.items, ...file.items, ...(powers ? shell.items : [])] as Item[];
-  thread.set({ id: "s1", status: "ready", session: { id: "s1", title: "Fix the failing login test", before: null, turns: [], items, work: [], approvals: [approvals[0]] as PendingApproval[], questions: [questions[2]] as PendingQuestion[] } });
+  const items = (reply ? markdown.items : [...message.items, ...group.items, ...tool.items, ...file.items, ...(powers ? shell.items : [])]) as Item[];
+  thread.set({ id: "s1", status: "ready", session: { id: "s1", title: "Fix the failing login test", before: null, turns: [], items, work: [], approvals: (reply ? [] : [approvals[0]]) as PendingApproval[], questions: (reply ? [] : [questions[2]]) as PendingQuestion[] } });
 }
 
 /** `-screen <one>` of P4a's: New chat, its Face ID sheet, the thread's ⋯ menu, or one of its sheets, on canned replies. */

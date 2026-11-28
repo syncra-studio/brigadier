@@ -2,7 +2,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { ApprovalAction } from "../../thread/item";
-import type { ApprovalDecision, PendingApproval } from "../../../../shared/cards";
+import { ASKED, askWords, grantTip, moreWaiting, type ApprovalDecision, type PendingApproval } from "../../../../shared/cards";
 import { Commit, Cursor, Dock, Globe, Key, PencilSquare, Sparkle } from "../../icons";
 import { MentionedWorker, openWorker } from "../../workers/live";
 import { cx } from "../cx";
@@ -19,7 +19,8 @@ type Shown = { icon: ReactNode; kind: string; title: string; detail?: string; bo
 
 /** What the card asks, compactly: its kind, the reason (or the plain question) as the title, the exact thing asked about. */
 export function describe(approval: PendingApproval): Shown {
-  const { action, reason, command, cwd, paths = [], host, input, body } = approval;
+  const { action, command, cwd, paths = [], host, input, body } = approval;
+  const words = askWords(approval);
   const prose = body ? (
     <ToolBox prose>
       <CodeSpans text={body} />
@@ -28,39 +29,25 @@ export function describe(approval: PendingApproval): Shown {
   switch (action) {
     case "command":
       return {
+        ...words,
         icon: <Dock />,
-        kind: "Terminal",
-        title: reason || "Allow this command?",
         body: command && (
           <ToolBox clamp>
             <CodeSpans exact text={command} />
-            {cwd && <span className="block text-card-faint">in {cwd}</span>}
+            {cwd && <span className="block text-card-faint">{ASKED.cwd(cwd)}</span>}
             {/* What the command asks for beyond its sandbox (`write /path`, `network`). */}
-            {paths.length > 0 && <span className="block text-card-faint">with {paths.join(", ")}</span>}
+            {paths.length > 0 && <span className="block text-card-faint">{ASKED.paths(paths)}</span>}
           </ToolBox>
         ),
       };
     case "edit":
-      return {
-        icon: <PencilSquare />,
-        kind: "Edit files",
-        title: reason || (paths.length === 1 ? "Allow editing this file?" : "Allow editing these files?"),
-        body: paths.length > 0 && <ActionFileList files={paths.map((path) => ({ path }))} />,
-      };
+      return { ...words, icon: <PencilSquare />, body: paths.length > 0 && <ActionFileList files={paths.map((path) => ({ path }))} /> };
     case "network":
-      return {
-        icon: <Globe />,
-        kind: "Internet access",
-        title: reason || (host ? `Allow connecting to https://${host}?` : "Allow connecting to the internet?"),
-        body: host && <p className="px-4 text-sm text-card-note">{host} isn’t on this session’s list of allowed sites.</p>,
-      };
+      return { ...words, icon: <Globe />, body: host && <p className="px-4 text-sm text-card-note">{ASKED.host(host)}</p> };
     case "land":
       return {
+        ...words,
         icon: <Commit />,
-        kind: "Land a change",
-        // Where it lands always shows; the agent's reason goes under it.
-        title: `Land this change on ${approval.branch ?? "the branch"}?`,
-        detail: reason ?? undefined,
         body: approval.files && (
           <ActionFileList
             files={approval.files.map((file) => ({
@@ -79,40 +66,19 @@ export function describe(approval: PendingApproval): Shown {
             }))}
           />
         ),
-        allow: "Land",
       };
-    // The plan the agent proposed in its plan mode: build it, or reply to change it.
-    // While its review holds it, or its agent revises it, nothing to answer yet (§6, D401).
     case "plan":
-      return {
-        icon: <Sparkle />,
-        kind: "Plan",
-        title: approval.revising ? "Revising this plan" : approval.review ? `Reviewing this plan · ${approval.review.name}` : reason || "Build this plan?",
-        detail: approval.reviewed,
-        body: prose,
-        allow: "Build it",
-        noDeny: true,
-      };
+      return { ...words, icon: <Sparkle />, body: prose };
     case "message":
-      return {
-        icon: <Sparkle />,
-        kind: "Message",
-        // Who it goes to always shows; the agent's reason goes under it.
-        title: `Send a message to ${approval.to ?? "another session"}?`,
-        detail: reason ?? undefined,
-        body: prose,
-        allow: "Send",
-        deny: "Don't send",
-      };
+      return { ...words, icon: <Sparkle />, body: prose };
     case "browser":
-      return { icon: <Globe />, kind: "Browser", title: reason || "Go ahead in the browser?", body: prose, allow: "Go ahead", deny: "Don't" };
+      return { ...words, icon: <Globe />, body: prose };
     case "computer":
-      return { icon: <Cursor />, kind: "Computer use", title: reason || "Use this app?", body: prose, allow: "Allow in this chat" };
+      return { ...words, icon: <Cursor />, body: prose };
     default:
       return {
+        ...words,
         icon: <Key />,
-        kind: "Ask permission",
-        title: reason || "Allow this?",
         body:
           prose ??
           (input && (
@@ -122,16 +88,6 @@ export function describe(approval: PendingApproval): Shown {
           )),
       };
   }
-}
-
-/** The "Allow for this session" button's tip, from what the grant covers (D177); its words never change [D167]. */
-function grantTip({ scope, pattern }: NonNullable<PendingApproval["grant"]>): string {
-  const kept = "Not saved across sessions.";
-  if (scope === "edits") return `Allow file changes inside ${pattern} in this chat. Edits outside it still ask. ${kept}`;
-  if (scope === "tool") return `Allow ${pattern} in this chat. ${kept}`;
-  if (scope === "site") return `Allow scripts, clicks, typing, deletes and sends on ${pattern} in this chat. Paying, cards, passwords, codes and sign-in still ask. ${kept}`;
-  if (scope === "network") return `Allow connections to ${pattern} in this chat. ${kept}`;
-  return `Allow commands that start with ${pattern} in this chat. ${kept}`;
 }
 
 // Deny reasons typed, by session and approval id, outside any card: paging away and back keeps them. Read as each
@@ -441,7 +397,7 @@ export function MoreWaiting({ more }: { more: number }) {
   if (more <= 0) return null;
   return (
     <p className="px-4 pb-3 text-xs text-toolbar-foreground">
-      {more} more {more === 1 ? "decision waits" : "decisions wait"} after this one
+      {moreWaiting(more)}
     </p>
   );
 }

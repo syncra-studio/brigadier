@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import type { PendingApproval } from "../../../../app/shared/cards";
 import type { FileChange, Item, Progress } from "../../../../app/shared/thread";
 import { FILE_VERBS } from "../../../../app/shared/words";
-import { color } from "../../theme";
+import { color, mono, radius, space, text } from "../../theme";
 import { Capped, Line, Opening, s, StepIcon, Words } from "./parts";
 import { Allowed } from "./tool";
 
@@ -14,7 +14,7 @@ const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 export function FileChangeItem({ item }: { item: Extract<Item, { kind: "fileChange" }> }) {
   return (
-    <View style={{ gap: 4 }}>
+    <View style={{ gap: space(1) }}>
       {item.changes.map((change, at) => (
         <FileChangeRow key={at} keep={`${item.id}:${at}`} change={change} progress={item.progress} approval={at === 0 ? item.approval : undefined} />
       ))}
@@ -43,12 +43,12 @@ function FileChangeRow({ keep, change, progress, approval }: { keep: string; cha
   if (live) return <Line>{head}</Line>;
   const trail = (
     <>
-      {added !== null && removed !== null && <Counts added={added} removed={removed} />}
+      {added !== null && removed !== null && <Counts added={added} removed={removed} quiet />}
       {change.change === "deleted" && <View style={st.dot} />}
     </>
   );
-  // shortcut: a change with no diff opens the Review tab on the Mac; the phone has none, so it's a plain row.
-  if (change.diff === null) return <Line>{head}{trail}</Line>;
+  // A change with no diff opens the Review tab on the Mac; the phone has none, so it's a plain row.
+  if (change.diff === null) return <Line>{head}<View style={s.trail}>{trail}</View></Line>;
   return (
     <Opening keep={keep} label={`${verb} ${what}`} trail={trail} detail={<>{approval && <Allowed approval={approval} />}<DiffCard keep={keep} change={change} diff={change.diff} /></>}>
       {head}
@@ -56,10 +56,10 @@ function FileChangeRow({ keep, change, progress, approval }: { keep: string; cha
   );
 }
 
-/** "+7 −2", always green and red, a zero grey [D98]. */
-function Counts({ added, removed }: { added: number; removed: number }) {
+/** "+7 −2", always green and red, a zero grey [D98]. Quiet: the row's mono figures. */
+function Counts({ added, removed, quiet = false }: { added: number; removed: number; quiet?: boolean }) {
   return (
-    <Text style={[s.code, st.counts]}>
+    <Text style={[st.counts, quiet ? { fontFamily: mono, color: color.rowForeground } : { color: color.mutedForeground }]}>
       <Text style={added ? { color: color.success } : null}>+{added}</Text> <Text style={removed ? { color: color.destructive } : null}>−{removed}</Text>
     </Text>
   );
@@ -68,26 +68,34 @@ function Counts({ added, removed }: { added: number; removed: number }) {
 const paint = (line: string) =>
   line.startsWith("+") ? { color: color.success } : line.startsWith("-") ? { color: color.destructive } : line.startsWith("@@") ? { color: color.mutedForeground } : undefined;
 
-/** A file's diff: its name and counts over the lines, added green, removed red. */
-function DiffCard({ keep, change, diff: text }: { keep: string; change: FileChange; diff: string }) {
+/** A file's diff, in the desktop's diff card: its name and counts over the lines, added green, removed red. */
+function DiffCard({ keep, change, diff: words }: { keep: string; change: FileChange; diff: string }) {
   const { added, removed } = change;
-  const diff = text.replace(/\n$/, "");
+  const diff = words.replace(/\n$/, "");
   const count = diff ? diff.split("\n", MAX_DIFF_LINES + 1).length : 0;
   const empty = count === 0 ? (change.change === "deleted" ? "Contents deleted" : "No changes") : count > MAX_DIFF_LINES ? "Diff too large to preview" : null;
   return (
     <View style={st.card}>
       <View style={st.title}>
-        <Text style={[s.row, s.shrink, { color: color.foreground }]} numberOfLines={1}>{fileName(change.path)}</Text>
+        <Text style={[text.sm, st.name]} numberOfLines={1}>{fileName(change.path)}</Text>
         {added !== null && removed !== null && <Counts added={added} removed={removed} />}
       </View>
-      <View style={{ padding: 10 }}>{empty === null ? <Capped keep={`${keep}:diff`} text={diff} paint={paint} /> : <Text style={[s.row, { color: color.mutedForeground }]}>{empty}</Text>}</View>
+      {empty === null ? (
+        <View style={st.pre}><Capped keep={`${keep}:diff`} text={diff} paint={paint} style={st.diff} /></View>
+      ) : (
+        <Text style={[text.sm, st.empty]}>{empty}</Text>
+      )}
     </View>
   );
 }
 
 const st = StyleSheet.create({
-  counts: { fontSize: 12, lineHeight: 21, color: color.rowForeground },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: color.destructive, alignSelf: "center" },
-  card: { marginTop: 4, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: color.border, overflow: "hidden" },
-  title: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: color.fill },
+  counts: { ...text.xs, fontVariant: ["tabular-nums"] },
+  dot: { width: space(1.5), height: space(1.5), borderRadius: radius.capsule, backgroundColor: color.destructive },
+  card: { marginTop: space(1), borderRadius: radius.shell, borderWidth: 1, borderColor: color.border, overflow: "hidden" },
+  title: { flexDirection: "row", alignItems: "center", gap: space(2), minHeight: space(8), paddingLeft: space(3), paddingRight: space(1), backgroundColor: color.fillSubtle },
+  name: { flexShrink: 1, color: color.actionHover },
+  pre: { paddingHorizontal: space(3) },
+  diff: { ...text.diff },
+  empty: { paddingHorizontal: space(3), paddingVertical: space(2), color: color.mutedForeground },
 });

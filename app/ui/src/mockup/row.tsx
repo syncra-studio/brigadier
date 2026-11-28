@@ -4,45 +4,8 @@ import { StateDot } from "../components/state-dot";
 import { ROW } from "../components/thread/activity-row";
 import { ImageSquare, Spinner } from "../icons";
 
-/** One moment of the mockup, as its chat row tells it. */
-export type MockupMoment =
-  | { kind: "drawing"; count: number }
-  | { kind: "ready"; round: number | null; open: boolean }
-  | { kind: "waiting" }
-  | { kind: "notes"; count: number; on: string[]; round: number }
-  | { kind: "picked"; letter: string }
-  | { kind: "built"; letter: string }
-  | { kind: "stopped" };
-
-const notes = (n: number) => (n === 1 ? "1 note" : `${n} notes`);
-
-/** "A", "A and B", "A, B and C". */
-const listed = (names: string[]) => (names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
-
-/** "Plan card mockup", so a chat's several are told apart; "Mockup" till its title is read. */
-const named = (title?: string) => (!title ? "Mockup" : /\bmockup$/i.test(title) ? title : `${title} mockup`);
-
-function words(moment: MockupMoment, name: string): [string, string] {
-  switch (moment.kind) {
-    case "drawing":
-      return [name, moment.count === 1 ? "drawing 1 variant" : `drawing ${moment.count} variants`];
-    case "ready":
-      // Still the newest round, nothing picked: the user's move.
-      if (!moment.open) return [name, `round ${moment.round ?? 1} ready`];
-      return [moment.round ? `${name} · round ${moment.round} ready` : `${name} ready`, "pick one with Use, or leave a note"];
-    case "waiting":
-      // Its worker's turn ended before the round was all in.
-      return [name, "waiting for your notes"];
-    case "notes":
-      return [`You → ${name === "Mockup" ? "mockup" : name}`, `${notes(moment.count)} on ${listed(moment.on)} · round ${moment.round} drawing`];
-    case "picked":
-      return [name, `you picked ${moment.letter} · building for real`];
-    case "built":
-      return [name, `${moment.letter} built into the app`];
-    case "stopped":
-      return [name, "stopped"];
-  }
-}
+export type { MockupMoment } from "../../../shared/words";
+import { type MockupMoment, mockupName as named, mockupWords as words } from "../../../shared/words";
 
 /** "Plan card mockup · drawing 3 variants · Open": Open brings its tab to the front. */
 export function MockupRow({ title, moment, live, onOpen }: { title?: string; moment: MockupMoment; live: boolean; onOpen: () => void }) {

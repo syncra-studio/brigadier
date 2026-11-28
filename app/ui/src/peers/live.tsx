@@ -8,7 +8,7 @@ import type { Item } from "../thread/item";
 import type { Source } from "../thread/thread";
 import { PeerMessageBlock } from "./message";
 import { HopStopRow, PeerOpen, PeerSentRow, SessionSentRow } from "./rows";
-import { type PeerRef, type PeerState, UNKNOWN_SESSION } from "./words";
+import { type PeerRef, peerExchange, peerOf, RATE_STOPPED, UNKNOWN_SESSION, UNSURE } from "./words";
 
 /*
  * 4.2's peer rows on Rust's thread items [D2034, D3014]: the sender's `peer` row, folded by Rust from its notes, and
@@ -18,18 +18,13 @@ import { type PeerRef, type PeerState, UNKNOWN_SESSION } from "./words";
 
 type PeerItem = Extract<Item, { kind: "peer" }>;
 
-/** Proposed: why a message reads uncertain. */
-const UNSURE = "Its session didn’t confirm it, so it wasn’t sent again.";
-
 const open = (session: string) => {
   location.hash = `#thread/${encodeURIComponent(session)}`;
 };
 
 function usePeer(session: string | null): PeerRef | null {
   const rows: Row[] = useDaemon().rows ?? [];
-  if (session === null) return null;
-  const row = rows.find((r) => r.id === session);
-  return row ? { session, title: row.title || "New session" } : { session, title: UNKNOWN_SESSION, gone: true };
+  return session === null ? null : peerOf(session, rows);
 }
 
 const Opens = ({ children }: { children: ReactNode }) => <PeerOpen.Provider value={open}>{children}</PeerOpen.Provider>;
@@ -39,8 +34,7 @@ export function PeerRow({ item }: { item: PeerItem }) {
   const session = useThread()?.id ?? "";
   const to = usePeer(item.to);
   if (item.state === "stopped") {
-    // Proposed: the rate limit's words; the hop limit's are 4.2's.
-    const words = item.why === "rate" ? "Stopped at 20 messages a minute" : undefined;
+    const words = item.why === "rate" ? RATE_STOPPED : undefined;
     return <HopStopRow words={words} onSend={() => void run(["peers", session, "send", item.mid])} />;
   }
   if (!item.wait || item.state === "refused") {
@@ -51,24 +45,13 @@ export function PeerRow({ item }: { item: PeerItem }) {
       </Opens>
     );
   }
-  const send: PeerState =
-    item.state === "sending"
-      ? { type: "pending" }
-      : item.state === "dropped" || item.state === "uncertain"
-        ? { type: "refused", reason: item.why ?? UNSURE }
-        : { type: item.waited === "replied" ? "replied" : "delivered" };
   const ref = to ?? { session: item.to, title: UNKNOWN_SESSION, gone: true };
   return (
     <Opens>
       <PeerSentRow
         keep={item.id}
         text={item.text}
-        exchange={{
-          sends: [{ ...ref, state: send }],
-          waits: item.waited === undefined ? (item.state === "sending" ? [] : ["inProgress"]) : ["completed"],
-          received: item.waited === "replied" ? [ref] : [],
-          waitingOn: item.waited === undefined ? [ref] : [],
-        }}
+        exchange={peerExchange(item, ref)}
       />
     </Opens>
   );

@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react";
 
+import { FOLDED_LINES, foldWords, isProse, languageName, LONG_LINES, linesWords } from "../../../shared/code";
 import { CopyButton } from "../components/copy-button";
 import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
@@ -8,38 +9,6 @@ import { useFindSearching } from "./find-text";
 import { highlight } from "./highlight";
 import { useKept } from "./kept";
 import "./code.css";
-
-/** A block longer than this many lines starts folded, to `FOLDED_LINES`. */
-const LONG_LINES = 14;
-const FOLDED_LINES = 10;
-
-const NAMES: Record<string, string> = {
-  bash: "Bash",
-  sh: "Shell",
-  zsh: "Shell",
-  shell: "Shell",
-  ts: "TypeScript",
-  typescript: "TypeScript",
-  tsx: "TSX",
-  js: "JavaScript",
-  javascript: "JavaScript",
-  jsx: "JSX",
-  py: "Python",
-  python: "Python",
-  rs: "Rust",
-  rust: "Rust",
-  json: "JSON",
-  diff: "Diff",
-  css: "CSS",
-  html: "HTML",
-  md: "Markdown",
-  markdown: "Markdown",
-  yaml: "YAML",
-  yml: "YAML",
-  toml: "TOML",
-  sql: "SQL",
-};
-const languageName = (language: string) => NAMES[language.toLowerCase()] ?? (language ? language[0]!.toUpperCase() + language.slice(1) : "Text");
 
 /** A reply's code block, a card [D92], or a file change's diff card: the same drawing, each in its own frame. */
 const LOOKS = {
@@ -92,7 +61,7 @@ export function CodeBlock({
   const shown = long && !open && !searched ? code.split("\n", FOLDED_LINES).join("\n") : code;
   const html = useHighlight(shown, language);
   // A plain-text block, like a draft to copy, wraps instead of scrolling sideways [D248]; code wraps when asked [D525].
-  const prose = /^(|text|txt|plain|plaintext)$/i.test(language);
+  const prose = isProse(language);
   const [wrap, setWrap] = useKept(`${keep}:wrap`);
   const canWrap = !prose && look === "code";
   return (
@@ -104,7 +73,7 @@ export function CodeBlock({
             <span className="font-medium">{languageName(language)}</span>
           </>
         )}
-        {long && <span className="font-normal text-muted-foreground">· {count.toLocaleString()} lines</span>}
+        {long && <span className="font-normal text-muted-foreground">{linesWords(count)}</span>}
         {canWrap && (
           <TooltipIconButton
             tooltip={wrap ? "Don't wrap lines" : "Wrap lines"}
@@ -133,7 +102,7 @@ export function CodeBlock({
           className="flex h-control-md w-full cursor-pointer items-center gap-1.5 border-t border-divider px-3 text-xs text-muted-foreground transition-colors hover:bg-fill-subtle hover:text-foreground focus-visible:focus-ring"
         >
           {open ? <ChevronUp className="size-icon-sm" /> : <ChevronDown className="size-icon-sm" />}
-          {open ? "Show less" : `Show more · lines ${FOLDED_LINES + 1}–${count.toLocaleString()}`}
+          {foldWords(open, count)}
         </button>
       )}
     </div>

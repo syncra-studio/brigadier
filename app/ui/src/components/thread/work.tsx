@@ -2,7 +2,8 @@ import { useThread } from "../../daemon";
 import { Lightbulb, Mcp } from "../../icons";
 import type { Item, Turn, Work } from "../../thread/item";
 import { type Group, shutKey, workKey } from "../../thread/lines";
-import { duration, groupWords, ORDER, useSecond, workWords } from "../../thread/words";
+import { groupWords, ORDER, useSecond } from "../../thread/words";
+import { workHeaderWords } from "../../../../shared/words";
 import { cx } from "../cx";
 import { Markdown } from "../../thread/markdown";
 import { Chevron, OpeningRow, ROW, StepIcon, TOGGLE, Words } from "./activity-row";
@@ -11,9 +12,6 @@ import { useWorkers } from "../../workers/live";
 
 const RULE = "flex w-fit max-w-full items-center";
 const LABEL = "text-sm leading-5.25 text-faint-foreground tabular-nums";
-
-/** "2 workers", "1 subagent". */
-const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /**
  * Over a turn's work, with no hairline [D93]: "Working for 12s" ticking from the turn's start, never reset [D128], with what it
@@ -28,20 +26,8 @@ export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: W
   const all = useWorkers(useThread()?.id ?? "");
   const workers = all.filter((worker) => !finished(worker));
   const paused = all.filter((worker) => worker.kind === "paused").length;
-  const subagents = turn.helpers ?? 0;
-  const running = [workers.length && count(workers.length, "worker"), subagents && count(subagents, "subagent")].filter(Boolean).join(" · ");
   const heard = Math.max(turn.heardAt ?? turn.endedAt ?? now, ...workers.map((worker) => worker.heardAt ?? 0));
-  const { waitingSince, waitedMs } = turn;
-  const label =
-    workWords(turn, work, now) +
-    (live && running ? ` · ${running} running` : "") +
-    (live && paused ? ` · ${count(paused, "worker")} paused` : "") +
-    (live && waitingSince != null
-      ? " · waiting for you"
-      : !live && waitedMs !== undefined && waitedMs >= 1000
-        ? ` · waited for ${duration(waitedMs)}`
-        : "") +
-    (turn.held && waitingSince == null && now - heard >= QUIET_MS ? " · no activity for 30 min" : "");
+  const label = workHeaderWords(turn, work, now, workers.length, paused, heard);
   if (open === null) {
     return (
       <p className={RULE}>
@@ -63,9 +49,6 @@ export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: W
     </button>
   );
 }
-
-/** Held this long with no word from what holds it, its header says so; no Stop, no limit [D552]. */
-const QUIET_MS = 30 * 60_000;
 
 /**
  * Steps that came one after another, as one row saying what they did: "Read Calculator's window and listed Brigadier

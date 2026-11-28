@@ -4,15 +4,13 @@ import { ErrorLine } from "../components/error-line";
 import { FileViewer } from "../files/viewer";
 import type { FileRead } from "../files/types";
 import { daemonRun } from "../session/composer";
+import { PASTE_LABEL } from "../../../shared/chips";
+export { PASTE_LABEL, PR_FIX } from "../../../shared/chips";
 
 /** How long typing rests before an edit is kept, as the old app's. */
 const KEEP_AFTER_MS = 500;
-/** The composer's pasted text: the label that opens editable while it's still the draft's. */
-export const PASTE_LABEL = "Pasted text";
 /** A PR's composer chip, a pasted text by its own name [D171]: "PR owner/name#n", or its repair's, "Merge conflicts – PR #n", "2 failing checks · build +1 more". */
 export const PR_CHIP = /^PR \S*#\d+$|^(Merge conflicts|Review comments) – PR #\d+$|^\d+ failing checks? · /;
-/** A chip that asks to repair a PR: its sent message is a "PR fix" [D171]. */
-export const PR_FIX = /^(Merge conflicts|Review comments) – PR #\d+$|^\d+ failing checks? · /;
 /** Whether a tab of this label is a pasted text: "Pasted text" or a PR's. */
 export const isPasteLabel = (label: string) => label === PASTE_LABEL || PR_CHIP.test(label);
 

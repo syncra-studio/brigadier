@@ -3,40 +3,15 @@ import { type ReactNode, useMemo } from "react";
 import { Check, Mcp, Stop } from "../../icons";
 import type { Progress, StepKind } from "../../thread/item";
 import { useKept } from "../../thread/kept";
-import { connectorName } from "../../thread/words";
 import type { PendingApproval } from "../composer/approval";
 import { Button } from "../button";
 import { CopyButton } from "../copy-button";
 import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
 import { DETAIL, OpeningRow, ROW, StepIcon, Words } from "./activity-row";
-import { VERBS } from "../../../../shared/words";
-export { VERBS };
+import { actionWords, shellEnding, toolObject, VERBS } from "../../../../shared/words";
+export { toolObject, VERBS };
 
-
-/** What a step acted on: a command, a path, a query; another tool's own name, an MCP tool's server ("Atlassian"). */
-export const toolObject = (kind: StepKind, name: string, input: string, server?: string | null) =>
-  kind === "skill" ? skillObject(name, input) : kind === "other" ? (server ? connectorName(server) : name) : input || name;
-
-/** A skill by its name and what it was given: "code-review on" a PR by its number or repo and number, read from short arguments [D211, D227]. */
-const skillObject = (name: string, input: string) => `${name || "a skill"}${input ? ` on ${target(input)}` : ""}`;
-
-/** Short arguments naming a PR or issue by link or number read as it alone, a level or flag beside it left out; any others as given. */
-function target(input: string) {
-  const words = input.trim().split(/\s+/);
-  if (words.length > 3) return input;
-  const link = words.map((word) => /([\w.-]+)\/(?:pull|issues)\/(\d+)/.exec(word)).find(Boolean);
-  const number = words.find((word) => /^#?\d+$/.test(word));
-  return link ? `${link[1]}#${link[2]}` : number ? `#${number.replace("#", "")}` : input;
-}
-
-/** An MCP tool's name as words, as the old app's: "searchJiraIssues" is "search jira issues". */
-const actionWords = (name: string) =>
-  name
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .toLowerCase()
-    .trim();
 
 /** A running step's words: "Reading blocks.ts", "Running pnpm build". */
 export const doingWords = (kind: StepKind, name: string, input: string) => `${VERBS[kind][0]} ${toolObject(kind, name, input)}`;
@@ -169,8 +144,7 @@ export function ShellBox({
   exitCode: number | null;
 }) {
   const [whole, setWhole] = useKept(`${keep}:command`);
-  const ending =
-    progress === "cancelled" ? "Stopped" : progress === "failed" && exitCode === null ? "Failed" : exitCode ? `Exit code ${exitCode}` : progress === "done" ? "Success" : null;
+  const ending = shellEnding(progress, exitCode);
   return (
     <div className="group/shell relative mt-1 flex flex-col overflow-hidden rounded-shell border border-fill-active bg-fill *:shrink-0">
       <p className="px-2 py-1 text-label text-shell-foreground">Shell</p>

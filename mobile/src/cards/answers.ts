@@ -1,6 +1,6 @@
 // Answers on their way, as the desktop's session/decisions.tsx keeps them: the card goes at once; a refusal brings it
 // back with its words; one the Mac took stays hidden until Rust no longer lists it. Nothing is ever resent by itself.
-import type { PendingApproval, PendingQuestion } from "../../../app/shared/cards";
+import { type PendingApproval, type PendingQuestion, refusalWords } from "../../../app/shared/cards";
 import type { Frame } from "../../../app/shared/client";
 import { store } from "../../../app/shared/store";
 import { ask } from "../link";
@@ -18,20 +18,13 @@ function put(session: string, request: string, answer: Answer | undefined) {
   answering.set(all);
 }
 
-const WHY: Record<string, string> = {
-  answered: "Already answered",
-  uncertain: "Your earlier answer may not have reached the agent",
-  not_running: "The session that asked has ended",
-  disconnected: "Brigadier isn't running",
-};
+/** Rust's refusal in words, and the phone's own two. */
 function refusal(reply: Frame): string {
-  if (reply.error === "not_pending") return WHY[reply.why] ?? (reply.why === "unknown" ? "Nothing is waiting for this answer" : "The agent stopped waiting for this");
-  if (reply.error === "agent" && reply.why) return String(reply.why);
   // The phone's allowlist refuses an answer to a request that no longer waits before the answer is read.
   if (reply.error === "Not from the phone") return "Nothing is waiting for this answer";
   // The stream ended before the Mac's reply: it may have been taken. Check before answering again.
   if (reply.error === "closed") return "Your answer may not have reached your Mac";
-  return WHY[reply.error] ?? String(reply.message ?? reply.error ?? "Refused");
+  return refusalWords(reply);
 }
 
 /** The card goes while its answer is on its way. */

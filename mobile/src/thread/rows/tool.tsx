@@ -3,45 +3,21 @@ import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { PendingApproval } from "../../../../app/shared/cards";
 import type { Item, Progress, StepKind, Turn } from "../../../../app/shared/thread";
-import { connectorName, VERBS } from "../../../../app/shared/words";
+import { actionWords, shellEnding, toolObject, VERBS } from "../../../../app/shared/words";
 import { running, type Group } from "../../../../app/shared/lines";
 import { thread } from "../../mac/mac";
 import { sheet } from "../../sheets/Sheets";
 import { Check, Mcp, Stop } from "../../../../app/ui/src/icons";
-import { color } from "../../theme";
+import { color, fontWeight, radius, space, spacing, text } from "../../theme";
 import { Box, Capped, ErrorLine, Line, Opening, s, StepIcon, useKept, Words } from "./parts";
 import { GroupLine } from "./work";
 
 type Tool = Extract<Item, { kind: "tool" }>;
 
-/** What a step acted on: a command, a path, a query; another tool's own name, an MCP tool's server ("Atlassian"). */
-export const toolObject = (kind: StepKind, name: string, input: string, server?: string | null) =>
-  kind === "skill" ? skillObject(name, input) : kind === "other" ? (server ? connectorName(server) : name) : input || name;
-
-/** A skill by its name and what it was given: "code-review on" a PR by its number or repo and number [D211, D227]. */
-const skillObject = (name: string, input: string) => `${name || "a skill"}${input ? ` on ${target(input)}` : ""}`;
-
-/** Short arguments naming a PR or issue by link or number read as it alone; any others as given. */
-function target(input: string) {
-  const words = input.trim().split(/\s+/);
-  if (words.length > 3) return input;
-  const link = words.map((word) => /([\w.-]+)\/(?:pull|issues)\/(\d+)/.exec(word)).find(Boolean);
-  const number = words.find((word) => /^#?\d+$/.test(word));
-  return link ? `${link[1]}#${link[2]}` : number ? `#${number.replace("#", "")}` : input;
-}
-
-/** An MCP tool's name as words: "searchJiraIssues" is "search jira issues". */
-const actionWords = (name: string) =>
-  name
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .toLowerCase()
-    .trim();
-
 /** Inside the step it allowed: "Allowed by you", and the agent's reason when it gave one [D173]. */
 export function Allowed({ approval }: { approval: PendingApproval }) {
   return (
-    <Text style={[s.row, { color: color.mutedForeground }]}>
+    <Text style={[s.row, st.allowed]} selectable>
       Allowed by you{approval.reason ? <Text style={{ color: color.rowForeground }}> · {approval.reason}</Text> : null}
     </Text>
   );
@@ -155,7 +131,7 @@ export function ToolRow({
           {skill ? (
             <>
               {steps && <View style={st.under}>{steps}</View>}
-              {output ? <Box title="Output"><Capped keep={`${keep}:out`} text={output} /></Box> : null}
+              {output ? <Box title="Output"><Capped keep={`${keep}:out`} text={output} style={st.boxText} /></Box> : null}
             </>
           ) : command ? (
             <ShellBox keep={keep} command={line || object} output={output} progress={progress} exitCode={exitCode} />
@@ -173,22 +149,23 @@ export function ToolRow({
 /** A command's box: "Shell", the command (two lines until tapped), its newest output, how it ended. */
 export function ShellBox({ keep, command, output, progress, exitCode }: { keep: string; command: string; output: string; progress: Progress; exitCode: number | null }) {
   const [whole, setWhole] = useKept(`${keep}:command`);
-  const ending =
-    progress === "cancelled" ? "Stopped" : progress === "failed" && exitCode === null ? "Failed" : exitCode ? `Exit code ${exitCode}` : progress === "done" ? "Success" : null;
+  const ending = shellEnding(progress, exitCode);
   return (
     <View style={st.shell}>
-      <Text style={[s.small, { color: color.foreground }]}>Shell</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel={`$ ${command}`} accessibilityState={{ expanded: whole, disabled: whole }} disabled={whole} onPress={() => setWhole(true)}>
+      <Text style={st.shellTitle}>Shell</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={`$ ${command}`} accessibilityState={{ expanded: whole, disabled: whole }} disabled={whole} onPress={() => setWhole(true)} style={st.command}>
         <Text style={s.code} numberOfLines={whole ? undefined : 2} selectable={whole}>
           <Text style={{ color: color.mutedForeground }}>$ </Text>
           {command}
         </Text>
       </Pressable>
-      {output ? <Capped keep={keep} text={output} tail style={{ color: color.mutedForeground }} /> : <Text style={[s.code, { color: color.mutedForeground }]}>No output</Text>}
+      <View style={st.output}>
+        {output ? <Capped keep={keep} text={output} tail style={st.outputText} /> : <Text style={[s.code, { color: color.mutedForeground }]}>No output</Text>}
+      </View>
       {ending && (
         <View style={st.ending}>
           {ending === "Success" && <Check className="size-icon-sm text-muted-foreground" />}
-          <Text style={s.small}>{ending}</Text>
+          <Text style={[text.sm, { color: color.mutedForeground }]}>{ending}</Text>
         </View>
       )}
     </View>
@@ -198,15 +175,15 @@ export function ShellBox({ keep, command, output, progress, exitCode }: { keep: 
 /** `what`: its input's title, an MCP tool's own words ("search jira issues"). */
 function ToolDetail({ keep, name, what, input, output, failed }: { keep: string; name: string; what: string; input: string; output: string; failed: boolean }) {
   return (
-    <View style={{ gap: 4 }}>
+    <View style={st.toolDetail}>
       {failed && <ErrorLine error={`${name} failed.`} />}
-      {input ? <Box title={what}><Capped keep={`${keep}:in`} text={input} /></Box> : null}
-      {output ? <Box title="Output"><Capped keep={`${keep}:out`} text={output} /></Box> : !failed && <Text style={[s.row, { color: color.mutedForeground }]}>Tool returned no content</Text>}
+      {input ? <Box title={what}><Capped keep={`${keep}:in`} text={input} style={st.boxText} /></Box> : null}
+      {output ? <Box title="Output"><Capped keep={`${keep}:out`} text={output} style={st.boxText} /></Box> : !failed && <Text style={[text.sm, { color: color.mutedForeground }]}>Tool returned no content</Text>}
     </View>
   );
 }
 
-/** A `!` command the user ran [D316]: as a command's row, with its output (and Stop while it runs) in a sheet; Open in terminal is the Mac's. */
+/** A `!` command the user ran [D316]: as a command's row; its output and Stop in a sheet, where the Mac has Open in terminal. */
 export function ShellRow({ item }: { item: Extract<Item, { kind: "shell" }> }) {
   const output = () => {
     const id = thread.get()?.id;
@@ -215,16 +192,30 @@ export function ShellRow({ item }: { item: Extract<Item, { kind: "shell" }> }) {
   return (
     <View>
       <ToolRow keep={item.id} kind="run" name="" input={item.command} output={item.output} progress={item.progress} exitCode={item.exitCode} line={item.command} />
-      {item.error ? <Text style={[s.row, { color: color.destructive, paddingLeft: 24 }]}>{item.error}</Text> : null}
-      <Pressable accessibilityRole="button" onPress={output} hitSlop={8} style={{ paddingLeft: 24, paddingTop: 2 }}>
-        <Text style={[s.small, { color: color.link }]}>{item.progress === "running" ? "Output · Stop" : "Output"}</Text>
-      </Pressable>
+      {item.error ? <Text style={[text.sm, { color: color.destructive, paddingLeft: space(6) }]}>{item.error}</Text> : null}
+      <View style={st.actions}>
+        <Pressable accessibilityRole="button" onPress={output} hitSlop={8} style={({ pressed }) => [st.ghost, pressed && { backgroundColor: color.fill }]}>
+          <Text style={st.ghostText}>{item.progress === "running" ? "Output · Stop" : "Output"}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
 
 const st = StyleSheet.create({
-  under: { paddingLeft: 24, paddingTop: 4 },
-  ending: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-end" },
-  shell: { gap: 6, marginTop: 4, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: color.fill, backgroundColor: color.fill, padding: 8 },
+  under: { gap: space(1), paddingVertical: space(1), paddingLeft: space(6) },
+  allowed: { paddingTop: space(1), color: color.mutedForeground },
+  // The desktop's ToolBox words.
+  boxText: { color: color.actionHover },
+  shell: { marginTop: space(1), overflow: "hidden", borderRadius: radius.shell, borderWidth: 1, borderColor: color.fillActive, backgroundColor: color.fill },
+  shellTitle: { ...text.label, color: color.shellForeground, paddingHorizontal: space(2), paddingVertical: space(1) },
+  command: { paddingHorizontal: space(2), paddingTop: space(2) },
+  output: { padding: space(2) },
+  outputText: { fontWeight: fontWeight.medium, color: color.shellForeground },
+  ending: { flexDirection: "row", alignItems: "center", gap: space(1), alignSelf: "flex-end", paddingHorizontal: space(3), paddingVertical: space(1.5) },
+  toolDetail: { gap: space(1), paddingTop: space(1) },
+  actions: { flexDirection: "row", gap: space(1), paddingLeft: space(5) },
+  // The desktop's ghost xs button.
+  ghost: { height: spacing.controlXs, justifyContent: "center", paddingHorizontal: space(2), borderRadius: radius.capsule },
+  ghostText: { ...text.xs, fontWeight: fontWeight.medium, color: color.foreground },
 });

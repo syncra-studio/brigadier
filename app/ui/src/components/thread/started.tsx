@@ -1,7 +1,7 @@
 import { Button } from "../button";
 import { ErrorLine } from "../error-line";
 import { LabeledDivider } from "../labeled-divider";
-import { STARTED_STATUS as STATUS, type StartedStatus } from "../../../../shared/words";
+import { STARTED_STATUS as STATUS, type StartedStatus, startedWords, startFailed } from "../../../../shared/words";
 export type { StartedStatus };
 
 
@@ -31,7 +31,7 @@ export function StartedLine({
   if (error) {
     return (
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-        <ErrorLine size="sm" error={`Couldn’t start the session · ${title ? `${title} · ` : ""}${error}`} className="min-w-0 wrap-anywhere" />
+        <ErrorLine size="sm" error={startFailed(title, error)} className="min-w-0 wrap-anywhere" />
         {onPutBack && (
           <Button variant="link-blue" size={null} onClick={onPutBack}>
             Put back
@@ -40,7 +40,7 @@ export function StartedLine({
       </div>
     );
   }
-  const words = starting ? "Starting a new session" : base ? `Started a new session from ${base}` : "Started a new session";
+  const words = startedWords(starting, base);
   return (
     <LabeledDivider role="status">
       {/* A no-break space before each dot, so a wrapped line never starts at one. */}

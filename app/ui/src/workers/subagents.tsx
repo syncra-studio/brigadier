@@ -1,8 +1,9 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
 
 import { threadSource, useThread } from "../daemon";
-import type { Item, Progress, Turn } from "../thread/item";
-import type { Worker, WorkerStateKind } from "./chip";
+import type { Item, Turn } from "../thread/item";
+import type { Worker } from "./chip";
+import { subagentOf } from "../../../shared/workers";
 import { Opens, TeamCard } from "./live";
 import { BatchRow } from "./sentence";
 import { WorkerDetails, WorkerHeader, WorkerThread } from "./view";
@@ -17,19 +18,8 @@ export const SUBAGENTS_LABEL = "Subagents";
 
 type Agent = Extract<Item, { kind: "childAgent" }>;
 
-const STATES: Record<Progress, [WorkerStateKind, string]> = {
-  pending: ["working", "Waiting"],
-  running: ["working", "Working"],
-  done: ["done", "Done"],
-  failed: ["failed", "Failed"],
-  cancelled: ["stopped", "Stopped"],
-};
-
 /** A subagent's row as a worker: its row's id (its glyph never changes as its own id comes in), its task as its name. */
-export function asSubagent(item: Agent): Worker {
-  const [kind, word] = STATES[item.progress];
-  return { id: item.id, name: item.title || "A subagent", kind, word, startedAt: item.startedAt ?? 0, lastAt: item.endedAt ?? undefined };
-}
+export const asSubagent: (item: Agent) => Worker = subagentOf;
 
 const NONE: readonly Item[] = [];
 

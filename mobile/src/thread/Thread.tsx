@@ -8,7 +8,7 @@ import { Composer } from "../compose/Composer";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { Screens } from "../mac/MacScreens";
 import { Sheets } from "../sheets/Sheets";
-import { color, text } from "../theme";
+import { color, space, text } from "../theme";
 import { Cards } from "./Cards";
 import { type Line, lineMaker, workKey } from "../../../app/shared/lines";
 import { Row } from "./Row";
@@ -101,7 +101,7 @@ export function Rows({ session, onOlder = older }: { session: Session; onOlder?:
       onEndReachedThreshold={0.5}
       // Inverted: the header is at the bottom, under the newest row.
       ListHeaderComponent={<Cards approvals={session.approvals} questions={session.questions} session={session.id} />}
-      ListFooterComponent={session.before != null ? <ActivityIndicator style={{ padding: 16 }} color={color.mutedForeground} /> : undefined}
+      ListFooterComponent={session.before != null ? <ActivityIndicator style={{ padding: space(4) }} color={color.mutedForeground} /> : undefined}
     />
   );
 }
@@ -127,12 +127,14 @@ function withSetup(rows: Line[], session: Session): Line[] {
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
-  return <View style={[styles.page, { alignItems: "center", justifyContent: "center", padding: 24 }]}>{children}</View>;
+  return <View style={[styles.page, { alignItems: "center", justifyContent: "center", padding: space(6) }]}>{children}</View>;
 }
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: color.background },
-  content: { paddingHorizontal: 16, paddingVertical: 12 },
-  muted: { ...text.base, color: color.mutedForeground, textAlign: "center" },
-  banner: { padding: 12, borderBottomWidth: 1, borderBottomColor: color.border },
+  // The desktop's COLUMN, px-4, and the thread's pb-8 under the newest row: the list is inverted, so its top here.
+  // Each row's gap is above it (Row.tsx).
+  content: { paddingHorizontal: space(4), paddingTop: space(8) },
+  muted: { ...text.sm, color: color.mutedForeground, textAlign: "center" },
+  banner: { padding: space(3), borderBottomWidth: 1, borderBottomColor: color.border },
 });

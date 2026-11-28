@@ -11,6 +11,7 @@ import { openTab } from "../shell/tab-store";
 import type { Item, Session } from "../thread/item";
 import type { Source } from "../thread/thread";
 import { useWorkers } from "../workers/live";
+import { refusalWords } from "../../../shared/cards";
 import type { Runner } from "./composer";
 import { saidDraft } from "./files";
 
@@ -125,19 +126,6 @@ export function withAnswers(from: Source): Source & { raw(): Session | null } {
   };
 }
 
-const WHY: Record<string, string> = {
-  answered: "Already answered",
-  uncertain: "Your earlier answer may not have reached the agent",
-  not_running: "The session that asked has ended",
-  disconnected: "Brigadier isn't running",
-};
-function refusal(reply: Record<string, any>): string {
-  if (reply.error === "not_pending") return WHY[reply.why] ?? (reply.why === "unknown" ? "Nothing is waiting for this answer" : "The agent stopped waiting for this");
-  // The agent's own words.
-  if (reply.error === "agent" && reply.why) return String(reply.why);
-  return WHY[reply.error] ?? String(reply.message ?? reply.error ?? "Refused");
-}
-
 /** Sends an answer through Rust (`brigadier answer`); the promise fails with a refusal's words, after the card was already hidden. */
 function send(run: Runner, session: string, answer: Answer): Promise<void> {
   const { request, decision, reason, answers } = answer;
@@ -145,7 +133,7 @@ function send(run: Runner, session: string, answer: Answer): Promise<void> {
   const args = answers ? ["--answers", JSON.stringify(answers)] : [decision!, ...(reason ? ["--reason", reason] : [])];
   return run(["answer", session, request.id, ...args]).then((reply) => {
     if (reply.ok) return setAnswer(session, request.id, { ...answer, state: reply.result === "delivered" ? "delivered" : "logged" });
-    const error = refusal(reply);
+    const error = refusalWords(reply);
     // A held worker's card drawn again (its model filled): the refusal shows on the new card, the old id gone [C22].
     if (typeof reply.request === "string" && reply.request !== request.id) {
       setAnswer(session, request.id, undefined);

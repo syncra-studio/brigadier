@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "kind": "message",
+      "role": "user",
+      "text": "Why did the login test fail? Look at `login.test.ts`.",
+      "streaming": false,
+      "origin": "user",
+      "sentAt": 1793000000000,
+      "cid": "c-md",
+      "draft": {
+        "parts": [
+          "Why did the login test fail? Look at `login.test.ts`."
+        ],
+        "attachmentIds": []
+      },
+      "id": "markdown-1"
+    },
+    {
+      "kind": "message",
+      "role": "assistant",
+      "text": "## Why the login test failed\n\nThe test raced the **session cookie**: it read `document.cookie` before the redirect set it. Three things changed:\n\n- The test waits for the redirect\n  - then reads the cookie\n  - and checks its `SameSite`\n- The helper retries once\n- [x] Flaky run reproduced\n- [ ] CI rerun\n\n1. Run `pnpm test login`\n2. Push the branch\n\n| File | Change | Lines |\n| :--- | :--- | ---: |\n| `login.test.ts` | Waits for `/home` | +3 −2 |\n| `session.ts` | Retries once | +8 |\n\n> [!WARNING]\n> The old helper still runs in the e2e suite.\n\n> It passed 50 runs in a row on CI.\n\n```ts\nawait page.waitForURL(\"/home\");\n```",
+      "streaming": false,
+      "final": true,
+      "id": "markdown-2"
+    }
+  ]
+}

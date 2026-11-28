@@ -4,6 +4,7 @@ import { cx } from "../components/cx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/tooltip";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 import type { WorkerStateKind } from "../../../shared/rows";
+import { UNKNOWN_WORKER } from "../../../shared/workers";
 
 /*
  * A worker named anywhere in the conversation, as the old app's WorkerChip, WorkerName and Glyphs: its chip (glyph
@@ -42,19 +43,10 @@ export type Worker = {
   repos?: string[];
 };
 
-const FINISHED: ReadonlySet<WorkerStateKind> = new Set(["paused", "failed", "stopped", "merged", "doneNotMerged", "done"]);
-
-/** Whether it's finished: the Done section's, not the strip's. */
-export const finished = (worker: Worker) => FINISHED.has(worker.kind);
-
-/** Whether the strip and End hold it: at work, waiting, or paused, its toggle resuming it. */
-export const onHand = (worker: Worker) => worker.kind === "paused" || !finished(worker);
+export { finished, lowerFirst, onHand } from "../../../shared/workers";
 
 /** Whether it waits rather than works: for the user, a limit to reset, or the message that continues it. */
 export const waiting = (worker: Worker) => worker.kind === "needsYou" || worker.kind === "limit" || worker.kind === "cliEnded";
-
-/** A state word inside a line: "Needs you" reads "needs you". */
-export const lowerFirst = (word: string) => word.charAt(0).toLowerCase() + word.slice(1);
 
 /** Opens a worker in its tab: `null` for the list [D81]. */
 export const WorkersPanel = createContext<{ open: (id: string | null) => void }>({ open: () => {} });
@@ -69,7 +61,7 @@ export function WorkerChip({ worker, label, className }: {
   className?: string;
 }) {
   const { open } = useContext(WorkersPanel);
-  if (!worker) return <span className="shrink-0">a worker</span>;
+  if (!worker) return <span className="shrink-0">{UNKNOWN_WORKER}</span>;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -111,7 +103,7 @@ function WorkerTip({ worker }: { worker: Worker }) {
  */
 export const WorkerName: FC<{ worker: Worker | null; glyph?: boolean }> = ({ worker, glyph = true }) => {
   const { open } = useContext(WorkersPanel);
-  if (!worker) return <span className="shrink-0">a worker</span>;
+  if (!worker) return <span className="shrink-0">{UNKNOWN_WORKER}</span>;
   return (
     <button
       type="button"

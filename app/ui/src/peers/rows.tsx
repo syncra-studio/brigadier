@@ -5,7 +5,7 @@ import { ROW } from "../components/thread/activity-row";
 import { Chat, Clock } from "../icons";
 import { Markdown } from "../thread/markdown";
 import { OpeningLine } from "../workers/sentence";
-import { type Exchange, exchangeWords, type PeerRef, type SessionSendState, sessionSendWords, UNKNOWN_SESSION, type WordPart } from "./words";
+import { type Exchange, exchangeWords, HOPS_STOPPED, type PeerRef, type SessionSendState, sessionSendWords, UNKNOWN_SESSION, type WordPart } from "./words";
 
 /*
  * The sender's rows of its messages to other sessions and its waits for their replies, as the old app's PeerRow and
@@ -99,7 +99,7 @@ export const SessionSentRow: FC<{ keep?: string; to: PeerRef | null; state: Sess
 );
 
 /** A message the 9th hop of a chain between sessions would have sent: held, and only the user lets it through [D2034]. */
-export const HopStopRow: FC<{ onSend: () => void; words?: string }> = ({ onSend, words = "Stopped after 8 hops" }) => (
+export const HopStopRow: FC<{ onSend: () => void; words?: string }> = ({ onSend, words = HOPS_STOPPED }) => (
   <div data-slot="orchestrator-step" data-kind="message" data-state="hops" className={ROW}>
     <Chat aria-hidden className="size-4 shrink-0" />
     <span className="min-w-0 truncate">

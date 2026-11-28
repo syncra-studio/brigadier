@@ -12,6 +12,7 @@ import fileChange from "../../../app/shared/samples/file-change.json";
 import forked from "../../../app/shared/samples/forked.json";
 import group from "../../../app/shared/samples/group.json";
 import image from "../../../app/shared/samples/image.json";
+import markdown from "../../../app/shared/samples/markdown.json";
 import line from "../../../app/shared/samples/line.json";
 import message from "../../../app/shared/samples/message.json";
 import mockup from "../../../app/shared/samples/mockup.json";
@@ -27,6 +28,7 @@ import switchSample from "../../../app/shared/samples/switch.json";
 import team from "../../../app/shared/samples/team.json";
 import tool from "../../../app/shared/samples/tool.json";
 import unknown from "../../../app/shared/samples/unknown.json";
+import Link from "../../modules/link";
 import { color } from "../theme";
 import { Cards } from "../thread/Cards";
 import { lineMaker } from "../../../app/shared/lines";
@@ -34,9 +36,10 @@ import { Row } from "../thread/Row";
 
 // The files' items carry no turn or `n`: each sample gets a done turn of its own, its rows counted from 1, so a group's span reaches its steps.
 const ROWS: [string, { items: unknown[] }][] = Object.entries({
-  approval, "child-agent": childAgent, compaction, "file-change": fileChange, forked, group, image, line, message, mockup, notice,
+  approval, "child-agent": childAgent, compaction, "file-change": fileChange, forked, group, image, line, markdown, message, mockup, notice,
   overnight, peer, question, reasoning, shell, started, switch: switchSample, team, tool, unknown,
 });
+const only = Link.screen?.startsWith("samples:") ? Link.screen.slice("samples:".length) : null;
 
 const NO_WORK: ReadonlyMap<string, Work> = new Map();
 
@@ -44,11 +47,15 @@ export function Samples() {
   return (
     <SafeAreaView style={st.page} edges={["top", "bottom"]}>
       <ScrollView contentContainerStyle={st.content}>
-        {ROWS.map(([name, file]) => (
+        {ROWS.filter(([name]) => !only || name === only).map(([name, file]) => (
           <Sample key={name} name={name} items={file.items} />
         ))}
-        <Text style={st.name} accessibilityRole="header">approval-cards, question-cards</Text>
-        <Cards approvals={approvalCards as PendingApproval[]} questions={questionCards as PendingQuestion[]} />
+        {!only || only === "cards" ? (
+          <>
+            <Text style={st.name} accessibilityRole="header">approval-cards, question-cards</Text>
+            <Cards approvals={approvalCards as PendingApproval[]} questions={questionCards as PendingQuestion[]} />
+          </>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

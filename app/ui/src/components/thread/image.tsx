@@ -9,6 +9,7 @@ import { cx } from "../cx";
 import { ErrorLine } from "../error-line";
 import { ImageContextMenu, ImagePreview } from "../image-viewer";
 import { showToast } from "../toast";
+import { IMAGE_WORDS } from "../../../../shared/words";
 
 type Size = { width: number; height: number };
 type Made = Extract<Item, { kind: "image" }>;
@@ -32,19 +33,19 @@ export function ImageRow({ item }: { item: Made }) {
   const [size, setSize] = useState<Size | null>(null);
   if (item.progress === "failed") {
     const limit = item.error === "usageLimitExceeded";
-    return <ErrorLine size="sm" error={limit ? "Couldn't create the image: its usage limit was reached." : "Couldn't create the image."} />;
+    return <ErrorLine size="sm" error={limit ? IMAGE_WORDS.limit : IMAGE_WORDS.failed} />;
   }
   if (item.progress !== "done") {
     return (
       <div className="flex flex-col gap-2">
-        <span className="w-fit text-sm shimmer">Creating image</span>
-        <div role="img" aria-label="Creating image" className="aspect-square w-full max-w-100 rounded-image bg-fill">
+        <span className="w-fit text-sm shimmer">{IMAGE_WORDS.making}</span>
+        <div role="img" aria-label={IMAGE_WORDS.making} className="aspect-square w-full max-w-100 rounded-image bg-fill">
           <div className="size-full rounded-image image-making" />
         </div>
       </div>
     );
   }
-  if (!owner || !item.attachment || !item.name) return <p className="text-sm text-muted-foreground">The image isn't available.</p>;
+  if (!owner || !item.attachment || !item.name) return <p className="text-sm text-muted-foreground">{IMAGE_WORDS.missing}</p>;
   const url = urlOf(owner, item.attachment);
   const reveal = () => revealIn(owner, item.attachment!);
   const image = { name: item.name, url, reveal };

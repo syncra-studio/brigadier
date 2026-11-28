@@ -27,7 +27,8 @@ type At =
   | { at: "notice"; problem: Problem; retry?: () => void };
 
 // `-screen <name>` opens one screen with sample data and no network, for simulator screenshots (no Face ID there).
-const sample = Link.screen;
+// `samples:<file>` is the Samples screen with that one sample file, for side-by-side pictures.
+const sample = Link.screen?.startsWith("samples:") ? "samples" : Link.screen;
 const SAMPLE_MAC: Mac = { pk: "sample", name: "MacBook Pro", device: "", addresses: [] };
 /** `-screen power-…`: each power's Face ID sheet over the sample thread (`-screen powers`), with sample args; `start-confirm`, a new chat's over New chat. */
 const POWER_SHEETS: Record<string, { title: string; body?: string; shown: string; args: string[] }> = {
@@ -45,8 +46,8 @@ function sampleAt(): At {
     loadComposerSample(composerSample);
     return { at: "mac", mac: SAMPLE_MAC };
   }
-  if (sample === "sessions" || sample === "thread" || sample === "samples" || powers || SHEETS.includes(sample!)) {
-    loadSample(powers);
+  if (sample === "sessions" || sample === "thread" || sample === "samples" || sample === "markdown" || powers || SHEETS.includes(sample!)) {
+    loadSample(powers, sample === "markdown");
     if (SHEETS.includes(sample!)) loadSheets(sample!);
     return { at: "mac", mac: SAMPLE_MAC };
   }
@@ -179,7 +180,7 @@ export default function App() {
           }}
         />
       )}
-      {at.at === "mac" && <MacScreens name={at.mac.name} onMacs={() => setAt({ at: "macs" })} open={sample === "thread" || sample === "samples" ? sample : sample?.startsWith("start") ? "start" : powers || composerSample || SHEETS.includes(sample!) ? "thread" : undefined} />}
+      {at.at === "mac" && <MacScreens name={at.mac.name} onMacs={() => setAt({ at: "macs" })} open={sample === "thread" || sample === "samples" ? sample : sample === "markdown" ? "thread" : sample?.startsWith("start") ? "start" : powers || composerSample || SHEETS.includes(sample!) ? "thread" : undefined} />}
       {sample && POWER_SHEETS[sample] && <Confirm {...POWER_SHEETS[sample]} onDone={() => {}} />}
       {sample === "act" && (
         <Confirm

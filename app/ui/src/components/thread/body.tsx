@@ -25,7 +25,7 @@ import { RewindContext } from "./rewind";
 import { SubagentRow } from "../../workers/subagents";
 import { ToolRow } from "./tool";
 import { GroupRow, ThoughtRow } from "./work";
-import { FAILED_CAUSE as CAUSE, TURN_FAILED as FAILED } from "../../../../shared/words";
+import { NOTICE_WORDS, FAILED_CAUSE as CAUSE, TURN_FAILED as FAILED } from "../../../../shared/words";
 
 function UserRow({ id, cid, text, time, dated, files, draft, older }: { older?: boolean; id: string; cid: string | undefined; text: string; time: number | undefined; dated: boolean; files: readonly SentFile[]; draft?: Draft | null }) {
   const offer = useContext(RewindContext)?.offer(cid ?? "", text);
@@ -194,16 +194,16 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
       if (item.reason === "blocked") {
         return (
           <InlineStatus icon={ShieldExclamation} tip={item.text || undefined}>
-            The agent’s safety checks held this reply back
+            {NOTICE_WORDS.blocked}
           </InlineStatus>
         );
       }
       if (item.reason === "failed") {
         // Brigadier carried it on once the network was back: a quiet line, the error's words its tip [D339].
-        if (item.resumed) return <ThreadLine icon={ArrowRotateCw} tip={item.text || undefined}>Connection lost · tried again once it was back</ThreadLine>;
+        if (item.resumed) return <ThreadLine icon={ArrowRotateCw} tip={item.text || undefined}>{NOTICE_WORDS.resumed}</ThreadLine>;
         return <ErrorState summary={item.cause ? CAUSE[item.cause] : FAILED[item.why]} details={item.text} action={again} />;
       }
-      if (item.reason === "untrusted") return <NoticeRow level="info" text="This folder is no longer trusted, so this turn runs under Ask." />;
+      if (item.reason === "untrusted") return <NoticeRow level="info" text={NOTICE_WORDS.untrusted} />;
       // A library server's, beside the tool call it refused, is a quiet line with its Sign in (`again`) [D761].
       if (item.plugin) {
         return (

@@ -3,7 +3,7 @@ import type { ComponentType, ReactNode } from "react";
 import { ArrowRotateCw, type IconProps, PauseCircle, ShieldExclamation, Sparkle, Stop } from "../../icons";
 import { useDaemon } from "../../daemon";
 import type { Item } from "../../thread/item";
-import { duration, hhmm } from "../../thread/words";
+import { lineWords } from "../../../../shared/words";
 import { cx } from "../cx";
 import { LabeledDivider } from "../labeled-divider";
 import { InfoTip } from "./tip";
@@ -44,52 +44,31 @@ export function InlineStatus({ icon: Glyph, tip, children }: { icon: Icon; tip?:
 }
 
 /** A worker another session ended: that session by its title, or none once it's gone. PROPOSED words [C76]. */
-function StoppedBy({ from, ms }: { from: string | null; ms: number | null }) {
-  const row = useDaemon().rows?.find((each) => each.id === from);
-  const who = row ? `${row.title || "New session"} stopped it` : "Stopped";
-  return <ThreadLine icon={Stop}>{ms === null ? who : `${who} after ${duration(ms)}`}</ThreadLine>;
+function StoppedBy({ item }: { item: Extract<Item, { kind: "line"; reason: "stopped" }> }) {
+  const row = useDaemon().rows?.find((each) => each.id === item.from);
+  return <ThreadLine icon={Stop}>{lineWords(item, row ? row.title : null).words}</ThreadLine>;
 }
+
+const ICONS: Record<Extract<Item, { kind: "line" }>["reason"], Icon> = {
+  "limit-reset": ArrowRotateCw,
+  model: Sparkle,
+  stopped: Stop,
+  paused: PauseCircle,
+  interrupted: Stop,
+  "review-ended": ShieldExclamation,
+  stalled: Stop,
+  retried: ArrowRotateCw,
+};
 
 /** Rust's `line` row in words: what changed, and the rest on its ⓘ. `action`: the app's, where the line offers one. */
 export function ChangeLine({ item, action }: { item: Extract<Item, { kind: "line" }>; action?: ReactNode }) {
-  switch (item.reason) {
-    case "limit-reset":
-      // Brigadier's own carry-on at the reset says so (proposed) [C34, C54].
-      return <ThreadLine icon={ArrowRotateCw}>Usage limit reset · {item.carried ? `carried on at ${hhmm(item.carried)}` : hhmm(item.at)}</ThreadLine>;
-    case "model":
-      return item.why === "changed" ? (
-        // Under way till the new model draws a row, it shimmers as a switch's divider does (D241).
-        <ThreadLine icon={Sparkle} live={item.live} tip={`${item.from ? `From ${item.from}. ` : ""}Answers may read differently from here on.`}>
-          {item.live ? `Switching model to ${item.to}…` : `Switched model to ${item.to}`}
-        </ThreadLine>
-      ) : (
-        <ThreadLine icon={Sparkle} tip={item.from ? `The agent sent this request on from ${item.from}.` : "The agent sent this request on to another model."}>
-          This request went to {item.to}
-        </ThreadLine>
-      );
-    case "stopped":
-      if (item.by === "lead") return <StoppedBy from={item.from ?? null} ms={item.ms} />;
-      return <ThreadLine icon={Stop}>{item.ms === null ? "You stopped" : `You stopped after ${duration(item.ms)}`}</ThreadLine>;
-    // A worker's Pause, in its own thread: Resume carries it on [D90].
-    case "paused":
-      return <ThreadLine icon={PauseCircle}>{item.ms === null ? "You paused" : `You paused after ${duration(item.ms)}`}</ThreadLine>;
-    // The run's host or agent was gone before the turn ended; Resume carries it on (D92).
-    case "interrupted":
-      return <ThreadLine icon={Stop}>Interrupted · the run stopped before it finished</ThreadLine>;
-    case "review-ended":
-      return (
-        <ThreadLine icon={ShieldExclamation} tip="It turned down too many actions in a row. Say more about the task, or change the permission level, to go on.">
-          The automatic reviewer ended this turn
-        </ThreadLine>
-      );
-    case "stalled":
-      return (
-        <ThreadLine icon={Stop}>
-          Stopped: this task keeps filling its context without making progress
-          {action && <span className="ms-1.5">{action}</span>}
-        </ThreadLine>
-      );
-    case "retried":
-      return <ThreadLine icon={ArrowRotateCw}>Sent again · the previous attempt was replaced</ThreadLine>;
-  }
+  if (item.reason === "stopped" && item.by === "lead") return <StoppedBy item={item} />;
+  const { words, tip } = lineWords(item);
+  return (
+    // Under way till the new model draws a row, it shimmers as a switch's divider does (D241).
+    <ThreadLine icon={ICONS[item.reason]} tip={tip} live={item.reason === "model" && item.why === "changed" ? item.live : undefined}>
+      {words}
+      {item.reason === "stalled" && action && <span className="ms-1.5">{action}</span>}
+    </ThreadLine>
+  );
 }

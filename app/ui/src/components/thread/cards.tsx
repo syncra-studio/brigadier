@@ -6,9 +6,8 @@ import type { ApprovalAction, Item, Progress, SentFile } from "../../thread/item
 import { SessionOfThread } from "../../accounts/limit";
 import { openAttachment } from "../../shell/tab-store";
 import { SentAttachments } from "../composer/attachments";
-import type { PendingQuestion, QuestionItem } from "../composer/question";
-import { hhmm } from "../../thread/words";
-import { type Reset, resetWords } from "../../sidebar/words";
+import type { PendingQuestion } from "../composer/question";
+import type { Reset } from "../../sidebar/words";
 import { Button } from "../button";
 import { cx } from "../cx";
 import { LabeledDivider } from "../labeled-divider";
@@ -16,9 +15,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 import { OpeningRow, ROW, StepIcon, Words } from "./activity-row";
 import { InfoTip, WithTip } from "./tip";
 import { ToolBox } from "./tool";
-import { COMPACTION } from "../../../../shared/words";
-
-const WITHDRAWN = "withdrawn";
+import { COMPACTION, switchWords, UNKNOWN_STEP } from "../../../../shared/words";
+import { answerWords, approvalWords, PARENT, questionWords } from "../../../../shared/cards";
 
 /** Hangs under a row's words on a hairline, from its icon. */
 
@@ -37,7 +35,7 @@ const ACTIONS: Record<ApprovalAction, ComponentType<IconProps>> = {
 };
 
 /** The session that started the worker whose thread shows: a request it answers names it [D131]. */
-export const ParentName = createContext("Its parent");
+export const ParentName = createContext(PARENT);
 
 /**
  * An approval, read like a question: "Asking for approval · waiting" while it waits (the card to decide sits
@@ -74,15 +72,12 @@ export function ApprovalRow({
 }) {
   const icon = <StepIcon icon={ACTIONS[action]} />;
   const parent = useContext(ParentName);
-  const said = decision === "approved" ? "allowed" : action !== "plan" ? "denied" : byReview ? "sent back by review" : "sent back";
+  const verb = approvalWords(decision, action, waiting, toParent ? parent : undefined, byReview);
   if (decision === null || decision === "withdrawn") {
-    waiting = waiting && decision === null;
-    const asking = toParent ? `Asking ${parent}` : "Asking for approval";
-    const asked = toParent ? `Asked ${parent}` : "Asked for approval";
     return (
       <p className={ROW}>
         {icon}
-        <Words verb={waiting ? `${asking} · waiting` : `${asked} · ${WITHDRAWN}`} object={subject} live={waiting} />
+        <Words verb={verb} object={subject} live={waiting && decision === null} />
       </p>
     );
   }
@@ -98,19 +93,9 @@ export function ApprovalRow({
       }
     >
       {icon}
-      {toParent ? <Words verb={`${parent} ${said}:`} object={subject} /> : <Words verb={`Asked for approval · ${said}`} object={subject} />}
+      <Words verb={verb} object={subject} />
     </OpeningRow>
   );
-}
-
-/** An answer as the row shows it: a recommended pick says so, each one of a multi-select too; a skipped one says that. */
-function answerWords(item: QuestionItem | undefined, answer: string | null): string {
-  if (!answer?.trim()) return "No answer provided";
-  const recommended = item?.recommended == null ? undefined : item.options[item.recommended]?.label;
-  const mark = (label: string) => (label === recommended ? `${label} (Recommended)` : label);
-  const labels = new Set(item?.options.map((option) => option.label));
-  const picks = item?.multiSelect && !labels.has(answer) ? answer.split(", ") : [answer];
-  return picks.every((pick) => labels.has(pick)) ? picks.map(mark).join(", ") : answer;
 }
 
 /**
@@ -147,14 +132,12 @@ export function QuestionRow({
   const session = useContext(SessionOfThread)?.id;
   const items = round?.items ?? [];
   const count = Math.max(items.length, 1);
-  const title = round?.title ? ` · ${round.title}` : "";
-  const asked = toParent ? `${parent} answered${title}` : `Asked ${count === 1 ? "a question" : `${count} questions`}${title}`;
+  const verb = questionWords(answer !== null, waiting, count, round?.title, toParent ? parent : undefined);
   if (answer === null) {
-    const asking = toParent ? `Asking ${parent}` : count === 1 ? "Asking a question" : "Asking questions";
     return (
       <p className={ROW}>
         {icon}
-        <Words verb={waiting ? `${asking} · waiting` : `${toParent ? `Asked ${parent}${title}` : asked} · ${WITHDRAWN}`} live={waiting} />
+        <Words verb={verb} live={waiting} />
       </p>
     );
   }
@@ -176,7 +159,7 @@ export function QuestionRow({
       }
     >
       {icon}
-      <Words verb={asked} />
+      <Words verb={verb} />
     </OpeningRow>
   );
 }
@@ -216,71 +199,50 @@ const SWITCH_STATES = ["limit", "switching", "switched", "failed", "over"] as co
 
 /** One state's line of a switch divider. */
 function switchLine(change: Switch, state: Switch["state"], from: string, actions: ReactNode, onRetry: (() => void) | undefined, carries?: Reset | null): ReactNode {
-  const to = change.model ? `${change.to} · ${change.model}` : (change.to ?? "");
-  const refused = change.reason === "unresumable";
-  const hit = refused ? `${from} couldn’t resume this conversation` : change.reason === "credits" ? `Out of credits on ${from}` : `Usage limit on ${from}`;
-  // When it comes back, as its CLI said; a reset already past, or none said, is "later" [D74, D379].
-  // Where Brigadier carries it on at the reset, or says why not, that's the words [C34, C54].
-  const carry = change.reason === "usage-limit" ? resetWords(carries) : null;
-  const back = carry ? ` · ${carry}` : change.reason !== "usage-limit" ? "" : change.resets && change.resets > Date.now() ? ` · try again at ${hhmm(change.resets)}` : " · try again later";
+  const { status, words = "", tip } = switchWords(change, state, from, carries);
   // At the limit it reads as a status that may wrap, its icon first (D487).
-  const status = (
+  const limit = status !== undefined && (
     <>
       <Warning className="size-icon-sm shrink-0" />
-      <span>{hit + back}</span>
+      <span>{status}</span>
     </>
+  );
+  const retry = onRetry && (
+    <Button variant="link-blue" size={null} onClick={onRetry}>
+      Try again
+    </Button>
   );
   switch (state) {
     case "limit":
       return (
         <>
-          {status}
+          {limit}
           {actions}
         </>
       );
     case "switching":
       // Under way till the new model runs, it shimmers as compaction's running line does (D59, D241).
-      return <span className="shimmer">{refused ? `Starting a new conversation on ${to}…` : to ? `Switching to ${to}…` : "Switching…"}</span>;
+      return <span className="shimmer">{words}</span>;
     case "switched":
-      // A switch logged before the shape has only Rust's sentence.
-      if (!change.to) return <span>{change.text}</span>;
-      // Picked, not forced: no limit to explain.
-      if (change.reason === "picked") return <span>Switched to {to}</span>;
-      if (change.moved) return <WithTip words={change.moved} tip={hit} />;
-      return <WithTip words={refused ? `Continued in a new conversation on ${to}` : `Switched ${change.automatic ? "automatically " : ""}to ${to}`} tip={hit} />;
+      return tip === undefined ? <span>{words}</span> : <WithTip words={words} tip={tip} />;
     case "failed":
-      // An automatic one keeps the limit's words: nothing was clicked that the line could name.
       if (change.automatic)
         return (
           <>
-            {status}
-            <WithTip words={to ? `· couldn’t switch to ${to}` : "· couldn’t switch automatically"} tip={change.error ?? ""} />
-            {onRetry && (
-              <Button variant="link-blue" size={null} onClick={onRetry}>
-                Try again
-              </Button>
-            )}
+            {limit}
+            <WithTip words={words} tip={tip ?? ""} />
+            {retry}
             {actions}
           </>
         );
       return (
         <>
-          {change.error ? <WithTip words={`Couldn’t switch to ${to} · the thread is unchanged`} tip={change.error} /> : <span>Couldn’t switch to {to} · the thread is unchanged</span>}
-          {onRetry && (
-            <Button variant="link-blue" size={null} onClick={onRetry}>
-              Try again
-            </Button>
-          )}
+          {tip ? <WithTip words={words} tip={tip} /> : <span>{words}</span>}
+          {retry}
         </>
       );
     case "over":
-      // History: no "try again", which a carry-on or a later message has settled (proposed) [C54].
-      return (
-        <>
-          <Warning className="size-icon-sm shrink-0" />
-          <span>{hit}</span>
-        </>
-      );
+      return limit;
   }
 }
 
@@ -311,7 +273,7 @@ export function UnknownRow({ keep, raw }: { keep: string; raw: unknown }) {
   return (
     <OpeningRow keep={keep} detail={<ToolBox title="Event">{JSON.stringify(raw, null, 2)}</ToolBox>}>
       <StepIcon icon={Info} />
-      <Words verb="This step isn’t shown yet · details inside" />
+      <Words verb={UNKNOWN_STEP} />
     </OpeningRow>
   );
 }

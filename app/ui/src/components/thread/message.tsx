@@ -19,14 +19,13 @@ import { openChip } from "../../session/commands";
 import { urlOf } from "../../session/files";
 import { useSettings } from "../../settings/api";
 import { SaveAsNote } from "../../note/save";
-import { datedAfter, datedMessages, sentAt } from "../../../../shared/words";
+import { datedAfter, datedMessages, datedWords, sentAt } from "../../../../shared/words";
 export { datedAfter, datedMessages, sentAt };
 
 
 /** "Today 3:36 PM", else as the bubble's time says it: centred above a message, in the rows' grey [D106]. */
 function TimeSeparator({ at }: { at: number }) {
-  const today = new Date(at).toDateString() === new Date().toDateString();
-  return <p className="self-stretch pb-3 text-center text-sm leading-5.25 text-row-foreground">{today ? `Today ${sentAt(at)}` : sentAt(at)}</p>;
+  return <p className="self-stretch pb-3 text-center text-sm leading-5.25 text-row-foreground">{datedWords(at)}</p>;
 }
 
 
