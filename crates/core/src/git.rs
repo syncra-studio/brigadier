@@ -197,12 +197,7 @@ pub(crate) fn read(dir: &Path, args: &[&str], stop: &AtomicBool) -> io::Result<V
 /// on Windows, which locks no folder, a file in it git never reads. Reads take it shared and
 /// writes exclusive. It waits in steps, so `stop` ends the wait.
 pub fn lock(checkout: &Checkout, exclusive: bool, stop: &AtomicBool) -> io::Result<File> {
-    #[cfg(unix)]
-    let file = File::open(&checkout.git_dir)?;
-    #[cfg(windows)]
-    let file = (fs::OpenOptions::new().read(true).write(true).create(true))
-        .truncate(false)
-        .open(checkout.git_dir.join("brigadier.lock"))?;
+    let file = folder_lock(&checkout.git_dir)?;
     loop {
         let got = match exclusive {
             true => file.try_lock(),
@@ -214,6 +209,17 @@ pub fn lock(checkout: &Checkout, exclusive: bool, stop: &AtomicBool) -> io::Resu
             Err(TryLockError::WouldBlock) => return err("stopped"),
             Err(TryLockError::Error(e)) => return Err(e),
         }
+    }
+}
+
+/// The file whose lock is git folder `dir`'s lock, not yet taken: the folder itself, or on Windows,
+/// which can't open a folder, its `brigadier.lock`.
+pub fn folder_lock(dir: &Path) -> io::Result<File> {
+    match cfg!(windows) {
+        true => (fs::OpenOptions::new().read(true).write(true).create(true))
+            .truncate(false)
+            .open(dir.join("brigadier.lock")),
+        false => File::open(dir),
     }
 }
 

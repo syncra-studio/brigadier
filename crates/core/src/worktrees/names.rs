@@ -130,7 +130,7 @@ pub fn reserve(
         repo,
         &["rev-parse", "--path-format=absolute", "--git-common-dir"],
     )?;
-    let lock = File::open(common)?;
+    let lock = crate::git::folder_lock(Path::new(&common))?;
     lock.lock()?;
     Ok((lock, choose(repo, prefix, title, old)?))
 }

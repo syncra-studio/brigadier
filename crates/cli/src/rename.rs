@@ -48,7 +48,7 @@ pub(super) fn run(data: &Path, args: &[String]) -> io::Result<Value> {
         {
             reason = "The branch keeps its name while an agent works in this folder.";
         } else {
-            let file = std::fs::File::open(&checkout.git_dir)?;
+            let file = git::folder_lock(&checkout.git_dir)?;
             match file.try_lock() {
                 Err(std::fs::TryLockError::WouldBlock) => {
                     reason = "A source action is running, so the branch keeps its name."
