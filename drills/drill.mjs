@@ -4,7 +4,7 @@
 // client sees.
 //
 //   BIN=<dir with brigadier, brigadier-host, brigadier-fake, brigadier-procs, brigadierd> node drills/drill.mjs <drill> [minutes]
-//   drills: killloop, hang, procs, detach, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck
+//   drills: killloop, hang, procs, detach, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck, npmfind
 //   killloop: BUILDS=<dir>:<dir> (; on Windows) rotates in more builds; OLD_BIN=<dir> adds hosts and the first
 //   daemon from a previous release's code.
 //
@@ -2312,9 +2312,25 @@ async function agentCheck() {
   if (process.env.KEEP !== '1') drop(DATA)
 }
 
+// An agent Brigadier installed is found where its installer put it, on no PATH: on Windows npm's global folder
+// (%APPDATA%\\npm, OpenCode's npm shim resolved to its exe), elsewhere OpenCode's own ~/.opencode/bin.
+async function npmFind() {
+  freshData('npmfind')
+  const appdata = `${DATA}/appdata`
+  const exe = WIN ? `${appdata}/npm/node_modules/@opencode/cli/bin/opencode.exe` : `${process.env.HOME}/.opencode/bin/opencode`
+  fs.mkdirSync(path.dirname(exe), { recursive: true })
+  fs.copyFileSync(`${BIN}/brigadier-fake${EXE}`, exe)
+  if (WIN) fs.writeFileSync(`${appdata}/npm/opencode.cmd`, '@ECHO off\r\n"%dp0%\\node_modules\\@opencode\\cli\\bin\\opencode.exe"   %*\r\n')
+  const r = await cliAsync(['agents'], { APPDATA: appdata.replaceAll('/', path.sep) })
+  const found = r.agents?.find((a) => a.name === 'opencode')?.path ?? null
+  const norm = (p) => p && fs.realpathSync.native(p).toLowerCase()
+  log({ summary: 'npmfind', pass: !!found && norm(found) === norm(exe), found, want: exe, error: r.error ?? null })
+  if (process.env.KEEP !== '1') drop(DATA)
+}
+
 const [drill, arg] = process.argv.slice(2)
 if (!BIN) throw new Error('set BIN to a folder with the brigadier binaries')
 fs.mkdirSync(ROOT, { recursive: true })
-const run = { killloop: () => killloop(+(arg ?? 30)), hang, procs: procsDrill, detach, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed, agentcheck: agentCheck }[drill]
-if (!run) throw new Error('drills: killloop [minutes], hang, procs, detach, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck')
+const run = { killloop: () => killloop(+(arg ?? 30)), hang, procs: procsDrill, detach, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed, agentcheck: agentCheck, npmfind: npmFind }[drill]
+if (!run) throw new Error('drills: killloop [minutes], hang, procs, detach, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck, npmfind')
 await run()

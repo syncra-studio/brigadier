@@ -110,7 +110,8 @@ pub fn refresh() -> Login {
     login
 }
 
-/// A binary in its installer's folders under HOME first, then on the login PATH.
+/// A binary in its installer's folders under HOME first, then on the login PATH, then on Windows
+/// in npm's global folder, which only Node's own installer puts on its user's PATH.
 pub fn find(bin: &str, folders: &[&str]) -> Option<PathBuf> {
     // A test instance's gh stand-in (a guard that fakes writes); never the real app's data folder.
     if bin == "gh"
@@ -122,10 +123,15 @@ pub fn find(bin: &str, folders: &[&str]) -> Option<PathBuf> {
     }
     let home = super::home_path("");
     let path = login().path;
+    // shortcut: npm's default prefix only, not one a user's .npmrc moves; read `npm prefix -g` if one shows up.
+    let npm = std::env::var_os("APPDATA")
+        .filter(|_| cfg!(windows))
+        .map(|a| PathBuf::from(a).join("npm"));
     folders
         .iter()
         .map(|f| home.join(f))
         .chain(std::env::split_paths(&path))
+        .chain(npm)
         .find_map(|d| exe_in(&d, bin))
 }
 

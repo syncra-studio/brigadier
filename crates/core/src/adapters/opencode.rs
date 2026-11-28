@@ -94,8 +94,11 @@ impl Adapter for OpenCode {
     }
     fn install(&self) -> Option<&'static str> {
         // OpenCode 2's own npm package: its docs give no Windows installer or package manager.
+        // Without npm, PowerShell's own error would say only that a term isn't recognized.
         #[cfg(windows)]
-        return Some("npm install -g @opencode/cli");
+        return Some(
+            "if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { Write-Host 'OpenCode installs with npm, which this PC doesn''t have. Install Node.js from nodejs.org, then Install again.'; exit 1 }; npm install -g @opencode/cli",
+        );
         #[cfg(unix)]
         Some("curl -fsSL https://opencode.ai/v2/install | bash")
     }
