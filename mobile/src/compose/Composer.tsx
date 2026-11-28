@@ -18,7 +18,7 @@ import { COMPACTION } from "../../../app/shared/words";
 import { Confirm } from "../act/Confirm";
 import { streamNow } from "../link";
 import { lists, thread } from "../mac/mac";
-import { color, size } from "../theme";
+import { color, spacing, opacity, touch } from "../theme";
 import { LevelPill } from "../powers/Level";
 import { NightReady, nightPlaceholder, OvernightPill, OvernightStrip, StartNight, useNight } from "../powers/Overnight";
 import { backgroundPower, type Power, refusal, shellOf } from "../powers/powers";
@@ -407,7 +407,7 @@ export function Composer({ id }: { id: string }) {
                     if (!plus) setOpened((times) => times + 1);
                     setPlus(!plus);
                   }}
-                  hitSlop={(size.touch - size.controlSm) / 2}
+                  hitSlop={(touch - spacing.controlSm) / 2}
                   style={({ pressed }) => [st.plus, (pressed || plus) && { backgroundColor: color.fill }]}
                 >
                   <Glyph name="plus" size={20} color={color.primary} />
@@ -437,10 +437,10 @@ export function Composer({ id }: { id: string }) {
                 disabled={off}
                 onPress={press}
                 onLongPress={hold}
-                hitSlop={(size.touch - size.controlSm) / 2}
-                style={({ pressed }) => [runs ? st.run : st.send, off ? { opacity: size.disabled } : pressed && { opacity: 0.8 }]}
+                hitSlop={(touch - spacing.controlSm) / 2}
+                style={({ pressed }) => [runs ? st.run : st.send, off ? { opacity: opacity.disabled } : pressed && { opacity: 0.8 }]}
               >
-                {state === "stop" ? <View style={st.stop} /> : state === "resume" ? <Glyph name="play" size={size.iconSm} color={color.primaryFg} /> : runs ? <Text style={st.runText}>Run</Text> : <Glyph name="arrowUp" color={color.primaryFg} weight="700" />}
+                {state === "stop" ? <View style={st.stop} /> : state === "resume" ? <Glyph name="play" size={spacing.iconSm} color={color.primaryFg} /> : runs ? <Text style={st.runText}>Run</Text> : <Glyph name="arrowUp" color={color.primaryFg} weight="700" />}
               </Pressable>
             </View>
           </View>

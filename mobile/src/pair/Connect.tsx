@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 import { Button } from "../Button";
-import { color, text } from "../theme";
+import { color, text, fontWeight } from "../theme";
 
 /** The first screen: pairing starts on the Mac, in Settings › Connections. */
 export function Connect({ onScan, onCode, onBack }: { onScan?: () => void; onCode?: () => void; onBack?: () => void }) {
@@ -24,7 +24,7 @@ export function Connect({ onScan, onCode, onBack }: { onScan?: () => void; onCod
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: color.background, padding: 24, paddingTop: 120, justifyContent: "space-between" },
   top: { gap: 12 },
-  title: { ...text.pageTitle, color: color.foreground },
+  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground },
   body: { ...text.base, color: color.mutedForeground },
   actions: { gap: 12, paddingBottom: 32 },
 });

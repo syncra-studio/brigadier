@@ -2,7 +2,7 @@ import { useState } from "react";
 import { KeyboardAvoidingView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Button } from "../Button";
 import { page } from "../Notice";
-import { color, text } from "../theme";
+import { color, text, fontWeight } from "../theme";
 import { readCode } from "./pair";
 
 /** Enter code manually: the 16 characters the Mac shows. */
@@ -37,7 +37,7 @@ export function Code({ onCode, onBack }: { onCode: (code: string) => void; onBac
 const styles = StyleSheet.create({
   page: { ...page, justifyContent: "space-between" },
   top: { gap: 12 },
-  title: { ...text.pageTitle, color: color.foreground },
+  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground },
   body: { ...text.base, color: color.mutedForeground },
   input: {
     ...text.lg,

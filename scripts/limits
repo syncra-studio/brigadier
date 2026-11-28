@@ -4,7 +4,6 @@ set -u
 cd "$(git rev-parse --show-toplevel)"
 
 THEME="app/ui/src/theme.css"
-PHONE_THEME="mobile/src/theme.ts"
 AGENTS_MAX_BYTES=2050
 # The line every session loads [D2025].
 AGENT_LINE="crates/core/src/agent-line.txt"
@@ -45,7 +44,7 @@ done < <(files | grep -E '\.(rs|ts|tsx)$')
 
 check "import of a banned package" '@assistant-ui|@tauri-apps' . ':!scripts/limits'
 
-not_theme=("${WEB[@]}" ":!$THEME" ":!$PHONE_THEME")
+not_theme=("${WEB[@]}" ":!$THEME")
 # The iPhone app has no CSS or Tailwind: React Native styles through style=.
 not_phone=("${not_theme[@]}" ":!mobile/")
 check "raw colour outside the theme file" \

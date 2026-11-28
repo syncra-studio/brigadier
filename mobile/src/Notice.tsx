@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 import { Button } from "./Button";
 import type { Problem } from "./pair/pair";
-import { color, text } from "./theme";
+import { color, text, fontWeight } from "./theme";
 
 export const PROBLEMS: Record<Problem, { title: string; body: string }> = {
   expired: { title: "This code can't be used", body: "It has expired or was already used. On your Mac, choose Add again for a new one." },
@@ -51,6 +51,6 @@ export const page = { flex: 1, backgroundColor: color.background, padding: 24, p
 const styles = StyleSheet.create({
   page: { ...page, justifyContent: "space-between" },
   top: { gap: 12 },
-  title: { ...text.pageTitle, color: color.foreground },
+  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground },
   body: { ...text.base, color: color.mutedForeground },
 });

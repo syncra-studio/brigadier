@@ -4,7 +4,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { request } from "../link";
-import { color, size, text } from "../theme";
+import { color, spacing, radius, text, opacity, touch } from "../theme";
 import { Boxed, Glyph } from "./Glyph";
 import { forMac } from "./state";
 
@@ -30,7 +30,7 @@ export const OVERNIGHT: Command = { id: "overnight", kind: "command", label: "/o
 
 const KIND_HEADINGS = { command: "Commands", tool: "Tools", skill: "Skills", mcp: "MCP servers", prompt: "MCP prompts" } as const;
 /** A command's colour by kind, for its icon and its chip's name (kind-icons.tsx COMMAND_TONES). */
-export const COMMAND_TONES = { command: color.link, tool: color.success, skill: color.magenta, mcp: color.cyan, prompt: color.cyan };
+export const COMMAND_TONES = { command: color.link, tool: color.success, skill: color.ansiMagenta, mcp: color.ansiCyan, prompt: color.ansiCyan };
 /** A chip's colour in the text: a command's kind's; a note's orange; any other mention blue. */
 export const chipTone = (chip: { kind: string; type: string }) => (chip.kind === "command" ? COMMAND_TONES[chip.type as Command["kind"]] : chip.type === "note" ? color.warning : color.link);
 
@@ -86,7 +86,7 @@ const CommandIcon = ({ command }: { command: Command }) => <Boxed mark={command.
 /** A mention's icon: a chat, a worker, a tab, a note or a plugin. */
 function MentionIcon({ item }: { item: Mention }) {
   const mark = { chat: "❝", worker: "●", direct: "●", tab: "◎", note: "▤", plugin: "◈" }[item.type] ?? "·";
-  return <Text allowFontScaling={false} style={{ width: size.iconMd, fontSize: 13, textAlign: "center", color: item.type === "note" ? color.warning : color.mutedForeground }}>{mark}</Text>;
+  return <Text allowFontScaling={false} style={{ width: spacing.iconMd, fontSize: 13, textAlign: "center", color: item.type === "note" ? color.warning : color.mutedForeground }}>{mark}</Text>;
 }
 
 /** The panel: opaque in a hairline over the card, as wide as it; it scrolls past 10.5 rows' worth. */
@@ -103,7 +103,7 @@ export const MenuNote = ({ children }: { children: string }) => <Text style={st.
 /** One row: icon, name, its line in grey after it, a hint at its end; as tall as a finger needs. */
 export function MenuRow({ icon, title, detail, hint, disabled, onPress }: { icon?: ReactNode; title: ReactNode; detail?: string; hint?: string; disabled?: boolean; onPress: () => void }) {
   return (
-    <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={({ pressed }) => [st.row, pressed && { backgroundColor: color.fill }, disabled && { opacity: size.disabled }]}>
+    <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={({ pressed }) => [st.row, pressed && { backgroundColor: color.fill }, disabled && { opacity: opacity.disabled }]}>
       {icon}
       <Text style={st.title} numberOfLines={1}>
         {title}
@@ -234,10 +234,10 @@ export function PlusMenu({ listed, chats, onPhotos, onFiles, onCommand, onChat }
 
 const st = StyleSheet.create({
   // 4 over the card: the column's gap, less 4.
-  panel: { flexGrow: 0, maxHeight: size.controlSm * 10.5, marginBottom: -4, borderRadius: size.radiusMenu, borderWidth: 1, borderColor: color.border, backgroundColor: color.popover },
+  panel: { flexGrow: 0, maxHeight: spacing.controlSm * 10.5, marginBottom: -4, borderRadius: radius.menu, borderWidth: 1, borderColor: color.border, backgroundColor: color.popover },
   heading: { ...text.label, color: color.mutedForeground, paddingHorizontal: 8, paddingTop: 8, paddingBottom: 4 },
-  note: { ...text.label, color: color.mutedForeground, paddingHorizontal: 8, minHeight: size.touch, textAlignVertical: "center", paddingVertical: 13 },
-  row: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: size.touch, paddingHorizontal: 8, borderRadius: size.radiusMenu - 4 },
+  note: { ...text.label, color: color.mutedForeground, paddingHorizontal: 8, minHeight: touch, textAlignVertical: "center", paddingVertical: 13 },
+  row: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: touch, paddingHorizontal: 8, borderRadius: radius.menu - 4 },
   title: { ...text.sm, color: color.foreground, flex: 1 },
   detail: { ...text.sm, color: color.mutedForeground },
 });

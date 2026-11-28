@@ -3,7 +3,7 @@ import type { Mac } from "../../modules/link";
 import { Button } from "../Button";
 import { page, PROBLEMS } from "../Notice";
 import type { Problem } from "../pair/pair";
-import { color, text } from "../theme";
+import { color, text, fontWeight } from "../theme";
 
 export type Status = "connecting" | "connected" | Problem | "cancelled";
 
@@ -26,7 +26,7 @@ export function Macs({ macs, status, onConnect, onForget, onAdd }: {
         return (
           <View key={mac.pk} style={styles.row}>
             <Text style={styles.name}>
-              <Text style={{ color: s === "connected" ? color.online : color.mutedForeground }}>● </Text>
+              <Text style={{ color: s === "connected" ? color.success : color.mutedForeground }}>● </Text>
               {mac.name}
             </Text>
             <Text style={styles.status}>{said(s)}</Text>
@@ -55,7 +55,7 @@ function Action({ title, onPress }: { title: string; onPress: () => void }) {
 
 const styles = StyleSheet.create({
   page: { ...page, gap: 16 },
-  title: { ...text.pageTitle, color: color.foreground },
+  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground },
   row: { backgroundColor: color.surfaceUnder, borderColor: color.border, borderWidth: 1, borderRadius: 16, padding: 16, gap: 4 },
   name: { ...text.lg, fontWeight: "600", color: color.foreground },
   status: { ...text.sm, color: color.mutedForeground },

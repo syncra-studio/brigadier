@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Button } from "../Button";
 import { page } from "../Notice";
-import { color, text } from "../theme";
+import { color, text, fontWeight } from "../theme";
 
 /** The QR scanner. `sample` draws it without the camera, for simulator screenshots. */
 export function Scan({ onScanned, onBack, sample }: { onScanned: (url: string) => void; onBack: () => void; sample?: boolean }) {
@@ -37,7 +37,7 @@ export function Scan({ onScanned, onBack, sample }: { onScanned: (url: string) =
 
 const styles = StyleSheet.create({
   page: { ...page, gap: 24 },
-  title: { ...text.pageTitle, color: color.foreground },
+  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground },
   frame: { flex: 1, borderRadius: 24, overflow: "hidden", backgroundColor: color.surfaceUnder, justifyContent: "center", padding: 24 },
   body: { ...text.base, color: color.mutedForeground, textAlign: "center" },
 });

@@ -135,7 +135,7 @@ export function Box({ title, children }: { title?: string; children: ReactNode }
 }
 
 export const s = StyleSheet.create({
-  row: { fontSize: 14, lineHeight: 21, color: color.row },
+  row: { fontSize: 14, lineHeight: 21, color: color.rowForeground },
   object: { color: color.rowObject },
   small: { fontSize: 12, lineHeight: 17, color: color.mutedForeground },
   code: { fontFamily: mono, fontSize: 12.5, lineHeight: 18, color: color.foreground },
@@ -143,8 +143,8 @@ export const s = StyleSheet.create({
   center: { flexShrink: 1, textAlign: "center" },
   line: { flexDirection: "row", alignItems: "flex-start", gap: 8, minHeight: 21 },
   wrap: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 10 },
-  glyph: { width: 16, textAlign: "center", fontSize: 13, lineHeight: 21, color: color.row },
-  chevron: { fontSize: 14, lineHeight: 21, color: color.faint },
+  glyph: { width: 16, textAlign: "center", fontSize: 13, lineHeight: 21, color: color.rowForeground },
+  chevron: { fontSize: 14, lineHeight: 21, color: color.faintForeground },
   detail: { gap: 4, paddingTop: 4, paddingBottom: 4 },
   divider: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 },
   hair: { height: StyleSheet.hairlineWidth, flex: 1, minWidth: 16, backgroundColor: color.border },

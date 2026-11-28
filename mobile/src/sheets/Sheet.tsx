@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { Modal, ScrollView, StyleSheet, Text } from "react-native";
 import { Button } from "../Button";
-import { color, text } from "../theme";
+import { color, text, fontWeight } from "../theme";
 
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
@@ -18,7 +18,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
 
 export const st = StyleSheet.create({
   page: { flex: 1, backgroundColor: color.background },
-  title: { ...text.pageTitle, color: color.foreground, marginBottom: 4 },
+  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground, marginBottom: 4 },
   heading: { ...text.sm, color: color.mutedForeground, marginTop: 12 },
   body: { ...text.base, color: color.foreground },
   muted: { ...text.sm, color: color.mutedForeground },

@@ -41,7 +41,7 @@ const actionWords = (name: string) =>
 export function Allowed({ approval }: { approval: PendingApproval }) {
   return (
     <Text style={[s.row, { color: color.mutedForeground }]}>
-      Allowed by you{approval.reason ? <Text style={{ color: color.row }}> · {approval.reason}</Text> : null}
+      Allowed by you{approval.reason ? <Text style={{ color: color.rowForeground }}> · {approval.reason}</Text> : null}
     </Text>
   );
 }

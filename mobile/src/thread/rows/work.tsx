@@ -43,7 +43,7 @@ export function WorkHeader({ turn, work, open, onToggle }: { turn: Turn; work: W
     (live && subagents ? ` · ${count(subagents, "subagent")} running` : "") +
     (live && waitingSince != null ? " · waiting for you" : !live && waitedMs !== undefined && waitedMs >= 1000 ? ` · waited for ${duration(waitedMs)}` : "") +
     (turn.held && waitingSince == null && now - heard >= QUIET_MS ? " · no activity for 30 min" : "");
-  const words = <Text style={[s.row, { color: color.faint }]}>{label}</Text>;
+  const words = <Text style={[s.row, { color: color.faintForeground }]}>{label}</Text>;
   if (open === null) return words;
   return (
     <Toggle open={open} label={label} onPress={() => onToggle(live ? shutKey(turn.id) : workKey(turn.id))}>

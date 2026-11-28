@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { Frame } from "../../../app/shared/client";
 import { Button } from "../Button";
-import { color, text } from "../theme";
+import { color, text, fontWeight, mono } from "../theme";
 import { signed } from "./act";
 
 /**
@@ -57,9 +57,9 @@ export function Confirm({ title, body, shown, args, onDone }: {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: color.background, padding: 24, justifyContent: "space-between" },
   top: { gap: 16, flexShrink: 1 },
-  title: { ...text.pageTitle, color: color.foreground },
+  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground },
   body: { ...text.base, color: color.mutedForeground },
   box: { backgroundColor: color.surfaceUnder, borderRadius: 12, borderWidth: 1, borderColor: color.border, maxHeight: 320 },
-  mono: { ...text.sm, color: color.foreground, fontFamily: "Menlo" },
+  mono: { ...text.sm, color: color.foreground, fontFamily: mono },
   bottom: { gap: 12, paddingBottom: 32 },
 });

@@ -7,7 +7,7 @@ import { type Chip, type Draft, isEmpty, plainText } from "../../../app/shared/d
 import type { ModelRow } from "../../../app/shared/session/model";
 import type { RustQueued } from "../../../app/shared/session/queued";
 import type { Going } from "../../../app/shared/session/uncertain";
-import { color, mono, size, text } from "../theme";
+import { color, spacing, radius, text, shadow, opacity, mono, space } from "../theme";
 import { Boxed, Glyph, Spinner, usePulse } from "./Glyph";
 import { chipTone, NEW_SESSION } from "./Menus";
 import { ThreadImage } from "../thread/Image";
@@ -261,51 +261,57 @@ export function OnItsWay({ id, entry }: { id: string; entry: Going }) {
 }
 
 export const Link = ({ title, disabled, onPress }: { title: string; disabled?: boolean; onPress: () => void }) => (
-  <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} hitSlop={8} style={disabled && { opacity: size.disabled }}>
+  <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} hitSlop={8} style={disabled && { opacity: opacity.disabled }}>
     <Text style={st.link}>{title}</Text>
   </Pressable>
 );
+
+// Overnight's sky (sessions/overnight.css .night-sky): violet from the top right, the ring's blue from the bottom left,
+// on a layer at 0.34; RN has no ::before, so the 0.34 goes on the gradients' stops (6-digit hex tokens, alpha appended).
+const NIGHT_OPACITY = 0.34;
+const faded = (hex: string) => `${hex}${Math.round(NIGHT_OPACITY * 255).toString(16).padStart(2, "0")}`;
+const NIGHT_SKY = `radial-gradient(ellipse at top right, ${faded(color.tileViolet)}, transparent ${space(90)}px), radial-gradient(ellipse at bottom left, ${faded(color.ring)}, transparent ${space(80)}px)`;
 
 export const st = StyleSheet.create({
   // 12 under the card (pb-3), or the home indicator's inset where that's more.
   column: { gap: 8, paddingHorizontal: 16, paddingBottom: 12, backgroundColor: color.background },
   // The gap above the card is taken back, and the tuck under its top edge.
-  rail: { marginHorizontal: size.railInset, marginBottom: -size.railTuck - 8, paddingBottom: size.railTuck, borderTopLeftRadius: size.radiusOverlay, borderTopRightRadius: size.radiusOverlay, borderWidth: 1, borderBottomWidth: 0, borderColor: color.border, backgroundColor: color.codeSurface, overflow: "hidden" },
+  rail: { marginHorizontal: spacing.railInset, marginBottom: -spacing.railTuck - 8, paddingBottom: spacing.railTuck, borderTopLeftRadius: radius.overlay, borderTopRightRadius: radius.overlay, borderWidth: 1, borderBottomWidth: 0, borderColor: color.border, backgroundColor: color.codeSurface, overflow: "hidden" },
   ruled: { borderTopWidth: 1, borderTopColor: color.border },
-  card: { gap: 4, padding: 8, borderRadius: size.radiusComposer, backgroundColor: color.composer, boxShadow: color.composerGlow },
+  card: { gap: 4, padding: 8, borderRadius: radius.composer, backgroundColor: color.composer, boxShadow: shadow.composer },
   // overnight.css `night-sky`: the page's darkest fill, a violet glow from the end corner and a blue one from the start.
-  night: { backgroundColor: color.surfaceUnder, boxShadow: `inset 0 0 0 1px ${color.picked}`, experimental_backgroundImage: color.nightSky },
-  shell: { boxShadow: `${color.composerGlow}, 0 0 0 1px ${color.link}` },
-  input: { ...text.base, color: color.foreground, minHeight: size.composer, paddingHorizontal: 8, paddingTop: 10, paddingBottom: 10 },
+  night: { backgroundColor: color.surfaceUnder, boxShadow: `inset 0 0 0 ${space(0.25)}px ${color.picked}`, experimental_backgroundImage: NIGHT_SKY },
+  shell: { boxShadow: `${shadow.composer}, 0 0 0 1px ${color.link}` },
+  input: { ...text.base, color: color.foreground, minHeight: spacing.composer, paddingHorizontal: 8, paddingTop: 10, paddingBottom: 10 },
   mono: { fontFamily: mono, paddingLeft: 36 },
   terminal: { position: "absolute", left: 8, top: 14, zIndex: 1 },
   fade: { position: "absolute", left: 0, right: 0, top: 0, height: 16 },
   footer: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 2 },
-  shellWords: { ...text.sm, color: color.link, paddingHorizontal: 8, height: size.controlSm, lineHeight: size.controlSm, flexShrink: 1 },
-  plus: { width: size.controlSm, height: size.controlSm, borderRadius: size.radiusIconButton, alignItems: "center", justifyContent: "center" },
+  shellWords: { ...text.sm, color: color.link, paddingHorizontal: 8, height: spacing.controlSm, lineHeight: spacing.controlSm, flexShrink: 1 },
+  plus: { width: spacing.controlSm, height: spacing.controlSm, borderRadius: radius.iconButton, alignItems: "center", justifyContent: "center" },
   pillText: { ...text.sm, color: color.mutedForeground, flexShrink: 1 },
   toDot: { fontSize: 10, color: color.mutedForeground },
   end: { flexDirection: "row", alignItems: "center", gap: 2, marginLeft: "auto", flexShrink: 1, minWidth: 0 },
   status: { ...text.xs, color: color.mutedForeground, flexShrink: 1, paddingHorizontal: 4 },
-  send: { width: size.controlSm, height: size.controlSm, borderRadius: size.controlSm / 2, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
-  run: { height: size.controlSm, borderRadius: size.controlSm / 2, paddingHorizontal: 12, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
+  send: { width: spacing.controlSm, height: spacing.controlSm, borderRadius: spacing.controlSm / 2, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
+  run: { height: spacing.controlSm, borderRadius: spacing.controlSm / 2, paddingHorizontal: 12, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
   runText: { ...text.sm, fontWeight: "500", color: color.primaryFg },
   stop: { width: 10, height: 10, borderRadius: 2, backgroundColor: color.primaryFg },
   waits: { ...text.xs, color: color.mutedForeground, paddingHorizontal: 8, marginTop: -4 },
   tiles: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-end", gap: 8, paddingHorizontal: 4, paddingTop: 4, paddingBottom: 6 },
-  thumb: { width: size.thumb, height: size.thumb, borderRadius: size.radiusSurface, overflow: "hidden", backgroundColor: color.muted },
-  ring: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: size.radiusSurface, borderWidth: 1, borderColor: color.border },
+  thumb: { width: spacing.attachmentThumb, height: spacing.attachmentThumb, borderRadius: radius.surface, overflow: "hidden", backgroundColor: color.muted },
+  ring: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: radius.surface, borderWidth: 1, borderColor: color.border },
   centred: { alignItems: "center", justifyContent: "center" },
-  fileCard: { width: size.card, maxWidth: "100%", flexDirection: "row", alignItems: "center", gap: 8, padding: 6, paddingRight: 28, borderRadius: size.radiusSurface, borderWidth: 1, borderColor: color.border },
-  iconBox: { width: size.controlLg, height: size.controlLg, borderRadius: size.radiusIconButton, backgroundColor: color.background, alignItems: "center", justifyContent: "center" },
+  fileCard: { width: spacing.attachmentCard, maxWidth: "100%", flexDirection: "row", alignItems: "center", gap: 8, padding: 6, paddingRight: 28, borderRadius: radius.surface, borderWidth: 1, borderColor: color.border },
+  iconBox: { width: spacing.controlLg, height: spacing.controlLg, borderRadius: radius.iconButton, backgroundColor: color.background, alignItems: "center", justifyContent: "center" },
   cardTitle: { ...text.sm, color: color.foreground },
   cardDetail: { ...text.xs, color: color.mutedForeground },
-  remove: { position: "absolute", top: 6, right: 6, width: size.iconMd, height: size.iconMd, borderRadius: size.iconMd / 2, backgroundColor: color.foreground, alignItems: "center", justifyContent: "center", zIndex: 1 },
-  viewer: { flex: 1, backgroundColor: color.viewer },
+  remove: { position: "absolute", top: 6, right: 6, width: spacing.iconMd, height: spacing.iconMd, borderRadius: spacing.iconMd / 2, backgroundColor: color.foreground, alignItems: "center", justifyContent: "center", zIndex: 1 },
+  viewer: { flex: 1, backgroundColor: color.imageViewer },
   done: { alignSelf: "flex-end", padding: 16 },
   doneText: { ...text.base, fontWeight: "600", color: color.primary },
   going: { alignSelf: "flex-end", maxWidth: "85%", gap: 4, borderRadius: 16, backgroundColor: color.bubble, padding: 12 },
-  goingText: { ...text.base, color: color.chat },
+  goingText: { ...text.base, color: color.chatForeground },
   actions: { flexDirection: "row", gap: 16 },
   link: { ...text.sm, color: color.link },
   muted: { ...text.sm, color: color.mutedForeground },

@@ -6,7 +6,7 @@ import { asGroups, choiceOf, loadModels, type Model, type ModelChoice, type Mode
 import { failure } from "../../../app/shared/session/run";
 import { store } from "../../../app/shared/store";
 import { Button } from "../Button";
-import { color, size, text } from "../theme";
+import { color, spacing, radius, text, fontWeight, touch } from "../theme";
 import { Glyph } from "./Glyph";
 import { fuzzyMatch, MatchedText } from "./Menus";
 import { Pill } from "./Pill";
@@ -75,7 +75,7 @@ export function ModelPill({ id, row, connected, open: opened = false }: { id: st
       {picked && row?.running ? <SwitchAfter key={row.setup_op ?? ""} id={id} name={groups?.find((group) => group.provider === picked.backend)?.label ?? picked.backend} now={picked.now === true} onError={setError} /> : null}
       <Pill label={`Model: ${model?.name ?? value.model}${fast ? ", Fast" : ""}${effort ? `, ${effort}` : ""}`} open={open} disabled={!connected || !groups || Boolean(row?.worker)} onPress={show} style={{ maxWidth: 200 }}>
         <Text style={st.pillText} numberOfLines={1}>{model?.name ?? value.model}</Text>
-        {fast ? <Glyph name="bolt" size={size.iconXs} color={color.glyph5} /> : null}
+        {fast ? <Glyph name="bolt" size={spacing.iconXs} color={color.glyph5} /> : null}
         {effort ? <Text style={st.effort} numberOfLines={1}>{effort}</Text> : null}
       </Pill>
       {open && groups ? <Sheet group={groups.find((group) => group.provider === row?.backend)} value={value} onPick={change} onClose={() => setOpen(false)} /> : null}
@@ -143,7 +143,7 @@ function Sheet({ group, value, onPick, onClose }: { group: ModelGroup | undefine
         <Text style={st.optionText} numberOfLines={2}>
           {needle ? <MatchedText words={model.name} query={needle} /> : model.name}
         </Text>
-        {inUse(model) ? <Glyph name="check" size={size.iconSm} label="In use" /> : null}
+        {inUse(model) ? <Glyph name="check" size={spacing.iconSm} label="In use" /> : null}
         {model.legacy && mixed ? <Text style={st.faint}>Older</Text> : null}
         <Pressable accessibilityRole="button" accessibilityLabel={on ? "Remove from favorites" : "Add to favorites"} accessibilityState={{ selected: on }} onPress={() => star(keyOf(model))} hitSlop={12} style={{ marginLeft: "auto" }}>
           <Glyph name={on ? "starFilled" : "star"} color={on ? color.glyph5 : color.mutedForeground} />
@@ -193,11 +193,11 @@ function Sheet({ group, value, onPick, onClose }: { group: ModelGroup | undefine
                 {used.efforts.map((level) => (
                   <Pressable key={level} accessibilityRole="radio" accessibilityState={{ checked: value.effort === level }} onPress={() => pick(used, { effort: level })} style={({ pressed }) => [st.option, pressed && { backgroundColor: color.fill }]}>
                     <Text style={st.optionText}>{effortLabel(level)}</Text>
-                    {value.effort === level ? <Glyph name="check" size={size.iconSm} /> : level === used.defaultEffort ? <Text style={st.faint}>Default</Text> : null}
+                    {value.effort === level ? <Glyph name="check" size={spacing.iconSm} /> : level === used.defaultEffort ? <Text style={st.faint}>Default</Text> : null}
                   </Pressable>
                 ))}
                 <View style={[st.option, st.fast]}>
-                  <Glyph name="bolt" size={size.iconSm} color={value.fast && used.fast ? color.glyph5 : color.placeholder} />
+                  <Glyph name="bolt" size={spacing.iconSm} color={value.fast && used.fast ? color.glyph5 : color.placeholder} />
                   <View style={{ flex: 1 }}>
                     <Text style={[st.optionText, !used.fast && { color: color.placeholder }]}>Fast</Text>
                     <Text style={st.muted}>{used.fast ?? `${used.name} has no fast tier`}</Text>
@@ -224,12 +224,12 @@ const st = StyleSheet.create({
   link: { ...text.sm, color: color.link },
   error: { ...text.xs, color: color.destructive, flexShrink: 1 },
   page: { flex: 1, backgroundColor: color.background },
-  title: { ...text.pageTitle, color: color.foreground, marginBottom: 8 },
+  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground, marginBottom: 8 },
   heading: { ...text.label, color: color.mutedForeground, marginTop: 16, marginBottom: 4 },
   note: { ...text.label, color: color.mutedForeground, paddingVertical: 8 },
-  search: { flexDirection: "row", alignItems: "center", gap: 8, height: size.touch, paddingHorizontal: 12, marginBottom: 8, borderRadius: size.radiusControl, backgroundColor: color.fill },
+  search: { flexDirection: "row", alignItems: "center", gap: 8, height: touch, paddingHorizontal: 12, marginBottom: 8, borderRadius: radius.control, backgroundColor: color.fill },
   searchText: { ...text.sm, color: color.foreground, flex: 1, padding: 0 },
-  option: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: size.touch, borderRadius: size.radiusControl, paddingHorizontal: 8 },
+  option: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: touch, borderRadius: radius.control, paddingHorizontal: 8 },
   fast: { marginTop: 12, borderTopWidth: 1, borderTopColor: color.border, borderRadius: 0, paddingTop: 8 },
   optionText: { ...text.sm, color: color.foreground, flexShrink: 1 },
 });

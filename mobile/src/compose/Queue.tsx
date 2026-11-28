@@ -5,7 +5,7 @@ import { useState } from "react";
 import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { Draft } from "../../../app/shared/draft";
 import type { QueuedMessage } from "../../../app/shared/session/queued";
-import { color, mono, size, text } from "../theme";
+import { color, spacing, radius, text, opacity, mono } from "../theme";
 import { Boxed, FadeIn, Glyph, type GlyphName, Shimmer, Spinner, Trash } from "./Glyph";
 
 /** The row's words: the text with each mention's and command's name in place. */
@@ -123,7 +123,7 @@ export function QueueCard({ items, running, paused, resuming, steer, canEdit, er
           return (
             <FadeIn key={item.id}>
               <View style={st.row} accessibilityState={{ busy: deciding }}>
-                <View style={st.glyph}>{deciding ? <Spinner color={color.queueGlyph} /> : item.shell ? <Boxed mark=">_" size={size.iconSm} color={color.queueGlyph} /> : <Glyph name="queue" size={size.iconSm} color={color.queueGlyph} />}</View>
+                <View style={st.glyph}>{deciding ? <Spinner color={color.queueGlyph} /> : item.shell ? <Boxed mark=">_" size={spacing.iconSm} color={color.queueGlyph} /> : <Glyph name="queue" size={spacing.iconSm} color={color.queueGlyph} />}</View>
                 <Text style={[st.words, item.shell && { fontFamily: mono, fontSize: 13 }]} numberOfLines={1}>
                   {words ? (
                     <>
@@ -166,8 +166,8 @@ export function QueueCard({ items, running, paused, resuming, steer, canEdit, er
 /** A ghost button with words, its icon first where it has one. */
 function Small({ title, icon, accessibilityLabel, disabled, onPress }: { title: string; icon?: GlyphName; accessibilityLabel?: string; disabled?: boolean; onPress: () => void }) {
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? title} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} hitSlop={10} style={({ pressed }) => [st.small, pressed && { backgroundColor: color.fill }, disabled && { opacity: size.disabled }]}>
-      {icon ? <Glyph name={icon} size={size.iconSm} color={color.mutedForeground} /> : null}
+    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? title} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} hitSlop={10} style={({ pressed }) => [st.small, pressed && { backgroundColor: color.fill }, disabled && { opacity: opacity.disabled }]}>
+      {icon ? <Glyph name={icon} size={spacing.iconSm} color={color.mutedForeground} /> : null}
       <Text style={st.smallText}>{title}</Text>
     </Pressable>
   );
@@ -176,23 +176,23 @@ function Small({ title, icon, accessibilityLabel, disabled, onPress }: { title: 
 /** A ghost icon button, 28 across with a finger's reach. */
 function Icon({ accessibilityLabel, disabled, onPress, children }: { accessibilityLabel: string; disabled?: boolean; onPress: () => void; children: React.ReactNode }) {
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} hitSlop={8} style={({ pressed }) => [st.icon, pressed && { backgroundColor: color.fill }, disabled && { opacity: size.disabled }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} hitSlop={8} style={({ pressed }) => [st.icon, pressed && { backgroundColor: color.fill }, disabled && { opacity: opacity.disabled }]}>
       {children}
     </Pressable>
   );
 }
 
 const st = StyleSheet.create({
-  line: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: size.controlMd, paddingHorizontal: 12 },
-  row: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: size.controlMd, paddingLeft: 6, paddingRight: 4, borderRadius: size.radiusControl },
-  glyph: { width: size.controlXs, height: size.controlXs, alignItems: "center", justifyContent: "center" },
+  line: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: spacing.controlMd, paddingHorizontal: 12 },
+  row: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: spacing.controlMd, paddingLeft: 6, paddingRight: 4, borderRadius: radius.control },
+  glyph: { width: spacing.controlXs, height: spacing.controlXs, alignItems: "center", justifyContent: "center" },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: color.warning },
   words: { ...text.sm, color: color.foreground, flex: 1 },
   muted: { ...text.sm, color: color.mutedForeground, flex: 1 },
   faded: { color: color.mutedForeground },
   note: { ...text.xs, color: color.mutedForeground, flexShrink: 1, maxWidth: 140 },
-  small: { flexDirection: "row", alignItems: "center", gap: 4, height: size.controlXs, paddingHorizontal: 8, borderRadius: size.radiusControl },
+  small: { flexDirection: "row", alignItems: "center", gap: 4, height: spacing.controlXs, paddingHorizontal: 8, borderRadius: radius.control },
   smallText: { ...text.label, color: color.mutedForeground },
-  icon: { width: size.controlSm, height: size.controlSm, alignItems: "center", justifyContent: "center", borderRadius: size.radiusIconButton },
+  icon: { width: spacing.controlSm, height: spacing.controlSm, alignItems: "center", justifyContent: "center", borderRadius: radius.iconButton },
   error: { ...text.xs, color: color.destructive, paddingHorizontal: 12, paddingBottom: 4 },
 });

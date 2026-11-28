@@ -11,7 +11,7 @@ import { Confirm } from "../act/Confirm";
 import { Glyph } from "../compose/Glyph";
 import { Pill, PillDivider } from "../compose/Pill";
 import { newId } from "../compose/state";
-import { color, size, text } from "../theme";
+import { color, spacing, radius, text, opacity } from "../theme";
 import { type Power, refusal } from "./powers";
 
 type Act = "on" | "start" | "off";
@@ -90,8 +90,8 @@ export function OvernightPill({ night, connected }: { night: Night; connected: b
     <>
       <PillDivider />
       <Pill label="Overnight" selected={on} disabled={!connected} onPress={() => night.ask(on ? "off" : "on")} style={on && { backgroundColor: color.pickedRow }}>
-        <Glyph name="moon" color={on ? color.violet : color.mutedForeground} />
-        <Text style={[st.pillText, on && { color: color.violet }]} numberOfLines={1}>Overnight</Text>
+        <Glyph name="moon" color={on ? color.tileViolet : color.mutedForeground} />
+        <Text style={[st.pillText, on && { color: color.tileViolet }]} numberOfLines={1}>Overnight</Text>
       </Pill>
     </>
   );
@@ -109,7 +109,7 @@ export function OvernightStrip({ night, connected }: { night: Night; connected: 
   if (!now) return null;
   return (
     <View style={st.strip} accessibilityLabel="Overnight">
-      <Glyph name="moon" color={color.violet} />
+      <Glyph name="moon" color={color.tileViolet} />
       <Text style={st.words} numberOfLines={1}>
         {now.since ? `${duration(tick - now.since)} in` : "Overnight"}
         <Text style={st.muted}>
@@ -117,7 +117,7 @@ export function OvernightStrip({ night, connected }: { night: Night; connected: 
           {now.decided ? ` · ${now.decided} decided for you` : ""}
         </Text>
       </Text>
-      <Pressable accessibilityRole="button" disabled={!connected} onPress={() => night.ask("off")} hitSlop={10} style={({ pressed }) => [st.soft, (pressed || !connected) && { opacity: connected ? 0.7 : size.disabled }]}>
+      <Pressable accessibilityRole="button" disabled={!connected} onPress={() => night.ask("off")} hitSlop={10} style={({ pressed }) => [st.soft, (pressed || !connected) && { opacity: connected ? 0.7 : opacity.disabled }]}>
         <Text style={st.softText}>I’m back</Text>
       </Pressable>
     </View>
@@ -129,8 +129,8 @@ export function StartNight({ label, night, connected }: { label: string; night: 
   return (
     <View style={st.actions}>
       <Text style={st.label}>{label}</Text>
-      <Pressable accessibilityRole="button" disabled={!connected} onPress={() => night.ask("start")} hitSlop={6} style={({ pressed }) => [st.primary, (pressed || !connected) && { opacity: connected ? 0.8 : size.disabled }]}>
-        <Glyph name="moon" size={size.iconSm} color={color.primaryFg} />
+      <Pressable accessibilityRole="button" disabled={!connected} onPress={() => night.ask("start")} hitSlop={6} style={({ pressed }) => [st.primary, (pressed || !connected) && { opacity: connected ? 0.8 : opacity.disabled }]}>
+        <Glyph name="moon" size={spacing.iconSm} color={color.primaryFg} />
         <Text style={st.primaryText}>Start night</Text>
       </Pressable>
     </View>
@@ -157,9 +157,9 @@ const st = StyleSheet.create({
   words: { ...text.sm, color: color.foreground, flex: 1 },
   muted: { color: color.mutedForeground },
   label: { ...text.xs, color: color.mutedForeground, flex: 1 },
-  soft: { height: size.controlXs, justifyContent: "center", paddingHorizontal: 8, borderRadius: size.radiusControl, backgroundColor: color.fill },
+  soft: { height: spacing.controlXs, justifyContent: "center", paddingHorizontal: 8, borderRadius: radius.control, backgroundColor: color.fill },
   softText: { ...text.label, color: color.foreground },
   actions: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
-  primary: { flexDirection: "row", alignItems: "center", gap: 6, height: size.controlSm + 4, paddingHorizontal: 12, borderRadius: size.radiusControl, backgroundColor: color.primary },
+  primary: { flexDirection: "row", alignItems: "center", gap: 6, height: spacing.controlSm + 4, paddingHorizontal: 12, borderRadius: radius.control, backgroundColor: color.primary },
   primaryText: { ...text.sm, fontWeight: "500", color: color.primaryFg },
 });

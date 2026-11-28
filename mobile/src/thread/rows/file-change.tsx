@@ -86,7 +86,7 @@ function DiffCard({ keep, change, diff: text }: { keep: string; change: FileChan
 }
 
 const st = StyleSheet.create({
-  counts: { fontSize: 12, lineHeight: 21, color: color.row },
+  counts: { fontSize: 12, lineHeight: 21, color: color.rowForeground },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: color.destructive, alignSelf: "center" },
   card: { marginTop: 4, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: color.border, overflow: "hidden" },
   title: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: color.fill },

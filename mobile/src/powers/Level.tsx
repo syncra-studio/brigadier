@@ -10,7 +10,7 @@ import { Button } from "../Button";
 import { Glyph, Shield } from "../compose/Glyph";
 import { Pill } from "../compose/Pill";
 import { forMac, newId } from "../compose/state";
-import { color, size, text } from "../theme";
+import { color, radius, text, opacity, touch } from "../theme";
 import { refusal } from "./powers";
 
 type Level = "ask" | "auto" | "full";
@@ -82,7 +82,7 @@ export function LevelPill({ id, row, connected }: { id: string; row: LevelRow | 
               const disabled = held && each.level !== "ask";
               const tone = each.level === "full" ? color.warning : color.foreground;
               return (
-                <Pressable key={each.level} accessibilityRole="radio" accessibilityState={{ checked: on, disabled }} disabled={disabled} onPress={() => pick(each.level)} style={({ pressed }) => [st.option, pressed && { backgroundColor: color.fill }, disabled && { opacity: size.disabled }]}>
+                <Pressable key={each.level} accessibilityRole="radio" accessibilityState={{ checked: on, disabled }} disabled={disabled} onPress={() => pick(each.level)} style={({ pressed }) => [st.option, pressed && { backgroundColor: color.fill }, disabled && { opacity: opacity.disabled }]}>
                   <Shield mark={each.mark} color={tone} />
                   <View style={{ flex: 1 }}>
                     <Text style={[st.optionText, { color: tone }]}>{each.label}</Text>
@@ -110,7 +110,7 @@ const st = StyleSheet.create({
   page: { flex: 1, backgroundColor: color.background },
   title: { ...text.lg, fontWeight: "600", color: color.foreground, marginBottom: 8 },
   note: { ...text.xs, color: color.mutedForeground, marginBottom: 8 },
-  option: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: size.touch, borderRadius: size.radiusControl, paddingHorizontal: 8, paddingVertical: 6 },
+  option: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: touch, borderRadius: radius.control, paddingHorizontal: 8, paddingVertical: 6 },
   optionText: { ...text.sm },
   detail: { ...text.sm, color: color.mutedForeground },
 });

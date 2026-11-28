@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Item } from "../../../../app/shared/thread";
 import { duration, hhmm } from "../../../../app/shared/words";
-import { color, text } from "../../theme";
+import { color, text, fontWeight } from "../../theme";
 import { ThreadImage } from "../Image";
 import { Markdown } from "../Markdown";
 import { Divider, ErrorLine, Glyph, Line, Opening, s, Words } from "./parts";
@@ -125,7 +125,7 @@ function Morning({ item }: { item: Report }) {
       <View style={st.card}>
         <View style={{ gap: 12, paddingHorizontal: 16, paddingTop: 24, paddingBottom: 20 }}>
           <View style={{ gap: 4 }}>
-            <Text style={[text.pageTitle, { fontSize: 24, color: color.foreground }]} accessibilityRole="header">Good morning</Text>
+            <Text style={[text.pageTitle, { fontWeight: fontWeight.semibold, fontSize: 24, color: color.foreground }]} accessibilityRole="header">Good morning</Text>
             <Text style={[text.sm, { color: color.foreground }]}>{item.summary}</Text>
           </View>
           <View style={st.facts}>
@@ -202,7 +202,7 @@ export function PeerRow({ item }: { item: Peer }) {
   if (!item.text) return <View><Line>{head}</Line>{reason}</View>;
   return (
     <View>
-      <Opening keep={item.id} label={words} detail={<View style={{ paddingLeft: 24 }}><Markdown text={item.text} style={{ ...text.sm, color: color.row }} /></View>}>
+      <Opening keep={item.id} label={words} detail={<View style={{ paddingLeft: 24 }}><Markdown text={item.text} style={{ ...text.sm, color: color.rowForeground }} /></View>}>
         {head}
       </Opening>
       {reason}

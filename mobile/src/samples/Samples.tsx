@@ -27,7 +27,7 @@ import switchSample from "../../../app/shared/samples/switch.json";
 import team from "../../../app/shared/samples/team.json";
 import tool from "../../../app/shared/samples/tool.json";
 import unknown from "../../../app/shared/samples/unknown.json";
-import { color, text } from "../theme";
+import { color } from "../theme";
 import { Cards } from "../thread/Cards";
 import { lineMaker } from "../../../app/shared/lines";
 import { Row } from "../thread/Row";

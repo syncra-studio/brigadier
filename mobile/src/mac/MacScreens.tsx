@@ -29,7 +29,7 @@ export function MacScreens({ name, onMacs, open }: { name: string; onMacs: () =>
             // The dot says whether this Mac is connected now, as the Mac list does.
             headerTitle: () => (
               <Text style={{ ...text.lg, fontWeight: "600", color: color.foreground }}>
-                <Text style={{ color: ready ? color.online : color.mutedForeground }}>● </Text>
+                <Text style={{ color: ready ? color.success : color.mutedForeground }}>● </Text>
                 {name}
               </Text>
             ),

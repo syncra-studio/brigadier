@@ -1,7 +1,7 @@
 // shortcut: a small markdown subset, no tables or nested lists; upgrade if the owner wants them.
 import { createContext, type ReactNode, useContext } from "react";
 import { Linking, ScrollView, StyleSheet, Text, type TextStyle, View } from "react-native";
-import { color, mono, text as type } from "../theme";
+import { color, text as type, mono } from "../theme";
 
 type Block =
   | { type: "p" | "quote"; text: string }
@@ -167,7 +167,7 @@ export function Markdown({ text, style }: { text: string; style?: TextStyle }) {
 
 const st = StyleSheet.create({
   blocks: { gap: 12 },
-  text: { ...type.base, color: color.chat },
+  text: { ...type.base, color: color.chatForeground },
   heading: { fontWeight: "600" },
   bold: { fontWeight: "600" },
   italic: { fontStyle: "italic" },

@@ -81,7 +81,7 @@ export function AssistantMessage({ item, final }: { item: Message; final: boolea
 
 /** A finished answer's marks: only its time on the phone (Copy, Save as note and Fork are the Mac's). */
 export function AnswerMarks({ time }: { time?: number }) {
-  return time === undefined ? null : <Text style={[s.small, { color: color.faint }]}>{sentAt(time)}</Text>;
+  return time === undefined ? null : <Text style={[s.small, { color: color.faintForeground }]}>{sentAt(time)}</Text>;
 }
 
 /** The live "Thinking" line: the thought's newest heading if there is one. */
@@ -146,5 +146,5 @@ const st = StyleSheet.create({
   files: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 8, maxWidth: "85%" },
   image: { width: 120, height: 120, borderRadius: 10 },
   file: { fontSize: 13, lineHeight: 18, color: color.foreground, backgroundColor: color.muted, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, maxWidth: 220 },
-  time: { color: color.faint },
+  time: { color: color.faintForeground },
 });

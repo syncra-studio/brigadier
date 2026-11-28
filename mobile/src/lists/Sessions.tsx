@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingVertical: 10, gap: 10 },
   dotBox: { width: 10, alignItems: "center" },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  blue: { backgroundColor: color.unread },
+  blue: { backgroundColor: color.link },
   working: { backgroundColor: color.foreground },
   calm: { backgroundColor: color.mutedForeground },
   title: { ...text.base, color: color.foreground },
