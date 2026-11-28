@@ -2349,7 +2349,7 @@ async function ghLogins() {
 
 // New project with no git identity (a home whose git config has no name or email): the first commit isn't made
 // with git's guess, nothing is left behind, and once the form's name and email are set (for every repository)
-// it's made as them. With an identity already set, the form isn't asked for and nothing in git's config changes.
+// it's made as them. Global, includeIf and author/committer-only identities skip the form and leave config alone.
 async function noIdentity() {
   freshData('noidentity')
   const home = `${DATA}/home`
@@ -2359,22 +2359,41 @@ async function noIdentity() {
   fs.mkdirSync(`${home}/gh`, { recursive: true })
   const env = (config) => ({ HOME: home, USERPROFILE: home, GIT_CONFIG_GLOBAL: config, GIT_CONFIG_NOSYSTEM: '1', GH_CONFIG_DIR: `${home}/gh` })
   const author = (dir) => spawnSync('git', ['-C', dir, 'log', '-1', '--format=%an <%ae>'], { encoding: 'utf8' }).stdout.trim()
+  const committer = (dir) => spawnSync('git', ['-C', dir, 'log', '-1', '--format=%cn <%ce>'], { encoding: 'utf8' }).stdout.trim()
   const none = env(`${home}/empty.gitconfig`)
   fs.writeFileSync(none.GIT_CONFIG_GLOBAL, '')
-  const asked = await cliAsync(['projects', 'identity'], none)
+  const asked = await cliAsync(['projects', 'identity', '--to', `${work}/a`], none)
   const failed = await cliAsync(['projects', 'init', `${work}/a`, '--id', 'p-drill-a'], none)
-  const saved = await cliAsync(['projects', 'identity', '--name', 'Drill Person', '--email', 'drill'], none)
+  const saved = await cliAsync(['projects', 'identity', '--to', `${work}/b`, '--name', 'Drill Person', '--email', 'drill'], none)
   const made = await cliAsync(['projects', 'init', `${work}/b`, '--id', 'p-drill-b'], none)
   const first = { asked, error: failed.error ?? null, left: fs.existsSync(`${work}/a`), saved, author: made.project?.id === 'p-drill-b' ? author(`${work}/b`) : made.error }
   const firstOk = asked.set === false && !failed.ok && /name and email/.test(first.error ?? '') && !first.left && saved.set === true && first.author === 'Drill Person <drill>'
   const set = env(`${home}/set.gitconfig`)
   const before = '[user]\n\tname = Already Set\n\temail = set@example.invalid\n'
   fs.writeFileSync(set.GIT_CONFIG_GLOBAL, before)
-  const known = await cliAsync(['projects', 'identity'], set)
+  const known = await cliAsync(['projects', 'identity', '--to', `${work}/c`], set)
   const again = await cliAsync(['projects', 'init', `${work}/c`, '--id', 'p-drill-c'], set)
   const second = { known, author: again.ok ? author(`${work}/c`) : again.error, unchanged: fs.readFileSync(set.GIT_CONFIG_GLOBAL, 'utf8') === before }
   const secondOk = known.set === true && second.author === 'Already Set <set@example.invalid>' && second.unchanged
-  log({ summary: 'noidentity', pass: firstOk && secondOk, first, second })
+  const scoped = env(`${home}/scoped.gitconfig`)
+  const included = '[user]\n\tname = Scoped Person\n\temail = scoped@example.invalid\n'
+  fs.writeFileSync(`${home}/included.gitconfig`, included)
+  const condition = `[includeIf "gitdir:${fs.realpathSync.native(work).replaceAll('\\', '/')}/scoped/"]\n\tpath = included.gitconfig\n`
+  fs.writeFileSync(scoped.GIT_CONFIG_GLOBAL, condition)
+  const scopedPath = `${work}/scoped/deep/d`
+  const scopedKnown = await cliAsync(['projects', 'identity', '--to', scopedPath], scoped)
+  const left = fs.existsSync(`${work}/scoped`)
+  const scopedMade = await cliAsync(['projects', 'init', scopedPath, '--id', 'p-drill-d'], scoped)
+  const third = { known: scopedKnown, left, author: scopedMade.ok ? author(scopedPath) : scopedMade.error, unchanged: fs.readFileSync(scoped.GIT_CONFIG_GLOBAL, 'utf8') === condition && fs.readFileSync(`${home}/included.gitconfig`, 'utf8') === included }
+  const thirdOk = scopedKnown.set === true && !left && third.author === 'Scoped Person <scoped@example.invalid>' && third.unchanged
+  const split = env(`${home}/split.gitconfig`)
+  const identities = '[author]\n\tname = Author Person\n\temail = author@example.invalid\n[committer]\n\tname = Committer Person\n\temail = committer@example.invalid\n'
+  fs.writeFileSync(split.GIT_CONFIG_GLOBAL, identities)
+  const splitKnown = await cliAsync(['projects', 'identity', '--to', `${work}/e`], split)
+  const splitMade = await cliAsync(['projects', 'init', `${work}/e`, '--id', 'p-drill-e'], split)
+  const fourth = { known: splitKnown, author: splitMade.ok ? author(`${work}/e`) : splitMade.error, committer: splitMade.ok ? committer(`${work}/e`) : splitMade.error, unchanged: fs.readFileSync(split.GIT_CONFIG_GLOBAL, 'utf8') === identities }
+  const fourthOk = splitKnown.set === true && fourth.author === 'Author Person <author@example.invalid>' && fourth.committer === 'Committer Person <committer@example.invalid>' && fourth.unchanged
+  log({ summary: 'noidentity', pass: firstOk && secondOk && thirdOk && fourthOk, first, second, third, fourth })
   if (process.env.KEEP !== '1') [DATA, work].forEach(drop)
 }
 

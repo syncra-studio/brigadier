@@ -62,7 +62,7 @@ pub fn clone_github(from: &str, dir: &Path, secs: u64, account: Option<&str>) ->
 pub fn noreply() -> Option<String> {
     let mut command = tool(&gh().ok()?);
     let jq = r#""\(.id)+\(.login)@users.noreply.github.com""#;
-    command.args(["api", "user", "--jq", jq]);
+    command.args(["api", "--hostname", HOST, "user", "--jq", jq]);
     let out = setup::run(&mut command, GH_SECS).ok()?;
     let email = String::from_utf8_lossy(&out.stdout).trim().to_string();
     (out.status.success() && !email.is_empty()).then_some(email)

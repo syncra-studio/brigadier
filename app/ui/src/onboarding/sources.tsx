@@ -218,6 +218,7 @@ export function useProjectSources({ source, offline, initialPath = "", onExistin
   const targets = [...repos, ...extra];
   const folders = chosen.filter((path) => !added.includes(path));
   const fresh = where === "new" ? name.trim() : "";
+  const inits = [...folders.filter((path) => plain.includes(path)), ...(fresh && !madeDone ? [`${parent}${fresh}`] : [])];
   const total = folders.length + targets.length + (fresh ? 1 : 0);
   const single = total !== 1 ? null : fresh ? { kind: "new" as const, name: fresh } : folders[0] ? { kind: "folder" as const, name: baseName(folders[0]) } : { kind: "clone" as const, name: folderFromUrl(targets[0] ?? "") };
   // Through gh when it can (a private repository, the account that sees it); else git itself clones its URL.
@@ -226,12 +227,15 @@ export function useProjectSources({ source, offline, initialPath = "", onExistin
   const finish = async () => {
     setBusy("adding");
     setError(null);
-    const inits = (fresh && !madeDone) || folders.some((path) => plain.includes(path));
     try {
-      if (who) await source.identity(who.name, who.email);
-      const known = inits && !who ? await source.identity() : null;
+      for (const path of inits) {
+        const known = await source.identity(path);
+        if (!known.set) {
+          if (!who) return (setWho(known), setBusy(null));
+          await source.identity(path, who.name, who.email);
+        }
+      }
       setWho(null);
-      if (known && !known.set) return (setWho(known), setBusy(null));
     } catch (cause) {
       return (setError(errorText(cause)), setBusy(null));
     }
@@ -273,7 +277,7 @@ export function useProjectSources({ source, offline, initialPath = "", onExistin
   };
 
   const adding = busy === "adding";
-  const disabled = !online || (where === "new" && !fresh) || (who !== null && !(who.name.trim() && who.email.trim()));
+  const disabled = !online || (where === "new" && !fresh) || (inits.length > 0 && who !== null && !(who.name.trim() && who.email.trim()));
   const submit = () => !disabled && busy === null && void finish();
   const flip = (list: string[], item: string) => (list.includes(item) ? list.filter((each) => each !== item) : [...list, item]);
   const hint = adding && current ? `Cloning ${current}…` : where === "new" ? `In ${parent}` : targets.length ? `Clones go into ${parent}` : undefined;
@@ -337,7 +341,7 @@ export function useProjectSources({ source, offline, initialPath = "", onExistin
             onSubmit={submit}
           />
         )}
-        {who && <AskIdentity who={who} onChange={setWho} busy={adding} />}
+        {inits.length > 0 && who && <AskIdentity who={who} onChange={setWho} busy={adding} />}
         {!online && <p className="text-sm text-muted-foreground">Daemon not reachable · reconnecting…</p>}
         <ErrorLine error={error} />
       </div>

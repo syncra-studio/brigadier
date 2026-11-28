@@ -396,25 +396,48 @@ const NO_IDENTITY: &str = "Git needs your name and email before it can make the 
 fn config(dir: &Path, key: &str) -> String {
     let out = setup::run(
         tool("git")
-            .arg("-C")
-            .arg(dir)
+            .arg("--git-dir")
+            .arg(dir.join(".git"))
             .args(["config", "--get", key]),
         INIT_SECS,
     );
     (out.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())).unwrap_or_default()
 }
 
-/// Whether git has a name and an email set for `dir`.
+/// Whether git can identify both the author and committer without guessing.
 fn configured(dir: &Path) -> bool {
-    ["user.name", "user.email"]
+    ["GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"]
         .iter()
-        .all(|key| !config(dir, key).is_empty())
+        .all(|key| {
+            ran(
+                tool("git").arg("--git-dir").arg(dir.join(".git")).args([
+                    "-c",
+                    "user.useConfigOnly=true",
+                    "var",
+                    key,
+                ]),
+                INIT_SECS,
+            )
+            .is_ok()
+        })
 }
 
-/// `projects identity [--name N --email E]`: the name and email git commits as, for New project's
-/// form. Unset, it suggests the onboarding name and the GitHub account's private email. With both,
+/// `projects identity [--to DEST] [--name N --email E]`: git's identity at New project's destination.
+/// Unset, it suggests the onboarding name and the GitHub account's private email. With both,
 /// they're set for every repository (`git config --global`) on the user's click.
-pub fn identity(data: &Path, name: Option<&str>, email: Option<&str>) -> io::Result<Value> {
+pub fn identity(
+    data: &Path,
+    dest: Option<&str>,
+    name: Option<&str>,
+    email: Option<&str>,
+) -> io::Result<Value> {
+    let at = dest.map(expand).unwrap_or_else(std::env::temp_dir);
+    if !at.is_absolute() {
+        return err("Type the full path of the folder to create.");
+    }
+    if dest.is_some() {
+        projects::plain(data, &at)?;
+    }
     if let (Some(name), Some(email)) = (name.map(str::trim), email.map(str::trim)) {
         if name.is_empty() || email.is_empty() {
             return err("Enter a name and an email.");
@@ -426,17 +449,22 @@ pub fn identity(data: &Path, name: Option<&str>, email: Option<&str>) -> io::Res
             )?;
         }
     }
-    // Outside any repository, so no repository's own config answers.
-    let at = std::env::temp_dir();
+    // Git needs the gitdir's parent to exist even for `var`; leave no repository or empty folders.
+    let missing: Vec<_> = at.ancestors().take_while(|p| !p.exists()).collect();
+    let created = fs::create_dir_all(&at);
+    let set = created.is_ok() && configured(&at);
     let (mut name, mut email) = (config(&at, "user.name"), config(&at, "user.email"));
-    let set = !name.is_empty() && !email.is_empty();
-    if name.is_empty() {
+    for dir in missing {
+        let _ = fs::remove_dir(dir);
+    }
+    created?;
+    if !set && name.is_empty() {
         let profile = fs::read(data.join("profile.json")).ok();
         let profile: Value =
             (profile.and_then(|b| serde_json::from_slice(&b).ok())).unwrap_or_default();
         name = profile["name"].as_str().unwrap_or("").into();
     }
-    if email.is_empty() {
+    if !set && email.is_empty() {
         email = crate::host::noreply().unwrap_or_default();
     }
     Ok(json!({"ok": true, "set": set, "name": name, "email": email}))

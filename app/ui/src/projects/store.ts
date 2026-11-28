@@ -36,8 +36,8 @@ export type Source = {
   /** Clones a URL, or with `github` an `owner/name` through gh's own sign-in (`account`'s, else gh's active one), into `dest`. */
   clone(id: string, from: string, dest: string, github?: boolean, account?: string): Promise<unknown>;
   github(): Promise<GitHub>;
-  /** Git's identity; with a name and email, they're set for every repository first. */
-  identity(name?: string, email?: string): Promise<GitIdentity>;
+  /** Git's identity at the destination; with a name and email, they're set for every repository first. */
+  identity(path: string, name?: string, email?: string): Promise<GitIdentity>;
   /** The native folder picker, starting at `at`. */
   pick(at?: string): Promise<string | null>;
 };
@@ -111,7 +111,7 @@ export const daemonSource: Source = {
   clone: (id, from, dest, github, account) =>
     addProject(dest, ["clone", from, "--to", dest, ...(github ? ["--github"] : []), ...(account ? ["--account", account] : [])], id),
   github: async () => (await run(["projects", "github"])).github as GitHub,
-  identity: async (name, email) => (await run(["projects", "identity", ...(name === undefined ? [] : ["--name", name, "--email", email ?? ""])])) as GitIdentity,
+  identity: async (path, name, email) => (await run(["projects", "identity", "--to", path, ...(name === undefined ? [] : ["--name", name, "--email", email ?? ""])])) as GitIdentity,
   pick: async (at) => ((await window.brigadier?.pickFolders({ at })) ?? [])[0] ?? null,
 };
 
