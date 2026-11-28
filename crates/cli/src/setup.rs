@@ -8,7 +8,7 @@ use brigadier_core::{self as core, SETUP, Spec, projects, repos, session_dir};
 use brigadier_frames::log;
 use serde_json::{Value, json};
 use std::fs::File;
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, thread};
@@ -269,15 +269,16 @@ pub(crate) fn agents(
         return Ok(names.into_iter().map(|a| saved(data, a, cwd)).collect());
     }
     fs::create_dir_all(data.join("agents"))?;
-    let path = data.join("agents/check.lock");
-    let before = fs::read(&path).unwrap_or_default();
-    let mut lock = File::options()
+    // Its own file, not the lock's: Windows refuses a read of a locked file, even the holder's.
+    let done = data.join("agents/check.done");
+    let before = fs::read(&done).unwrap_or_default();
+    let lock = File::options()
         .create(true)
         .truncate(false)
         .write(true)
-        .open(&path)?;
+        .open(data.join("agents/check.lock"))?;
     lock.lock()?;
-    let completed = fs::read(&path)?;
+    let completed = fs::read(&done).unwrap_or_default();
     let last: Value = serde_json::from_slice(&completed).unwrap_or_default();
     if completed != before
         && last["cwd"] == cwd.to_str().unwrap_or("")
@@ -305,8 +306,7 @@ pub(crate) fn agents(
     })?;
     // Publish completion only after every cache was saved. A crash leaves waiters free to retry.
     let completed = json!({"cwd": cwd, "names": names.iter().map(|a| a.name()).collect::<Vec<_>>(), "at": now_ns()});
-    lock.set_len(0)?;
-    lock.write_all(completed.to_string().as_bytes())?;
+    core::write_atomic(&done, completed.to_string().as_bytes())?;
     Ok(checks)
 }
 

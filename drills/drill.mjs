@@ -4,7 +4,7 @@
 // client sees.
 //
 //   BIN=<dir with brigadier, brigadier-host, brigadier-fake, brigadier-procs, brigadierd> node drills/drill.mjs <drill> [minutes]
-//   drills: killloop, hang, procs, detach, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed
+//   drills: killloop, hang, procs, detach, catalogue, scale, sleep, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck
 //   killloop: BUILDS=<dir>:<dir> (; on Windows) rotates in more builds; OLD_BIN=<dir> adds hosts and the first
 //   daemon from a previous release's code.
 //
@@ -2302,9 +2302,19 @@ async function standing() {
   if (process.env.KEEP !== '1') own.forEach(drop)
 }
 
+// The agents check as onboarding runs it, two at once (the app's and the daemon's warm-up): both answer and every
+// card is checked, in a home where no CLI is installed. Windows refuses a read of its lock file.
+async function agentCheck() {
+  freshData('agentcheck')
+  const both = await Promise.all([0, 1].map(() => cliAsync(['agents'])))
+  const pass = both.every((r) => r.ok && r.agents.length > 0 && r.agents.every((a) => 'path' in a))
+  log({ summary: 'agentcheck', pass, found: both[0].agents?.map((a) => [a.name, a.path]), errors: both.map((r) => r.error ?? null) })
+  if (process.env.KEEP !== '1') drop(DATA)
+}
+
 const [drill, arg] = process.argv.slice(2)
 if (!BIN) throw new Error('set BIN to a folder with the brigadier binaries')
 fs.mkdirSync(ROOT, { recursive: true })
-const run = { killloop: () => killloop(+(arg ?? 30)), hang, procs: procsDrill, detach, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed }[drill]
-if (!run) throw new Error('drills: killloop [minutes], hang, procs, detach, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed')
+const run = { killloop: () => killloop(+(arg ?? 30)), hang, procs: procsDrill, detach, catalogue, scale, sleep: sleepDrill, sleepprep: sleepPrep, sleepcheck: sleepCheck, rebirth: rebirthDrill, standing, handoff: handoffDrill, summary: summaryDrill, peers: peersDrill, rewindfiles: rewindDrill, speed, agentcheck: agentCheck }[drill]
+if (!run) throw new Error('drills: killloop [minutes], hang, procs, detach, catalogue, scale, sleep, sleepprep, sleepcheck, rebirth, standing, handoff, peers, rewindfiles, speed, agentcheck')
 await run()
