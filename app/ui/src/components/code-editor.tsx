@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { highlight } from "../thread/highlight";
+import { highlight } from "../../../shared/highlight";
 import { cx } from "./cx";
 
 /**

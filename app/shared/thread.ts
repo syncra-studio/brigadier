@@ -388,3 +388,6 @@ export function mergePage(session: Session, frame: Record<string, any>, before: 
   const turns = join(session.turns, frame.turns as Turn[], (turn) => turn.id);
   return { session: { ...session, before, after, items, turns, work: join(session.work ?? [], frame.work as Work[], (each) => each.turnId) }, touch };
 }
+
+/** The morning report's lists: what is done and how it's known, what isn't, each decision taken for the user. */
+export const MORNING_WORDS = { done: "Done, with proof", left: "Not done", decided: "Decided for you" } as const;

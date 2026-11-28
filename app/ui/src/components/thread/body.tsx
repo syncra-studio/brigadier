@@ -8,6 +8,7 @@ import { type Group, type Line, running } from "../../thread/lines";
 import { Markdown } from "../../thread/markdown";
 import { AnswerRefs } from "../../thread/refs";
 import { tidy } from "../../../../shared/markdown";
+import { approvalSubject } from "../../../../shared/cards";
 import { useAgentLabel } from "../../onboarding/api";
 import { describe } from "../composer/approval";
 import { SentAttachments } from "../composer/attachments";
@@ -165,8 +166,6 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
       );
     case "approval": {
       const shown = describe(item.request);
-      const { command, host, paths, input } = item.request;
-      const subject = command || host || paths?.join(", ") || input || undefined;
       return (
         <ApprovalRow
           keep={item.id}
@@ -176,7 +175,7 @@ export function Body({ item, turn, step, dated = false, actions = true, older, f
           decision={item.decision}
           action={item.request.action}
           waiting={turn?.status === "running" || turn?.held === true}
-          subject={subject}
+          subject={approvalSubject(item.request)}
           toParent={item.to === "parent"}
           byReview={item.by === "review"}
         />

@@ -4,7 +4,7 @@
 import { type ReactNode, useSyncExternalStore } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { exchangeWords, HOPS_STOPPED, peerExchange, peerOf, RATE_STOPPED, sessionSendWords, UNSURE } from "../../../../app/shared/peers";
-import type { Item } from "../../../../app/shared/thread";
+import { type Item, MORNING_WORDS } from "../../../../app/shared/thread";
 import { duration, FORKED_FROM, forkedAfter, forkedSource, hhmm, IMAGE_WORDS, type MockupMoment, mockupName, mockupWords, STARTED_STATUS, startedStatus, startedWords, startError, startFailed, tooBigToCopy } from "../../../../app/shared/words";
 import { BranchAlt, Chat, Check, Clock, ImageSquare, Moon, Shuffle, Sun, XCircleFilled } from "../../../../app/ui/src/icons";
 import { lists } from "../../mac/mac";
@@ -153,17 +153,17 @@ function List({ title, count, children }: { title: string; count: number; childr
 function Morning({ item }: { item: Report }) {
   const sections = [
     item.done.length > 0 && (
-      <List key="done" title="Done, with proof" count={item.done.length}>
+      <List key="done" title={MORNING_WORDS.done} count={item.done.length}>
         {item.done.map((each, at) => <Part key={at} keep={`${item.id}:done:${at}`} mark={<Check className={`${MARK} text-success`} />} title={each.title} line={each.proof} more={each.more} />)}
       </List>
     ),
     item.left.length > 0 && (
-      <List key="left" title="Not done" count={item.left.length}>
+      <List key="left" title={MORNING_WORDS.left} count={item.left.length}>
         {item.left.map((each, at) => <Part key={at} keep={`${item.id}:left:${at}`} mark={<XCircleFilled className={`${MARK} text-warning`} />} title={each.title} line={each.why} after={each.next} />)}
       </List>
     ),
     item.decided.length > 0 && (
-      <List key="decided" title="Decided for you" count={item.decided.length}>
+      <List key="decided" title={MORNING_WORDS.decided} count={item.decided.length}>
         {item.decided.map((each, at) => <Part key={at} keep={`${item.id}:decided:${at}`} mark={<Shuffle className={`${MARK} text-muted-foreground`} />} title={each.title} line={each.why} after={each.other} />)}
       </List>
     ),

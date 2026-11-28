@@ -1,5 +1,6 @@
 // Thread row icons, copied from @openai/apps-sdk-ui 0.2.2 (MIT, see THIRD_PARTY_NOTICES.md).
 import type { IconProps } from ".";
+import { Compare } from "./review";
 
 export function ChevronRightAlt(props: IconProps) {
   return (
@@ -428,3 +429,6 @@ export function ArrowCurvedLeft(props: IconProps) {
     </svg>
   );
 }
+
+/** A fence's icon by its language, before the words after it: a draft's destination, a diff's file [D477]. */
+export const FENCE_ICONS: Record<string, typeof Code> = { sh: Terminal, bash: Terminal, zsh: Terminal, shell: Terminal, diff: Compare };

@@ -2,7 +2,7 @@
 // after composer/approval.tsx's describe and decision-parts.tsx's ToolBox, ActionFileList and CodeSpans.
 import { type ComponentType, Fragment, type ReactNode, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { answerWords, approvalWords, ASKED, type AskWords, askWords, PARENT, type PendingApproval, type PendingQuestion, questionWords } from "../../../../app/shared/cards";
+import { answerWords, approvalSubject, approvalWords, ASKED, type AskWords, askWords, PARENT, type PendingApproval, type PendingQuestion, questionWords } from "../../../../app/shared/cards";
 import type { ApprovalAction, Item, SentFile, Turn } from "../../../../app/shared/thread";
 import { Chat, Commit, Cursor, Dock, Globe, type IconProps, Key, PencilSquare, QuestionMarkCircle, Sparkle, Tools } from "../../../../app/ui/src/icons";
 import { color, fontWeight, mono, radius, space, text } from "../../theme";
@@ -134,7 +134,7 @@ const Asked = ({ children }: { children: ReactNode }) => <View style={{ gap: spa
  */
 export function ApprovalRow({ item, turn }: { item: Extract<Item, { kind: "approval" }>; turn: Turn | undefined }) {
   const { request, decision } = item;
-  const subject = request.command || request.host || request.paths?.join(", ") || request.input || undefined;
+  const subject = approvalSubject(request);
   const waiting = turn?.status === "running" || turn?.held === true;
   const verb = approvalWords(decision, request.action, waiting, parentOf(item.to), item.by === "review");
   const icon = <StepIcon icon={ACTIONS[request.action] ?? ACTIONS.other} />;

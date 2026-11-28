@@ -13,12 +13,12 @@ const VARIANTS = {
   "link-blue": { backgroundColor: undefined, color: color.link, pressed: undefined },
 };
 
-// The desktop's SIZES: capsules control-md and control-sm tall, and inline words with no box.
+// The desktop's SIZES as minimums: capsules control-md and control-sm tall, inline words with no box; Larger Text grows them.
 const SIZES = {
-  md: { height: spacing.controlMd, paddingHorizontal: space(3.5), gap: space(1.5), borderRadius: radius.capsule },
-  sm: { height: spacing.controlSm, paddingHorizontal: space(2.5), gap: space(1), borderRadius: radius.capsule },
+  md: { minHeight: spacing.controlMd, paddingHorizontal: space(3.5), gap: space(1.5), borderRadius: radius.capsule },
+  sm: { minHeight: spacing.controlSm, paddingHorizontal: space(2.5), gap: space(1), borderRadius: radius.capsule },
   // h-auto: one line of its text-xs.
-  inline: { height: text.xs.lineHeight ?? text.xs.fontSize, gap: space(1) },
+  inline: { minHeight: text.xs.lineHeight ?? text.xs.fontSize, gap: space(1) },
 };
 
 /**
@@ -36,7 +36,7 @@ export function DialogButton({ title, variant = "default", size = "md", disabled
       accessibilityState={{ disabled: off, busy }}
       disabled={off}
       onPress={onPress}
-      hitSlop={(touch - box.height) / 2}
+      hitSlop={(touch - box.minHeight) / 2}
       style={({ pressed }) => [styles.button, box, { backgroundColor: (pressed && look.pressed) || look.backgroundColor }, off && { opacity: opacity.disabled }]}
     >
       {busy ? <Spin><Spinner className="size-icon-xs" color={look.color} /></Spin> : null}

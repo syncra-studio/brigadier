@@ -1,9 +1,17 @@
 // The right panel's icons, copied from @openai/apps-sdk-ui 0.2.2 (MIT, see THIRD_PARTY_NOTICES.md).
 import type { IconProps } from ".";
+import { PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen } from "../landing/icons";
 
 // Shared with the landing views, which drew them first.
 export { Clock, PullRequestClosed, PullRequestMerged, PullRequestOpen, Sparkles } from "../landing/icons";
 
+/** A PR's state as GitHub says it, in its icon, word and colour: Open, Draft, Merged, Closed [D202]. */
+export const PR_LOOK = {
+  open: { Icon: PullRequestOpen, tint: "text-success" },
+  draft: { Icon: PullRequestDraft, tint: "text-muted-foreground" },
+  merged: { Icon: PullRequestMerged, tint: "text-pr-purple" },
+  closed: { Icon: PullRequestClosed, tint: "text-destructive" },
+};
 /** Publish Branch: an arrow up out of a circle. */
 export function Publish(props: IconProps) {
   return (

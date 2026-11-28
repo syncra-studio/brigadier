@@ -11,7 +11,7 @@ import { openTab } from "../shell/tab-store";
 import type { Item, Session } from "../thread/item";
 import type { Source } from "../thread/thread";
 import { useWorkers } from "../workers/live";
-import { refusalWords } from "../../../shared/cards";
+import { refusalWords, WAITING_FOR_YOU } from "../../../shared/cards";
 import type { Runner } from "./composer";
 import { saidDraft } from "./files";
 
@@ -271,7 +271,7 @@ export function SessionQuestions({ id, run, source, night, ...takes }: { id: str
     return refused < 0;
   };
   return (
-    <RailItem variant="decision" label={night ? "Before you go" : "Waiting for you"}>
+    <RailItem variant="decision" label={night ? "Before you go" : WAITING_FOR_YOU}>
       <QuestionCard
         key={question.id}
         session={id}

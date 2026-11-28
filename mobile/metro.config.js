@@ -15,7 +15,8 @@ config.resolver.resolveRequest = (context, name, platform) =>
   /^react\/jsx(-dev)?-runtime$/.test(name) && isIcons(context.originModulePath)
     ? { type: "sourceFile", filePath: SVG_JSX }
     : context.resolveRequest(context, name, platform);
-// A desktop file the phone draws (the mark) takes the phone's own React, never a second copy.
-config.resolver.extraNodeModules = { react: path.resolve(__dirname, "node_modules/react") };
+// A desktop file the phone draws (the mark) takes the phone's own React, never a second copy; app/shared's
+// highlight.ts, the phone's highlight.js.
+config.resolver.extraNodeModules = { react: path.resolve(__dirname, "node_modules/react"), "highlight.js": path.resolve(__dirname, "node_modules/highlight.js") };
 config.watchFolders = [path.resolve(__dirname, "../app/shared"), path.resolve(__dirname, "../app/ui/src")];
 module.exports = config;

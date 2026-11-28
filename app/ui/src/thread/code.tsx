@@ -6,7 +6,7 @@ import { cx } from "../components/cx";
 import { TooltipIconButton } from "../components/icon-button";
 import { ArrowCurvedLeft, ChevronDown, ChevronUp, Code } from "../icons";
 import { useFindSearching } from "./find-text";
-import { highlight } from "./highlight";
+import { highlight } from "../../../shared/highlight";
 import { useKept } from "./kept";
 import "./code.css";
 

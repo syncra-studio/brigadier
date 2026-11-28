@@ -2,7 +2,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import type { ApprovalAction } from "../../thread/item";
-import { ASKED, askWords, grantTip, moreWaiting, type ApprovalDecision, type PendingApproval } from "../../../../shared/cards";
+import { APPROVAL_WORDS, ASKED, askWords, grantTip, moreWaiting, type ApprovalDecision, type PendingApproval } from "../../../../shared/cards";
 import { Commit, Cursor, Dock, Globe, Key, PencilSquare, Sparkle } from "../../icons";
 import { MentionedWorker, openWorker } from "../../workers/live";
 import { cx } from "../cx";
@@ -193,7 +193,7 @@ export function ApprovalCard({
   useCardKeys(!busy && !waits, { enter: primary, escape }, card);
 
   const grant = approval.grant ? grantTip(approval.grant) : null;
-  const allow = shown.allow ?? "Allow once";
+  const allow = shown.allow ?? APPROVAL_WORDS.allowOnce;
   return (
     <ActionCard
       ref={card}
@@ -244,8 +244,8 @@ export function ApprovalCard({
                     <ComposerField
                       ref={field}
                       size="line"
-                      label="What to do instead"
-                      placeholder="Tell the agent what to do instead"
+                      label={APPROVAL_WORDS.insteadLabel}
+                      placeholder={APPROVAL_WORDS.instead}
                       initial={{ parts: reason ? [reason] : [], attachmentIds: [] }}
                       onChange={(parts) => {
                         const text = plainText(parts);
@@ -266,7 +266,7 @@ export function ApprovalCard({
           {!shown.noDeny && (
             <div data-gone={refusing || undefined} inert={refusing} className={MAKES_WAY}>
               <button type="button" className={actionButton("outline")} disabled={busy} onClick={deny}>
-                {shown.deny ?? "Deny"}
+                {shown.deny ?? APPROVAL_WORDS.deny}
                 <Kbd variant="chip" aria-hidden className="@max-card-narrow/approval-card:hidden">
                   Esc
                 </Kbd>
@@ -286,7 +286,7 @@ export function ApprovalCard({
                   />
                 }
               >
-                Allow for this session
+                {APPROVAL_WORDS.allowSession}
               </TooltipTrigger>
               <TooltipContent>{grant}</TooltipContent>
             </Tooltip>
@@ -309,7 +309,7 @@ export function ApprovalCard({
                 }
                 to={
                   <>
-                    {message ? "Send instead" : "Send"}
+                    {message ? APPROVAL_WORDS.sendInstead : APPROVAL_WORDS.send}
                     {ENTER_KEY}
                   </>
                 }

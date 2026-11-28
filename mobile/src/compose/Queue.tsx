@@ -57,7 +57,7 @@ export function QueueCard({ items, running, paused, resuming, steer, canEdit, er
   const { height } = useWindowDimensions();
   if (items.length === 0 && running.length === 0 && !pulled) return null;
   return (
-    <View accessibilityLabel="Message queue">
+    <View accessibilityLabel={QUEUE_WORDS.label}>
       {paused ? (
         <View style={st.line}>
           <View style={st.dot} />
@@ -81,7 +81,7 @@ export function QueueCard({ items, running, paused, resuming, steer, canEdit, er
           <Small title="Put back" disabled={resuming} onPress={pulled.onPutBack} />
         </View>
       ) : null}
-      <ScrollView style={{ maxHeight: height * 0.3, flexGrow: 0 }} contentContainerStyle={{ padding: 4 }} accessibilityLabel="Queued messages">
+      <ScrollView style={{ maxHeight: height * 0.3, flexGrow: 0 }} contentContainerStyle={{ padding: 4 }} accessibilityLabel={QUEUE_WORDS.list}>
         {shown.map((item, index) => {
           const local = item.state === "local";
           const unadded = item.state === "unadded";
@@ -130,10 +130,10 @@ export function QueueCard({ items, running, paused, resuming, steer, canEdit, er
                 {lost ? <Small title={QUEUE_WORDS.addAgain} onPress={() => onAddAgain(item.id)} /> : null}
                 {/* One for a worker steers into that worker's turn, while it has one. */}
                 {(steer || item.to) && !item.to?.ended && !item.shell && !lost ? <Small title="Steer" icon={ArrowCurvedRight} accessibilityLabel="Steer: submit without interrupting the model" disabled={local} onPress={() => onSteer(item.id)} /> : null}
-                <Icon accessibilityLabel={item.shell ? "Delete queued command" : "Delete queued message"} disabled={local || (item.state === "delivered" && !item.refused)} onPress={() => onRemove(item.id)}>
+                <Icon accessibilityLabel={item.shell ? QUEUE_WORDS.deleteCommand : QUEUE_WORDS.deleteMessage} disabled={local || (item.state === "delivered" && !item.refused)} onPress={() => onRemove(item.id)}>
                   <Trash className="size-icon-sm text-muted-foreground" />
                 </Icon>
-                <Icon accessibilityLabel="Queued message actions" onPress={more}>
+                <Icon accessibilityLabel={QUEUE_WORDS.actions} onPress={more}>
                   <DotsHorizontal className="size-icon-sm text-muted-foreground" />
                 </Icon>
               </View>

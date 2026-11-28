@@ -7,7 +7,7 @@ import { useKept } from "../thread/kept";
 import { Chat, PauseCircle, PlayCircle, Spinner, StopCircle } from "../icons";
 import { WorkerGlyph } from "../icons/worker-glyphs";
 import { Glyphs, type Worker, WorkerName, WorkersPanel } from "./chip";
-import { batchNames as said, batchWords, outcomeWords as outcome, stillRunning, teamStepVerb } from "../../../shared/workers";
+import { batchNames as said, batchSplit, batchWords, moreWords, nameJoin, outcomeWords as outcome, stillRunning, teamStepVerb } from "../../../shared/workers";
 
 /*
  * How workers show in the thread: sentences in the row recipe of the work, never cards [D3010]. One row per batch
@@ -49,13 +49,12 @@ const QuietBrief: FC<{ children: ReactNode }> = ({ children }) => (
  */
 export const Names: FC<{ workers: readonly Worker[]; glyph?: boolean }> = ({ workers, glyph = false }) => {
   const { open } = useContext(WorkersPanel);
-  const named = workers.length > 3 ? workers.slice(0, 2) : workers;
-  const more = workers.length - named.length;
+  const { named, more } = batchSplit(workers);
   const parts: ReactNode[] = named.map((worker) => <WorkerName key={worker.id} worker={worker} glyph={glyph} />);
   if (more > 0) {
     parts.push(
       <button key="more" type="button" className="cursor-pointer rounded-control hover:text-foreground focus-visible:focus-ring" onClick={() => open(null)}>
-        {`${more} more`}
+        {moreWords(more)}
       </button>,
     );
   }
@@ -63,7 +62,7 @@ export const Names: FC<{ workers: readonly Worker[]; glyph?: boolean }> = ({ wor
     <>
       {parts.map((part, index) => (
         <span key={index} className="min-w-0">
-          {index > 0 && (index === parts.length - 1 ? " and " : ", ")}
+          {nameJoin(index, parts.length)}
           {part}
         </span>
       ))}

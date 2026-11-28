@@ -4,7 +4,6 @@ import { flushSync } from "react-dom";
 import { cx } from "../../components/cx";
 import { InfoTip } from "../../components/thread/tip";
 import { Warning } from "../../icons";
-import { PullRequestClosed, PullRequestDraft, PullRequestMerged, PullRequestOpen } from "../../landing/icons";
 
 /** A card row, 28 tall at radius 6, and its hover wash [D139]. */
 export const ROW = "flex h-7 w-full min-w-0 items-center gap-2 rounded-sm px-2 text-start text-label";
@@ -81,13 +80,6 @@ export function Rows<T>({ items, fold, children }: { items: readonly T[]; fold?:
   );
 }
 
-/** A PR's state as GitHub says it, in its icon, word and colour: Open, Draft, Merged, Closed [D202]. */
-export const PR_LOOK = {
-  open: { Icon: PullRequestOpen, tint: "text-success" },
-  draft: { Icon: PullRequestDraft, tint: "text-muted-foreground" },
-  merged: { Icon: PullRequestMerged, tint: "text-pr-purple" },
-  closed: { Icon: PullRequestClosed, tint: "text-destructive" },
-};
 /** "+62 −8": lines added and removed, each only when there are some. */
 export function Counts({ added, removed }: { added: number; removed: number }) {
   return (

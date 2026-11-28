@@ -11,6 +11,7 @@ const upstream = require("@expo/metro-config/babel-transformer");
 const THEME = path.resolve(__dirname, "../app/ui/src/theme.css");
 const STUB = path.resolve(__dirname, "src/theme-values.js");
 const NIGHT = path.resolve(__dirname, "../app/ui/src/sessions/overnight.css");
+const CODE = path.resolve(__dirname, "../app/ui/src/thread/code.css");
 const REM = 16;
 
 /** `--name: value` pairs of the `@theme static` block, comments dropped. */
@@ -92,7 +93,27 @@ function night(css, resolve, raw) {
   return { card: { backgroundColor: card.backgroundColor, boxShadow: card.boxShadow }, glow: layer(rule("::before")), stars: layer(rule("::after")) };
 }
 
-function values(css, nightCss) {
+/**
+ * A code card's colours (thread/code.css): each highlight.js selector (`hljs-title.class_`) with the colour and fill its
+ * @apply gives, the theme's tokens lowered as above. A diff card's own and the full-width wash are the desktop's alone.
+ */
+function syntax(css, byName) {
+  const out = {};
+  const sheet = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/@reference[^;]*;/g, "");
+  for (const [, selectors, body] of sheet.matchAll(/([^{}]+)\{\s*@apply ([^;]+);\s*\}/g)) {
+    const style = {};
+    for (const [, prop, name] of body.matchAll(/(?:^|\s)(text|bg)-([a-z0-9-]+)/g)) {
+      if (!byName.has(`color-${name}`)) throw new Error(`code.css: no --color-${name}`);
+      style[prop === "text" ? "color" : "backgroundColor"] = byName.get(`color-${name}`);
+    }
+    for (const selector of selectors.split(",").map((each) => each.trim())) {
+      if (/^(\.hljs-[\w-]+)(\.[\w-]+)*$/.test(selector)) out[selector.slice(1)] = { ...out[selector.slice(1)], ...style };
+    }
+  }
+  return out;
+}
+
+function values(css, nightCss, codeCss) {
   const raw = declarations(css);
   const resolve = resolver(raw);
   const names = [...raw.keys()].filter((name) => groupOf(name));
@@ -123,6 +144,7 @@ function values(css, nightCss) {
     theme.text[key] = lineHeight === undefined ? { fontSize } : { fontSize, lineHeight: Math.round(lineHeight * 100) / 100 };
   }
   if (nightCss) theme.night = night(nightCss, resolve, raw);
+  if (codeCss) theme.syntax = syntax(codeCss, byName);
   return theme;
 }
 
@@ -130,12 +152,12 @@ module.exports = {
   values,
   transform(args) {
     if (path.resolve(args.filename) !== STUB) return upstream.transform(args);
-    return upstream.transform({ ...args, src: `module.exports = ${JSON.stringify(values(fs.readFileSync(THEME, "utf8"), fs.readFileSync(NIGHT, "utf8")))};` });
+    return upstream.transform({ ...args, src: `module.exports = ${JSON.stringify(values(...[THEME, NIGHT, CODE].map((file) => fs.readFileSync(file, "utf8"))))};` });
   },
   // shortcut: Metro takes this key once per server, so a dev server keeps the old values after a theme.css edit until
   // it restarts (`npx expo start -c`); every Xcode bundle starts a new one. Upgrade if anyone styles live against it.
   getCacheKey(...args) {
-    const theme = crypto.createHash("sha1").update(fs.readFileSync(THEME)).update(fs.readFileSync(NIGHT)).update(fs.readFileSync(__filename)).digest("hex");
+    const theme = crypto.createHash("sha1").update(fs.readFileSync(THEME)).update(fs.readFileSync(NIGHT)).update(fs.readFileSync(CODE)).update(fs.readFileSync(__filename)).digest("hex");
     return `${upstream.getCacheKey ? upstream.getCacheKey(...args) : ""}${theme}`;
   },
 };

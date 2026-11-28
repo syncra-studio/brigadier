@@ -141,3 +141,102 @@ export function pathOf(url: string): string {
     return path;
   }
 }
+
+/** A reply's message card [D477]: a fenced `brigadier-message` block's JSON, which Brigadier draws as its own card. */
+export type Message = { to: string; state?: string; text: string; quote?: { from: string; text: string } };
+export const MESSAGE_FENCE = "brigadier-message";
+
+const said = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
+const maybe = (value: unknown) => value === undefined || typeof value === "string";
+
+/**
+ * A message card's JSON as its card; null when it doesn't parse or doesn't fit, so the fence stays a code block.
+ * Questions go to the question card through the agent's question tool, never a reply card [D484].
+ */
+export function messageOf(json: string): Message | null {
+  let m: Record<string, any> | undefined;
+  try {
+    m = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  return !!m && said(m.to) && said(m.text) && maybe(m.state) && (m.quote === undefined || (said(m.quote?.from) && said(m.quote?.text))) ? (m as Message) : null;
+}
+
+const WRITING = /^(text|txt|plain|plaintext)$/i;
+
+/**
+ * What a reply's fence draws: something to post, as it will look (`preview`) [D446]; a message card once its JSON is
+ * whole and fits, its frame while it still arrives (`live`) [D477, D520]; words to paste somewhere, a `text <where>`
+ * fence, in the reply's own font [D520]; else code, titled by the words after its language, a diff's file. A bare
+ * `text` fence is output, logs or an error, so code [D749].
+ */
+export type Fence = { kind: "preview" | "writing"; title: string } | { kind: "message"; message: Message | null } | { kind: "code"; title?: string };
+export function fenceOf(language: string, meta: string | null | undefined, text: string, live: boolean): Fence {
+  if (language === "preview") return { kind: "preview", title: meta || "Preview" };
+  const message = language === MESSAGE_FENCE && !live ? messageOf(text) : null;
+  if (language === MESSAGE_FENCE && (live || message)) return { kind: "message", message };
+  if (meta && WRITING.test(language)) return { kind: "writing", title: meta };
+  return { kind: "code", title: meta || undefined };
+}
+
+/** A draft's first lines as one line, its markdown marks dropped, for its folded row. */
+export const peek = (text: string) =>
+  text
+    .split("\n", 8)
+    .map((line) => line.replace(/^\s*(?:[-*+]|\d{1,9}[.)]|#{1,6}|>)\s+/, "").replace(/\*\*|__|~~|`|\[([^\]]*)\]\([^)]*\)/g, "$1").trim())
+    .filter(Boolean)
+    .join(" · ");
+
+/** Over the words a message card's message answers. */
+export const wroteWords = (from: string) => `${from} wrote`;
+
+const SEG = String.raw`\.?[\w@-]+(?:\.[\w@-]+)*`;
+/**
+ * A word an answer may name, in its text or as a whole inline code: a PR (#12), a session's id, a path (`/abs/a.ts`,
+ * `src/a.ts:12`, `docs/`), a `/` command or skill, a file's bare name (README.md).
+ */
+export const WORD = new RegExp(
+  String.raw`(?<![\w/#.:@-])(#\d+|s(?:-[a-z0-9]+){2}|\/?(?:${SEG}\/)+(?:${SEG})?(?::\d+){0,2}|\/\w[\w:-]*(?:\.[\w-]+)*|[\w@-]+(?:\.[\w@-]+)+(?::\d+){0,2})(?![\w/@-])`,
+  "g",
+);
+
+/**
+ * Splits an answer's text into its words that may be refs, each a `span` with `data-ref`, which each app's RefWord draws
+ * as a chip when the session knows it, else as the word. Each piece keeps its place in the source, so it still fades in.
+ */
+export const remarkRefs = () => (tree: MdNode) => {
+  const walk = (node: MdNode) => {
+    node.children = node.children?.flatMap((child): MdNode[] => {
+      if (SKIP.has(child.type)) return [child];
+      if (child.type !== "text") return (walk(child), [child]);
+      const value = child.value ?? "";
+      const base = (child.position?.end.offset ?? value.length) - value.length;
+      const piece = (from: number, to: number): MdNode => ({ type: "text", value: value.slice(from, to), position: { start: { offset: base + from }, end: { offset: base + to } } });
+      const out: MdNode[] = [];
+      let done = 0;
+      for (const match of value.matchAll(WORD)) {
+        const [from, to] = [match.index, match.index + match[0].length];
+        if (from > done) out.push(piece(done, from));
+        out.push({ type: "ref", data: { hName: "span", hProperties: { dataRef: match[0] } }, children: [piece(from, to)] });
+        done = to;
+      }
+      if (!out.length) return [child];
+      if (done < value.length) out.push(piece(done, value.length));
+      return out;
+    });
+  };
+  walk(tree);
+};
+type MdNode = { type: string; value?: string; position?: { start: { offset?: number }; end: { offset?: number } }; children?: MdNode[]; data?: object };
+const SKIP = new Set(["link", "linkReference", "inlineCode", "code", "html"]);
+
+/** A link's target as a path: `file:///a%20b.png` is `/a b.png`. */
+export const linkPath = (href: string) => {
+  const path = href.replace(/^file:\/\//i, "");
+  try {
+    return decodeURI(path);
+  } catch {
+    return path;
+  }
+};

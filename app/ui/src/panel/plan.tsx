@@ -4,11 +4,9 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../componen
 import { cx } from "../components/cx";
 import { CheckCircle, ChevronDown, Dot, Spinner, Tasks, X } from "../icons";
 import { Line, ROW } from "./source/rows";
+import { PLAN_DONE, PLAN_TITLE, PLAN_ENDED as ENDED, PLAN_FINISHED as FINISHED, planCount, planEnded, planSaid } from "../../../shared/rows";
 
 export type Step = { text: string; status: string };
-const ENDED = new Set(["completed", "cancelled"]);
-/** The finished steps the line counts and the opened list shows at a time; past it, "N left" and Show more. */
-const FINISHED = 10;
 
 /** A step's mark by its status, as the CLIs write it: done, under way, given up, or still to do. */
 const MARK: Record<string, ReactNode> = {
@@ -16,7 +14,6 @@ const MARK: Record<string, ReactNode> = {
   in_progress: <Spinner className="animate-spin motion-reduce:animate-none" />,
   cancelled: <X />,
 };
-const SAID: Record<string, string> = { completed: "Done: ", in_progress: "Under way: ", cancelled: "Cancelled: " };
 
 /** A step whole, however long: its mark on the first line, its words wrapping under themselves. */
 function StepRow({ step }: { step: Step }) {
@@ -30,7 +27,7 @@ function StepRow({ step }: { step: Step }) {
     >
       <span aria-hidden className="flex h-4.5 min-w-5 shrink-0 items-center justify-center svg:size-4">{MARK[step.status] ?? <Dot />}</span>
       <span className="min-w-0 flex-1 wrap-anywhere">
-        <span className="sr-only">{SAID[step.status] ?? "To do: "}</span>
+        <span className="sr-only">{planSaid(step.status)}</span>
         {step.text}
       </span>
     </li>
@@ -71,8 +68,8 @@ export function Plan({ owner, plan }: { owner: string; plan: readonly Step[] }) 
         <span aria-hidden className="flex min-w-5 shrink-0 items-center justify-center svg:size-4">
           {over ? <CheckCircle className="text-success" /> : open ? <Tasks /> : (MARK[current?.status ?? ""] ?? <Dot />)}
         </span>
-        <span className="min-w-0 flex-1 truncate">{over ? "Plan done" : open ? "Plan" : current?.text}</span>
-        <span className="shrink-0 tabular-nums">{done > FINISHED && !over ? `${left.length} left` : `${done}/${total}`}</span>
+        <span className="min-w-0 flex-1 truncate">{over ? PLAN_DONE : open ? PLAN_TITLE : current?.text}</span>
+        <span className="shrink-0 tabular-nums">{planCount(done, total, left.length, over)}</span>
         <ChevronDown aria-hidden className={cx("size-icon-xs shrink-0 transition motion-reduce:transition-none", open && "rotate-180")} />
       </CollapsibleTrigger>
       <CollapsibleContent className="flex min-h-0 flex-col data-starting-style:*:shrink-0">
@@ -80,7 +77,7 @@ export function Plan({ owner, plan }: { owner: string; plan: readonly Step[] }) 
           {ended.length > 0 && !over && (
             <button type="button" aria-expanded={earlier} aria-controls={past} onClick={() => change({ earlier: !earlier })} className="flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-sm px-2 text-label text-muted-foreground transition-colors hover:text-foreground focus-visible:focus-ring">
               <span aria-hidden className="flex min-w-5 justify-center svg:size-4"><CheckCircle /></span>
-              {[done && `${done} done`, ended.length > done && `${ended.length - done} cancelled`].filter(Boolean).join(", ")}
+              {planEnded(done, ended.length)}
               <ChevronDown aria-hidden className={cx("size-icon-xs transition motion-reduce:transition-none", !earlier && "-rotate-90")} />
             </button>
           )}

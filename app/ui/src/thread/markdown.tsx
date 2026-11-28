@@ -4,13 +4,14 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { marked } from "marked";
 
-import { calloutLabel, callouts, calloutWarns, fenceWalk, nestUnderItems, type Node, textOf } from "../../../shared/markdown";
+import { calloutLabel, callouts, calloutWarns, fenceOf, fenceWalk, nestUnderItems, type Node, remarkRefs, textOf } from "../../../shared/markdown";
 import { SessionOfThread } from "../accounts/limit";
 import { drawable, ImageWords, InLink, ReplyImage, Streaming } from "../components/thread/image";
-import { Code, Compare, Eye, Info, Terminal, Warning } from "../icons";
+import { Code, Eye, FENCE_ICONS, Info, Warning } from "../icons";
 import { CodeBlock } from "./code";
-import { Draft, replyCard, replyCardFrame, WritingCard } from "./reply-cards";
-import { linkPath, RefWord, remarkRefs } from "./refs";
+import { Draft, MessageCard, MessageFrame, WritingCard } from "./reply-cards";
+import { linkPath } from "../../../shared/markdown";
+import { RefWord } from "./refs";
 import { PrHoverCard } from "../pull-requests/hover-card";
 import { pastedRef } from "../pull-requests/route";
 
@@ -303,11 +304,12 @@ const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Co
     const at = `${keep}:${code.position?.start.offset ?? 0}`;
     // Still being written: no copy of half its text, and a card's JSON isn't shown raw while it arrives [D520].
     const live = openEnd >= 0 && (node?.position?.end.offset ?? 0) >= openEnd;
+    const fence = fenceOf(language, code.data?.meta, text, live);
+    const said = text.replace(/\n$/, "");
     // Something to post, as it will look: its markdown drawn in the draft, copied as written [D446].
-    if (language === "preview") {
-      const said = text.replace(/\n$/, "");
+    if (fence.kind === "preview") {
       return (
-        <Draft keep={at} icon={<Eye className="size-icon-sm shrink-0" />} title={code.data?.meta || "Preview"} text={said} live={live}>
+        <Draft keep={at} icon={<Eye className="size-icon-sm shrink-0" />} title={fence.title} text={said} live={live}>
           <div className="px-4 pt-1 pb-3">
             <Markdown text={said} keep={at} />
           </div>
@@ -315,21 +317,17 @@ const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Co
       );
     }
     // A reply's card, drawn once its JSON is whole and fits; until then, or if it never does, a code block [D477].
-    const card = live ? replyCardFrame(language) : replyCard(language, text, at);
-    if (card) return card;
+    if (fence.kind === "message") return fence.message ? <MessageCard {...fence.message} keep={at} /> : <MessageFrame />;
+    // Words to paste somewhere are a writing card in the reply's own font [D520].
+    if (fence.kind === "writing") return <WritingCard title={fence.title} text={said} keep={at} live={live} />;
     // The words after a fence's language name what it is: a draft's destination, a diff's file [D477].
-    const meta = code.data?.meta;
-    const said = text.replace(/\n$/, "");
-    const Icon = KIND_ICONS[language] ?? Code;
-    const title = meta ? (
+    const Icon = FENCE_ICONS[language] ?? Code;
+    const title = fence.title ? (
       <>
         <Icon className="size-icon-sm" />
-        <span className="font-medium text-foreground">{meta}</span>
+        <span className="font-medium text-foreground">{fence.title}</span>
       </>
     ) : undefined;
-    // Words to paste somewhere, a `text <where>` fence, are a writing card in the reply's own font
-    // [D520]; a bare `text` fence is output, logs or an error, so a code block [D749].
-    if (WRITING.test(language) && meta) return <WritingCard title={meta} text={said} keep={at} live={live} />;
     return <CodeBlock code={said} language={language} keep={at} title={title} live={live} />;
   },
   // A GitHub alert (`> [!WARNING]`) is a callout; any other quote stays a quote [D477].
@@ -347,6 +345,3 @@ const fences = (keep: string, chip?: (n: number) => ReactNode, openEnd = -1): Co
   },
 });
 
-const WRITING = /^(text|txt|plain|plaintext)$/i;
-
-const KIND_ICONS: Record<string, typeof Code> = { sh: Terminal, bash: Terminal, zsh: Terminal, shell: Terminal, diff: Compare };

@@ -19,11 +19,20 @@ export const lowerFirst = (word: string) => word.charAt(0).toLowerCase() + word.
 /** A worker the app no longer has. */
 export const UNKNOWN_WORKER = "a worker";
 
+/** A batch's names as its row says them: past three, the first two and how many more, which its list names. */
+export const batchSplit = <T>(workers: readonly T[]) => {
+  const named = workers.length > 3 ? workers.slice(0, 2) : workers;
+  return { named, more: workers.length - named.length };
+};
+export const moreWords = (more: number) => `${more} more`;
+/** What goes before the `at`-th of `count` names: ", ", or " and " before the last. */
+export const nameJoin = (at: number, count: number) => (at === 0 ? "" : at === count - 1 ? " and " : ", ");
+
 /** "A", "A and B", "A, B and C"; past three, "A, B and 4 more": a batch row's words, its list naming each. */
 export const batchNames = (workers: readonly Named[]) => {
-  const names = workers.map((worker) => worker.name);
-  const named = names.length > 3 ? [...names.slice(0, 2), `${names.length - 2} more`] : names;
-  return named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : (named[0] ?? "");
+  const { named, more } = batchSplit(workers);
+  const names = [...named.map((worker) => worker.name), ...(more > 0 ? [moreWords(more)] : [])];
+  return names.map((name, at) => nameJoin(at, names.length) + name).join("");
 };
 
 const FINISHED_KINDS: ReadonlySet<WorkerStateKind> = new Set(["merged", "doneNotMerged", "done"]);

@@ -3,13 +3,13 @@ import { useState } from "react";
 import { copyWithToast } from "../components/copy-button";
 import { cx } from "../components/cx";
 import { DropdownMenuItem } from "../components/menu";
-import { ChevronDown, Link, X } from "../icons";
+import { ChevronDown, Link, PR_LOOK, X } from "../icons";
 import { Eye } from "../icons/settings";
 import { ago, STATE_WORDS } from "../landing/pr-words";
 import { openTab } from "../shell/tab-store";
 import { CardSection, RowMenu, WarnLine } from "./card";
 import { prTarget } from "./open";
-import { Line, PR_LOOK, Rows } from "./source/rows";
+import { Line, Rows } from "./source/rows";
 import type { KeptPrs, Pr } from "./types";
 
 /**

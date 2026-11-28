@@ -1,25 +1,29 @@
-import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { type ReactNode, useEffect, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, type TextStyle, View } from "react-native";
 import { FOLDED_LINES, foldWords, isProse, languageName, LONG_LINES, linesWords } from "../../../app/shared/code";
-import { ChevronDown, ChevronUp, Code } from "../../../app/ui/src/icons";
-import { color, fontWeight, mono, radius, space, spacing, text } from "../theme";
+import { highlight } from "../../../app/shared/highlight";
+import { ChevronDown, ChevronUp, Code, FENCE_ICONS } from "../../../app/ui/src/icons";
+import { color, fontWeight, mono, radius, space, spacing, syntax, text } from "../theme";
 
 /**
- * A reply's code block, as the desktop's thread/code.tsx draws it: its language over the code, folded when long.
- * Phone-only: no copy or wrap button (the text is selectable) and no colouring.
+ * A reply's code block, as the desktop's thread/code.tsx draws it: its language (or `title`, the words after it, by
+ * its kind's icon) over the code, coloured once it settles, folded when long.
+ * Phone-only: no copy or wrap button (the text is selectable).
  */
-export function CodeBlock({ code, language }: { code: string; language: string }) {
+export function CodeBlock({ code, language, title }: { code: string; language: string; title?: string }) {
   // shortcut: the fold isn't kept when the row scrolls away, as the desktop's useKept; key it if a long reply needs it.
   const [open, setOpen] = useState(false);
   const count = code.split("\n").length;
   const long = count > LONG_LINES;
   const shown = long && !open ? code.split("\n", FOLDED_LINES).join("\n") : code;
-  const body = <Text style={st.code} selectable>{shown}</Text>;
+  const html = useHighlight(shown, language);
+  const body = <Text style={st.code} selectable>{html === null ? shown : draw(runs(html))}</Text>;
+  const Icon = (title && FENCE_ICONS[language]) || Code;
   return (
     <View style={st.card}>
       <View style={st.head}>
-        <Code className="size-icon-sm text-chat-foreground" />
-        <Text style={st.name}>{languageName(language)}</Text>
+        <Icon className="size-icon-sm text-chat-foreground" />
+        <Text style={[st.name, title ? { color: color.foreground } : null]} numberOfLines={1}>{title ?? languageName(language)}</Text>
         {long ? <Text style={st.lines}>{linesWords(count)}</Text> : null}
       </View>
       <View>
@@ -36,10 +40,57 @@ export function CodeBlock({ code, language }: { code: string; language: string }
   );
 }
 
+/** The highlighter's escaped HTML for `code`, once it has stopped changing for a moment; null until then. */
+function useHighlight(code: string, language: string): string | null {
+  const [done, setDone] = useState<{ code: string; html: string | null } | null>(null);
+  useEffect(() => {
+    if (!language) return;
+    let live = true;
+    const timer = setTimeout(() => {
+      highlight(code, language).then(
+        (html) => live && setDone({ code, html }),
+        () => live && setDone({ code, html: null }),
+      );
+    }, 120);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [code, language]);
+  return done?.code === code ? done.html : null;
+}
+
+/** A piece of the highlighter's HTML: text, or a span in its classes' colour. */
+type Run = string | { style: TextStyle; runs: Run[] };
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', "#x27": "'" };
+const looks = new Map<string, TextStyle>();
+/** A span's colour and fill as code.css gives its classes: every rule they match, the more specific over the rest. */
+function lookOf(classes: string): TextStyle {
+  const mine = new Set(classes.split(" "));
+  const hits = Object.keys(syntax).filter((selector) => selector.split(".").every((name) => mine.has(name)));
+  hits.sort((a, b) => a.split(".").length - b.split(".").length);
+  return Object.assign({}, ...hits.map((selector) => syntax[selector]));
+}
+function runs(html: string): Run[] {
+  const root: Run[] = [];
+  const open = [root];
+  for (const [, classes, words] of html.matchAll(/<span class="([^"]*)">|<\/span>|([^<]+)/g)) {
+    if (words !== undefined) open.at(-1)!.push(words.replace(/&(amp|lt|gt|quot|#x27);/g, (_, name: string) => ENTITIES[name]!));
+    else if (classes !== undefined) {
+      if (!looks.has(classes)) looks.set(classes, lookOf(classes));
+      const span = { style: looks.get(classes)!, runs: [] };
+      open.at(-1)!.push(span);
+      open.push(span.runs);
+    } else if (open.length > 1) open.pop();
+  }
+  return root;
+}
+const draw = (list: Run[]): ReactNode[] => list.map((run, at) => (typeof run === "string" ? run : <Text key={at} style={run.style}>{draw(run.runs)}</Text>));
+
 const st = StyleSheet.create({
   card: { overflow: "hidden", borderRadius: radius.thread, borderWidth: 1, borderColor: color.codeCardEdge, backgroundColor: color.codeCard },
   head: { flexDirection: "row", alignItems: "center", height: space(12), gap: space(2), paddingStart: space(5), paddingEnd: space(1.5) },
-  name: { ...text.sm, fontWeight: fontWeight.medium, color: color.chatForeground },
+  name: { ...text.sm, flexShrink: 1, fontWeight: fontWeight.medium, color: color.chatForeground },
   lines: { ...text.sm, color: color.mutedForeground },
   pre: { paddingHorizontal: space(5), paddingBottom: space(3) },
   code: { ...text.code, fontFamily: mono, color: color.chatForeground },

@@ -6,73 +6,27 @@ import type { Chip } from "../components/composer/draft";
 import { ask, useDaemon, useFolderChat } from "../daemon";
 import { STATE_WORDS } from "../landing/pr-words";
 import { openPr } from "../panel/open";
-import { PR_LOOK } from "../panel/source/rows";
 import { PrHoverCard } from "../pull-requests/hover-card";
 import { pastedRef } from "../pull-requests/route";
 import type { Pr } from "../panel/types";
 import { openChip, useListedCommands } from "../session/commands";
 import { daemonRun } from "../session/composer";
 import { openFile } from "../shell/tab-store";
-import { File } from "../icons";
+import { File, PR_LOOK } from "../icons";
 import { viewImage } from "../components/image-viewer";
 import { showToast } from "../components/toast";
 import { urlOf } from "../session/files";
+import { linkPath, WORD } from "../../../shared/markdown";
 
-const SEG = String.raw`\.?[\w@-]+(?:\.[\w@-]+)*`;
-/**
- * A word an answer may name, in its text or as a whole inline code: a PR (#12), a session's id, a path (`/abs/a.ts`,
- * `src/a.ts:12`, `docs/`), a `/` command or skill, a file's bare name (README.md).
- */
-const WORD = new RegExp(
-  String.raw`(?<![\w/#.:@-])(#\d+|s(?:-[a-z0-9]+){2}|\/?(?:${SEG}\/)+(?:${SEG})?(?::\d+){0,2}|\/\w[\w:-]*(?:\.[\w-]+)*|[\w@-]+(?:\.[\w@-]+)+(?::\d+){0,2})(?![\w/@-])`,
-  "g",
-);
+
+
 const LINE = /((?::\d+){1,2})$/;
 const pathish = (word: string) => !word.startsWith("#") && (word.includes(".") || word.slice(1).includes("/"));
-
-/**
- * Splits an answer's text into its words that may be refs, each a `span` with `data-ref`, which `RefWord` draws as a
- * chip when the session knows it, else as the word. Each piece keeps its place in the source, so it still fades in.
- */
-export const remarkRefs = () => (tree: MdNode) => {
-  const walk = (node: MdNode) => {
-    node.children = node.children?.flatMap((child): MdNode[] => {
-      if (SKIP.has(child.type)) return [child];
-      if (child.type !== "text") return (walk(child), [child]);
-      const value = child.value ?? "";
-      const base = (child.position?.end.offset ?? value.length) - value.length;
-      const piece = (from: number, to: number): MdNode => ({ type: "text", value: value.slice(from, to), position: { start: { offset: base + from }, end: { offset: base + to } } });
-      const out: MdNode[] = [];
-      let done = 0;
-      for (const match of value.matchAll(WORD)) {
-        const [from, to] = [match.index, match.index + match[0].length];
-        if (from > done) out.push(piece(done, from));
-        out.push({ type: "ref", data: { hName: "span", hProperties: { dataRef: match[0] } }, children: [piece(from, to)] });
-        done = to;
-      }
-      if (!out.length) return [child];
-      if (done < value.length) out.push(piece(done, value.length));
-      return out;
-    });
-  };
-  walk(tree);
-};
-type MdNode = { type: string; value?: string; position?: { start: { offset?: number }; end: { offset?: number } }; children?: MdNode[]; data?: object };
-const SKIP = new Set(["link", "linkReference", "inlineCode", "code", "html"]);
 
 type Hit = { path: string; at: string; folder: boolean; image: boolean; outside?: boolean };
 type Found = Record<string, Hit>;
 const RefsContext = createContext<((word: string, label?: ReactNode) => ReactNode) | null>(null);
 
-/** A link's target as a path: `file:///a%20b.png` is `/a b.png`. */
-export const linkPath = (href: string) => {
-  const path = href.replace(/^file:\/\//i, "");
-  try {
-    return decodeURI(path);
-  } catch {
-    return path;
-  }
-};
 /** Markdown links' targets, which may be paths WORD can't take whole (`~/a.png`, spaces): `<…>` whole, else to a space. */
 const LINK = /\]\((?:<([^>\n]+)>|([^)\s]+))/g;
 

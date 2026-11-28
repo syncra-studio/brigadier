@@ -10,7 +10,7 @@ import { openChip } from "../../session/commands";
 import type { Runner } from "../../session/composer";
 import { dropTiles, forgetTiles, tilesOf, useComposerFiles } from "../../session/files";
 import { type Draft, isEmpty, plainText } from "./draft";
-import type { Given, PendingQuestion, QuestionItem } from "../../../../shared/cards";
+import { type Given, type PendingQuestion, QUESTION_WORDS, type QuestionItem } from "../../../../shared/cards";
 import { type ComposerFieldHandle, ComposerField } from "./field";
 
 export type { Given, PendingQuestion, QuestionItem } from "../../../../shared/cards";
@@ -371,7 +371,7 @@ function QuestionPage({
   return (
     <ActionCard ref={card} container="request" tabIndex={0} aria-label="Question" data-action="question" onKeyDown={onKeyDown} {...(!held && { onDragOver: files.onDragOver, onDrop })}>
       <div>
-        <ActionCardQuestion onDismiss={held ? undefined : () => idle && onClose()} dismissLabel="Skip" kind={kind} aside={aside}>
+        <ActionCardQuestion onDismiss={held ? undefined : () => idle && onClose()} dismissLabel={QUESTION_WORDS.skip} kind={kind} aside={aside}>
           {title}
         </ActionCardQuestion>
       </div>
@@ -422,8 +422,8 @@ function QuestionPage({
                 <ComposerField
                   ref={field}
                   size="card"
-                  label="Your answer"
-                  placeholder={pickable ? "No, and tell the agent what to do differently" : "Type here"}
+                  label={QUESTION_WORDS.answer}
+                  placeholder={pickable ? QUESTION_WORDS.differently : QUESTION_WORDS.typeHere}
                   initial={{ parts: initial, attachmentIds: [] }}
                   attachments={files.attachments}
                   onAttach={files.attach}
@@ -447,7 +447,7 @@ function QuestionPage({
             }
           >
             <button type="button" className={actionButton(ready ? "primary" : "outline", "font-medium")} disabled={busy || waits !== undefined} title={waits} onClick={submit}>
-              {!ready ? "Skip" : last ? "Submit" : "Next"}
+              {!ready ? QUESTION_WORDS.skip : last ? QUESTION_WORDS.submit : QUESTION_WORDS.next}
             </button>
           </ActionFreeText>
         )}

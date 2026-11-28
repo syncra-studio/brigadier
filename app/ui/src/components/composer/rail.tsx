@@ -8,6 +8,7 @@ import { Dialog, DialogContent } from "../dialog";
 import { ErrorLine } from "../error-line";
 import { TooltipIconButton } from "../icon-button";
 import { pausedWords } from "../../../../shared/session/composer";
+import { WAITING_FOR_YOU } from "../../../../shared/cards";
 
 /**
  * How long after the rail appears its items are simply there rather than opening: a session's view is drawn
@@ -245,7 +246,7 @@ function RailRow({ children }: { children: ReactNode }) {
 /** What a decision put aside with ✕ leaves on the rail, so it stays one click away. */
 export function WaitingRow({ count, onShow }: { count: number; onShow: () => void }) {
   return (
-    <RailItem label="Waiting for you">
+    <RailItem label={WAITING_FOR_YOU}>
       <RailRow>
         <QuestionMarkCircle className="size-icon-sm shrink-0" />
         <span className="min-w-0 flex-1 truncate">{count === 1 ? "A decision waits for you" : `${count} decisions wait for you`}</span>

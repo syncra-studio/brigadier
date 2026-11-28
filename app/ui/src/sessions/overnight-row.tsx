@@ -13,6 +13,7 @@ import { putBack } from "../session/side";
 import type { Item } from "../thread/item";
 import { Markdown } from "../thread/markdown";
 import { duration, hhmm } from "../thread/words";
+import { MORNING_WORDS } from "../../../shared/thread";
 
 type OvernightItem = Extract<Item, { kind: "overnight" }>;
 type Report = Extract<OvernightItem, { moment: "report" }>;
@@ -97,17 +98,17 @@ function Morning({ item, session }: { item: Report; session: string | undefined 
           </div>
         </div>
         {item.done.length > 0 && (
-          <List title="Done, with proof" count={item.done.length}>
+          <List title={MORNING_WORDS.done} count={item.done.length}>
             {item.done.map((each, at) => <Part key={at} keep={`${item.id}:done:${at}`} mark={<Check className={cx(MARK, "text-success")} />} title={each.title} line={each.proof} more={each.more} />)}
           </List>
         )}
         {item.left.length > 0 && (
-          <List title="Not done" count={item.left.length}>
+          <List title={MORNING_WORDS.left} count={item.left.length}>
             {item.left.map((each, at) => <ActionPart key={at} keep={`${item.id}:left:${at}`} mark={<XCircleFilled className={cx(MARK, "text-warning")} />} title={each.title} line={each.why} action={each.next} onAction={() => follow(`${each.title}: ${each.next}`)} />)}
           </List>
         )}
         {item.decided.length > 0 && (
-          <List title="Decided for you" count={item.decided.length}>
+          <List title={MORNING_WORDS.decided} count={item.decided.length}>
             {item.decided.map((each, at) => {
               const other = changed.includes(at);
               const toggle = () => {

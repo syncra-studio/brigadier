@@ -103,6 +103,19 @@ export type Pr = {
  */
 export type KeptPrs = { okAt: number | null; error: string | null; branch?: string; prs: Pr[] };
 
+/** A plan's step as its CLI marks it ([D144]): ended, done or given up; else under way or still to do. */
+export const PLAN_ENDED: ReadonlySet<string> = new Set(["completed", "cancelled"]);
+/** The finished steps the line counts and the opened list shows at a time; past it, "N left" and Show more. */
+export const PLAN_FINISHED = 10;
+const SAID: Record<string, string> = { completed: "Done: ", in_progress: "Under way: ", cancelled: "Cancelled: " };
+/** A step's status, before its words, for a screen reader. */
+export const planSaid = (status: string) => SAID[status] ?? "To do: ";
+export const PLAN_DONE = "Plan done";
+export const PLAN_TITLE = "Plan";
+/** The plan's count: done of all, or past PLAN_FINISHED how many are left; the ended steps' row, "3 done, 1 cancelled". */
+export const planCount = (done: number, total: number, left: number, over: boolean) => (done > PLAN_FINISHED && !over ? `${left} left` : `${done}/${total}`);
+export const planEnded = (done: number, ended: number) => [done && `${done} done`, ended > done && `${ended - done} cancelled`].filter(Boolean).join(", ");
+
 /** A process tree: its topmost process, checked by its start time (μs), its command or app's name, and the TCP ports it listens on. */
 type Tree = { pid: number; start_us: number; label: string; ports: number[] };
 /** One process tree a turn left running, and the open apps in it. */

@@ -81,7 +81,7 @@ export function QueueCard({
   };
   if (items.length === 0) return null;
   return (
-    <RailItem label="Message queue">
+    <RailItem label={QUEUE_WORDS.label}>
       {paused && (
         <div className="flex min-h-control-md items-center gap-2 px-3 text-sm text-muted-foreground">
           <span className="size-2 shrink-0 rounded-capsule bg-warning" />
@@ -101,7 +101,7 @@ export function QueueCard({
           if (!canceled && isSortable(source) && source.index !== source.initialIndex) move(String(source.id), source.index);
         }}
       >
-        <ol aria-label="Queued messages" className="flex max-h-queue-max flex-col overflow-y-auto p-1">
+        <ol aria-label={QUEUE_WORDS.list} className="flex max-h-queue-max flex-col overflow-y-auto p-1">
           {shown.map((item, index) => (
             <QueueRow
               key={item.id}
@@ -262,11 +262,11 @@ function QueueRow({
           Steer
         </TooltipIconButton>
       )}
-      <TooltipIconButton tooltip={item.shell ? "Delete queued command" : "Delete queued message"} side="top" className="text-muted-foreground" disabled={local || (item.state === "delivered" && !item.refused)} onClick={() => onRemove(item.id)}>
+      <TooltipIconButton tooltip={item.shell ? QUEUE_WORDS.deleteCommand : QUEUE_WORDS.deleteMessage} side="top" className="text-muted-foreground" disabled={local || (item.state === "delivered" && !item.refused)} onClick={() => onRemove(item.id)}>
         <Trash />
       </TooltipIconButton>
       <DropdownMenu modal={false}>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Queued message actions" className="text-muted-foreground aria-expanded:bg-fill" />}>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={QUEUE_WORDS.actions} className="text-muted-foreground aria-expanded:bg-fill" />}>
           <DotsHorizontal />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

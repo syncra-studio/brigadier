@@ -20,6 +20,8 @@ declare const theme: {
   duration: Record<string, number>;
   ease: Record<string, string>;
   scale: Record<string, number>;
+  /** A code card's highlight.js selector ("hljs-title.class_") and its colour and fill (thread/code.css). */
+  syntax: Record<string, { color?: string; backgroundColor?: string }>;
   /** Overnight's composer card (sessions/overnight.css): its fill and ring, then its glow and stars as layers. */
   night: { card: { backgroundColor: string; boxShadow: string }; glow: { opacity: number; backgroundImage: string }; stars: { opacity: number; backgroundImage: string } };
 };

@@ -81,6 +81,11 @@ export const QUEUE_WORDS = {
   maybeNotAdded: "May not have been added",
   deciding: "Deciding",
   addAgain: "Add again",
+  label: "Message queue",
+  list: "Queued messages",
+  actions: "Queued message actions",
+  deleteMessage: "Delete queued message",
+  deleteCommand: "Delete queued command",
 } as const;
 
 /** The model picker's notes; its agent not set up, by why. */

@@ -3,7 +3,7 @@ import { useSyncExternalStore } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { Row, WorkerStateKind } from "../../../../app/shared/rows";
 import type { Item } from "../../../../app/shared/thread";
-import { batchNames, batchWords, finished, outcomeWords, stillRunning, subagentOf, teamStepVerb, UNKNOWN_WORKER } from "../../../../app/shared/workers";
+import { batchNames, batchSplit, batchWords, finished, moreWords, nameJoin, outcomeWords, stillRunning, subagentOf, teamStepVerb, UNKNOWN_WORKER } from "../../../../app/shared/workers";
 import { Chat, PauseCircle, PlayCircle, StopCircle } from "../../../../app/ui/src/icons";
 import { WorkerGlyph } from "../../../../app/ui/src/icons/worker-glyphs";
 import { lists } from "../../mac/mac";
@@ -63,14 +63,13 @@ export function SubagentRow({ items }: { items: readonly Agent[] }) {
 
 /** A worker's name as the desktop's WorkerName draws it, its glyph before it where the sentence has none up front. */
 function Names({ workers }: { workers: readonly Worker[] }) {
-  const named = workers.length > 3 ? workers.slice(0, 2) : workers;
-  const more = workers.length - named.length;
-  const parts = [...named.map((worker) => ({ id: worker.id, name: worker.name })), ...(more > 0 ? [{ id: "", name: `${more} more` }] : [])];
+  const { named, more } = batchSplit(workers);
+  const parts = [...named.map((worker) => ({ id: worker.id, name: worker.name })), ...(more > 0 ? [{ id: "", name: moreWords(more) }] : [])];
   return (
     <>
       {parts.map((part, index) => (
         <View key={part.id || "more"} style={st.part}>
-          {index > 0 && <Text style={s.row}>{index === parts.length - 1 ? " and " : ", "}</Text>}
+          {index > 0 && <Text style={s.row}>{nameJoin(index, parts.length)}</Text>}
           <View style={st.name}>
             {part.id ? <WorkerGlyph id={part.id} className="size-icon-xs shrink-0" /> : null}
             <Text style={[s.row, s.shrink, part.id ? { color: color.stripForeground } : null]} numberOfLines={1}>{part.name}</Text>

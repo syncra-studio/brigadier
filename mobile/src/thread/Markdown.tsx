@@ -1,33 +1,40 @@
-// A reply's markdown through the desktop's own pipeline (thread/markdown.tsx: react-markdown, remark-gfm, remark-breaks
-// and its callouts), each element drawn as thread/markdown.css draws it [D98, D102].
+// A reply's markdown through the desktop's own pipeline (thread/markdown.tsx: react-markdown, remark-gfm, remark-breaks,
+// its refs and callouts), each element drawn as thread/markdown.css draws it, each fence as the card it is [D98, D102].
 import { Children, createContext, isValidElement, type ReactElement, type ReactNode, useContext, useState } from "react";
 import { Linking, ScrollView, StyleSheet, Text, type TextStyle, View } from "react-native";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
-import { calloutLabel, callouts, calloutWarns, nestUnderItems, type Node, pathOf, textOf } from "../../../app/shared/markdown";
-import { Check, Info, Warning } from "../../../app/ui/src/icons";
+import { calloutLabel, callouts, calloutWarns, fenceOf, fenceWalk, linkPath, nestUnderItems, type Node, pathOf, remarkRefs, textOf } from "../../../app/shared/markdown";
+import { Check, Eye, Info, Warning } from "../../../app/ui/src/icons";
 import { color, fontWeight, leading, mono, radius, space, text as type } from "../theme";
 import { CodeBlock } from "./Code";
+import { RefWord } from "./Refs";
+import { Draft, MessageCard, MessageFrame, WritingCard } from "./ReplyCards";
 
 /** Shows an image a reply names by its path on the Mac; none where nothing can (the user's own bubble, a thought). */
 export const ViewImage = createContext<((path: string) => void) | null>(null);
 const IMAGE = /\.(png|jpe?g|gif|webp|heic|heif|bmp|tiff?|svg)$/i;
-/** The text a block's words take, and whether they sit on the user's bubble. */
-const Look = createContext<{ base: TextStyle; bubble: boolean }>({ base: {}, bubble: false });
+/** The text a block's words take, whether they sit on the user's bubble, and where a fence still being written ends (-1: none). */
+const Look = createContext<{ base: TextStyle; bubble: boolean; openEnd: number }>({ base: {}, bubble: false, openEnd: -1 });
 /** How deep a list is (a child bullet list draws circles) and the marker of the item being drawn. */
 const Depth = createContext(0);
 const Marker = createContext("");
 
-/** A code span; one that is an image's path shows it. */
+/**
+ * A code span, markdown.css's px-1.5 each side of it drawn as an unbreakable zero-width mark that wide, as a nested
+ * text can't pad; one that is an image's path shows it. Phone-only: square corners, as iOS fills a run of text as a
+ * plain box (a view inside the text could round it, but would keep a long path from wrapping with its sentence).
+ */
 function Code({ text }: { text: string }) {
   const view = useContext(ViewImage);
   const { bubble } = useContext(Look);
   const style = [st.inlineCode, bubble && st.bubbleCode];
-  if (!view || !IMAGE.test(text) || /\s/.test(text.trim())) return <Text style={style}>{text}</Text>;
+  const pad = <Text style={st.codePad}>{"\u2060"}</Text>;
+  if (!view || !IMAGE.test(text) || /\s/.test(text.trim())) return <Text style={style}>{pad}{text}{pad}</Text>;
   return (
     <Text style={[style, st.link]} accessibilityRole="link" accessibilityHint="Shows the image" onPress={() => view(text.trim())}>
-      {text}
+      {pad}{text}{pad}
     </Text>
   );
 }
@@ -73,6 +80,8 @@ const MARGINS: Record<string, [number, number]> = {
   h6: [space(3), space(1)],
   table: [space(3), space(3)],
   pre: [space(4.5), space(4.5)],
+  // A reply's card, the code card's frame (reply-cards.tsx FRAME).
+  card: [space(3), space(3)],
 };
 const LIST = /^[uo]l$/;
 /** The gap between two blocks, as CSS collapses their margins, with markdown.css's exceptions. */
@@ -87,7 +96,7 @@ function gap(before: string, after: string, inItem: boolean): number {
 
 /** Blocks one under another at markdown.css's gaps; the words between them (a tight list item's) are one text. */
 function Flow({ children, inItem = false, style }: { children: ReactNode; inItem?: boolean; style?: object }) {
-  const { base } = useContext(Look);
+  const { base, openEnd } = useContext(Look);
   const out: { tag: string; node: ReactNode }[] = [];
   let run: ReactNode[] = [];
   const flush = () => {
@@ -98,8 +107,9 @@ function Flow({ children, inItem = false, style }: { children: ReactNode; inItem
     const tag = tagOf(child);
     if (tag && (tag in MARGINS || tag === "div")) {
       flush();
+      const node = (child as Tagged).props.node;
       // GFM's footnotes heading is for screen readers only.
-      if (!(child as Tagged).props.className?.includes("sr-only")) out.push({ tag, node: child });
+      if (!(child as Tagged).props.className?.includes("sr-only")) out.push({ tag: tag === "pre" && node && fenceIn(node, openEnd).fence.kind !== "code" ? "card" : tag, node: child });
     } else run.push(child);
   }
   flush();
@@ -225,6 +235,35 @@ const Words = ({ children }: { children?: ReactNode }) => {
   return <Text style={base} selectable>{children}</Text>;
 };
 
+/** A fence's language, code and what it draws; past `openEnd`, the text ends inside it: it's still being written [D520]. */
+function fenceIn(pre: Node, openEnd: number) {
+  const live = openEnd >= 0 && (pre.position?.end.offset ?? 0) >= openEnd;
+  const code = pre.children?.[0];
+  const classes = Array.isArray(code?.properties?.className) ? (code.properties.className as string[]) : [];
+  const language = classes.find((name) => name.startsWith("language-"))?.slice("language-".length) ?? "";
+  const text = textOf(code);
+  return { language, said: text.replace(/\n$/, ""), fence: fenceOf(language, code?.data?.meta, text, live) };
+}
+
+/** A fence as the card it is, or a code block. */
+function Pre({ node }: { node?: Node }) {
+  const { base, openEnd } = useContext(Look);
+  if (node?.children?.[0]?.tagName !== "code") return null;
+  const { language, said, fence } = fenceIn(node, openEnd);
+  if (fence.kind === "preview") {
+    return (
+      <Draft icon={<Eye className="size-icon-sm shrink-0 text-muted-foreground" />} title={fence.title} text={said}>
+        <View style={st.preview}>
+          <Markdown text={said} style={base} />
+        </View>
+      </Draft>
+    );
+  }
+  if (fence.kind === "message") return fence.message ? <MessageCard {...fence.message} base={base} /> : <MessageFrame />;
+  if (fence.kind === "writing") return <WritingCard title={fence.title} text={said} base={base} />;
+  return <CodeBlock code={said} language={language} title={fence.title} />;
+}
+
 const components: Components = {
   div: ({ children }) => <Flow>{children}</Flow>,
   section: ({ children }) => <Flow>{children}</Flow>,
@@ -241,14 +280,21 @@ const components: Components = {
   blockquote: ({ node, children }) => <Quote node={node as Node | undefined}>{children}</Quote>,
   hr: () => <View style={st.rule} />,
   table: ({ children }) => <Table>{children}</Table>,
-  pre: ({ node }) => {
-    const code = (node as Node | undefined)?.children?.[0];
-    const classes = Array.isArray(code?.properties?.className) ? (code.properties.className as string[]) : [];
-    const language = classes.find((name) => name.startsWith("language-"))?.slice("language-".length) ?? "";
-    return <CodeBlock code={textOf(code).replace(/\n$/, "")} language={language} />;
+  pre: ({ node }) => <Pre node={node as Node | undefined} />,
+  // A word or whole inline code the session knows is its ref (Refs.tsx).
+  span: ({ node, children }) => {
+    const word = (node as Node | undefined)?.properties?.dataRef;
+    return word === undefined ? children : <RefWord word={word} plain={children} />;
   },
-  code: ({ node }) => <Code text={textOf(node as Node | undefined)} />,
-  a: ({ href, children }) => <Link url={href ?? ""}>{children}</Link>,
+  code: ({ node }) => {
+    const text = textOf(node as Node | undefined);
+    return <RefWord word={text} plain={<Code text={text} />} />;
+  },
+  // A link to a session the Mac lists is its ref, as the desktop's; a web, mail or anchor link stays a link.
+  a: ({ href, children }) => {
+    const link = <Link url={href ?? ""}>{children}</Link>;
+    return !href || /^(https?:|mailto:|#)/i.test(href) ? link : <RefWord word={linkPath(href)} plain={link} />;
+  },
   img: ({ src, alt }) => <Link url={String(src ?? "")}>{alt || String(src ?? "").split("/").pop()}</Link>,
   strong: ({ children }) => <Text style={st.strong}>{children}</Text>,
   em: ({ children }) => <Text style={st.em}>{children}</Text>,
@@ -285,12 +331,16 @@ const collapse = () => (tree: Node) => {
 const keepUrl = (url: string) => url;
 
 /** Markdown drawn in `style`'s text: an answer's, or (with `bubble`) the user's bubble's. */
-export function Markdown({ text, style, bubble = false }: { text: string; style?: TextStyle; bubble?: boolean }) {
+export function Markdown({ text, style, bubble = false, streaming = false }: { text: string; style?: TextStyle; bubble?: boolean; streaming?: boolean }) {
   const base: TextStyle = StyleSheet.flatten([st.text, style]) ?? st.text;
+  const source = nestUnderItems(text);
+  // As the desktop's openFence, less a quote's next `>`: only a reply still streaming has a fence still open.
+  const codeAt = fenceWalk();
+  const openEnd = streaming && source.trimEnd().split("\n").map(codeAt).at(-1) !== null ? source.replace(/[\s>]+$/, "").length : -1;
   return (
-    <Look.Provider value={{ base, bubble }}>
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} rehypePlugins={[callouts, collapse, box]} components={components} allowedElements={allowed} unwrapDisallowed urlTransform={keepUrl}>
-        {nestUnderItems(text)}
+    <Look.Provider value={{ base, bubble, openEnd }}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks, remarkRefs]} rehypePlugins={[callouts, collapse, box]} components={components} allowedElements={allowed} unwrapDisallowed urlTransform={keepUrl}>
+        {source}
       </ReactMarkdown>
     </Look.Provider>
   );
@@ -305,6 +355,7 @@ const st = StyleSheet.create({
   link: { color: color.chatLink },
   inlineCode: { fontFamily: mono, fontSize: type.codeInline.fontSize, backgroundColor: color.codeCard },
   bubbleCode: { backgroundColor: color.fillHover },
+  codePad: { letterSpacing: space(1.5) },
   list: { marginStart: space(6) },
   item: { paddingStart: space(1) },
   marker: { position: "absolute", right: "100%" },
@@ -321,4 +372,5 @@ const st = StyleSheet.create({
   check: { width: space(3.5), height: space(3.5), marginEnd: space(1), borderRadius: radius.xs, borderWidth: 1, borderColor: color.border, alignItems: "center", justifyContent: "center" },
   checked: { backgroundColor: color.foreground, borderColor: color.foreground },
   grow: { flex: 1 },
+  preview: { paddingHorizontal: space(4), paddingTop: space(1), paddingBottom: space(3) },
 });

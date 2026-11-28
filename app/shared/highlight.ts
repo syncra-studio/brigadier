@@ -1,3 +1,4 @@
+// A code block's colours for both apps: highlight.js's classes, each app drawing them in the theme's syntax colours.
 import type { HLJSApi, LanguageFn } from "highlight.js";
 
 // Loaded on the first code block, so the app starts without it.

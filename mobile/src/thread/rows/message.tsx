@@ -15,7 +15,7 @@ import { ReplyImages } from "../../powers/View";
 import { color, radius, space, spacing, text } from "../../theme";
 import { ThreadImage } from "../Image";
 import { Markdown } from "../Markdown";
-import { Live, Opening, s, StepIcon, useKept, Words } from "./parts";
+import { Live, Opening, StepIcon, useKept, Words } from "./parts";
 
 type Message = Extract<Item, { kind: "message" }>;
 
@@ -111,7 +111,7 @@ export function AssistantMessage({ item, final }: { item: Message; final: boolea
   return (
     <View style={{ gap: space(1.5) }}>
       <ReplyImages keep={item.id}>
-        <Markdown text={tidy(item.text)} />
+        <Markdown text={tidy(item.text)} streaming={item.streaming} />
       </ReplyImages>
       {final && <AnswerMarks time={item.sentAt} />}
     </View>

@@ -23,6 +23,14 @@
       "streaming": false,
       "final": true,
       "id": "markdown-2"
+    },
+    {
+      "kind": "message",
+      "role": "assistant",
+      "text": "Fixed in #12. The retry lives in `src/session.ts`:\n\n```rust\nfn retry(n: u32) -> Result<(), String> {\n    // Once more, then give up.\n    if n > 1 { return Err(\"still failing\".into()); }\n    Ok(())\n}\n```\n\n```bash run the suite\npnpm test login --repeat 50\n```\n\n```text Slack #eng\nLogin test fixed: it now waits for the redirect before reading the cookie.\n```\n\n```brigadier-message\n{\"to\": \"Speed up the session list\", \"text\": \"The login helper now retries once, so rebase before you change session.ts.\", \"quote\": {\"from\": \"Speed up the session list\", \"text\": \"Is the login helper safe to change?\"}}\n```\n\n```preview Release note\n**Login** no longer fails when the redirect is slow.\n```",
+      "streaming": false,
+      "final": true,
+      "id": "markdown-3"
     }
   ]
 }

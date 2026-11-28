@@ -41,7 +41,8 @@ export function loadSample(powers = false, reply = false) {
             overnight: { state: "night", since: Date.now() - 83 * 60_000, done: 2, total: 5, decided: 1 },
             queue: { paused: false, items: [{ id: "q1", text: "Then update the changelog" }], running: ["c-sh2"] },
           } as Row)
-        : row("s1", "Fix the failing login test", "p1", "needs", 2),
+        : // The reply's #12, a PR its card lists.
+          { ...row("s1", "Fix the failing login test", "p1", "needs", 2), prs: reply ? { okAt: 0, error: null, prs: [{ number: 12, title: "Wait for the redirect in the login test", state: "open", health: "ready", failed: 0 }] } : null },
       row("s2", "Speed up the session list", "p1", "working", 5),
       row("s3", "Write the release notes", "p1", "unread", 50),
       { ...row("s4", "New pricing page", "p2", null, 60 * 26), pinned: Date.now() - 60_000 },

@@ -2,7 +2,7 @@
 // answered from here: one-time answers straight through, lasting ones through the Face ID sheet; without, read only.
 import { type ComponentType, type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { grantTip, moreWaiting, type PendingApproval, type PendingQuestion } from "../../../app/shared/cards";
+import { APPROVAL_WORDS, grantTip, moreWaiting, type PendingApproval, type PendingQuestion, QUESTION_WORDS, WAITING_FOR_YOU } from "../../../app/shared/cards";
 import type { Frame } from "../../../app/shared/client";
 import { Confirm } from "../act/Confirm";
 import { answering, forget, send, settle } from "../cards/answers";
@@ -52,7 +52,7 @@ function List({ approvals, questions, session, listed }: { approvals: Approval[]
   return (
     <View style={st.cards}>
       {question.card && (
-        <View style={st.rail} accessibilityLabel="Waiting for you">
+        <View style={st.rail} accessibilityLabel={WAITING_FOR_YOU}>
           <QuestionCard
             key={question.card.id}
             question={question.card}
@@ -180,7 +180,7 @@ function ApprovalCard({ approval, owner, error, onDismiss, step }: { approval: A
   };
   const allow = () =>
     lastingAllow
-      ? sign({ title: approval.action === "computer" ? "Allow in this chat?" : "Allow this?", body: shown.title, shown: asked(approval), args: [...base, "allow"] })
+      ? sign({ title: approval.action === "computer" ? "Allow in this chat?" : APPROVAL_WORDS.allowThis, body: shown.title, shown: asked(approval), args: [...base, "allow"] })
       : once(["allow"]);
   const done = (reply: Frame | null) => {
     setSheet(null);
@@ -210,18 +210,18 @@ function ApprovalCard({ approval, owner, error, onDismiss, step }: { approval: A
       {!owner ? <OnMac /> : waits ? null : (
         <View style={st.actions}>
           <FreeText style={st.reason}>
-            <TextInput style={st.field} value={typed} onChangeText={setTyped} placeholder="Tell the agent what to do instead" placeholderTextColor={color.placeholder} multiline accessibilityLabel="What to do instead" />
+            <TextInput style={st.field} value={typed} onChangeText={setTyped} placeholder={APPROVAL_WORDS.instead} placeholderTextColor={color.placeholder} multiline accessibilityLabel={APPROVAL_WORDS.insteadLabel} />
           </FreeText>
           <View style={st.buttons}>
             {reason ? (
-              <Action title={approval.action === "message" ? "Send instead" : "Send"} primary onPress={deny} />
+              <Action title={approval.action === "message" ? APPROVAL_WORDS.sendInstead : APPROVAL_WORDS.send} primary onPress={deny} />
             ) : (
               <>
-                {!shown.noDeny && <Action title={shown.deny ?? "Deny"} onPress={deny} />}
+                {!shown.noDeny && <Action title={shown.deny ?? APPROVAL_WORDS.deny} onPress={deny} />}
                 {approval.grant && (
-                  <Action title="Allow for this session" onPress={() => sign({ title: "Allow for this session?", body: grantTip(approval.grant!), shown: asked(approval), args: [...base, "allowSession"] })} />
+                  <Action title={APPROVAL_WORDS.allowSession} onPress={() => sign({ title: "Allow for this session?", body: grantTip(approval.grant!), shown: asked(approval), args: [...base, "allowSession"] })} />
                 )}
-                <Action title={shown.allow ?? "Allow once"} primary onPress={allow} />
+                <Action title={shown.allow ?? APPROVAL_WORDS.allowOnce} primary onPress={allow} />
               </>
             )}
           </View>
@@ -307,7 +307,7 @@ function QuestionCard({ question, session, error, onDismiss }: { question: Pendi
         </View>
         {items.length > 1 && <StepCounter noun="question" at={at} count={items.length} canBack={reachable(at - 1)} canForward={reachable(at + 1)} onStep={(by) => page(at + by)} />}
         {session && !question.held && (
-          <Pressable accessibilityRole="button" accessibilityLabel="Skip" onPress={() => go(items.map((_, i) => state.answers[i] ?? null))} hitSlop={(touch - spacing.controlXs) / 2} style={st.close}>
+          <Pressable accessibilityRole="button" accessibilityLabel={QUESTION_WORDS.skip} onPress={() => go(items.map((_, i) => state.answers[i] ?? null))} hitSlop={(touch - spacing.controlXs) / 2} style={st.close}>
             <X className="size-icon-md text-toolbar-foreground" />
           </Pressable>
         )}
@@ -339,9 +339,9 @@ function QuestionCard({ question, session, error, onDismiss }: { question: Pendi
         })}
         {session && !question.held && (
           <FreeText marker={pickable}>
-            <TextInput style={st.field} value={state.typed} onChangeText={(t) => keep({ ...state, typed: t })} placeholder={pickable ? "No, and tell the agent what to do differently" : "Type here"} placeholderTextColor={color.placeholder} multiline accessibilityLabel="Your answer" />
+            <TextInput style={st.field} value={state.typed} onChangeText={(t) => keep({ ...state, typed: t })} placeholder={pickable ? QUESTION_WORDS.differently : QUESTION_WORDS.typeHere} placeholderTextColor={color.placeholder} multiline accessibilityLabel={QUESTION_WORDS.answer} />
             <Action
-              title={!ready ? "Skip" : last ? "Submit" : "Next"}
+              title={!ready ? QUESTION_WORDS.skip : last ? QUESTION_WORDS.submit : QUESTION_WORDS.next}
               primary={ready}
               medium
               onPress={() => answer(typed || (state.marked.length ? state.marked.map((m) => item.options[m]!.label).join(", ") : null))}

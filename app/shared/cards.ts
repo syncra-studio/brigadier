@@ -95,9 +95,30 @@ export function askWords(approval: PendingApproval): AskWords {
     case "computer":
       return { kind: "Computer use", title: reason || "Use this app?", allow: "Allow in this chat" };
     default:
-      return { kind: "Ask permission", title: reason || "Allow this?" };
+      return { kind: "Ask permission", title: reason || APPROVAL_WORDS.allowThis };
   }
 }
+
+/** An approval's one-line subject: its command, host, files or raw input. */
+export const approvalSubject = ({ command, host, paths, input }: PendingApproval) => command || host || paths?.join(", ") || input || undefined;
+
+/** The approval card's buttons and field; words typed turn Allow to Send. */
+export const APPROVAL_WORDS = {
+  allowOnce: "Allow once",
+  deny: "Deny",
+  allowSession: "Allow for this session",
+  allowThis: "Allow this?",
+  send: "Send",
+  sendInstead: "Send instead",
+  instead: "Tell the agent what to do instead",
+  insteadLabel: "What to do instead",
+} as const;
+
+/** The question card's field; `differently` beside the options. */
+export const QUESTION_WORDS = { answer: "Your answer", typeHere: "Type here", differently: "No, and tell the agent what to do differently", skip: "Skip", submit: "Submit", next: "Next" } as const;
+
+/** The rail's cards waiting on the user. */
+export const WAITING_FOR_YOU = "Waiting for you";
 
 /** The lines under what an approval asks: where a command runs, what it asks beyond its sandbox, a site not on the list. */
 export const ASKED = {

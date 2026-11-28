@@ -31,6 +31,7 @@ import { WorkerDetails, WorkerHeader, WorkerThread } from "./view";
 export type { WorkerRow } from "../../../shared/rows";
 import type { WorkerRow } from "../../../shared/rows";
 import { UNKNOWN_WORKER } from "../../../shared/workers";
+import { PARENT } from "../../../shared/cards";
 
 /**
  * The old strip's words for a call: a command reads by what the agent said it does, as its thread row [D214]; one
@@ -224,7 +225,7 @@ function WorkerView({ worker, owner, onBack }: { worker: Worker; owner: string; 
   const row = rows?.find((row) => row.id === worker.id) as ComposerRow | undefined;
   const updated = row?.updated;
   // Its asks name the session that answers them [D131].
-  const parent = rows?.find((each) => each.id === (row?.worker?.parent ?? owner))?.title || "Its parent";
+  const parent = rows?.find((each) => each.id === (row?.worker?.parent ?? owner))?.title || PARENT;
   const source = useMemo(() => {
     let session: Session | null = null;
     const listeners = new Set<() => void>();
