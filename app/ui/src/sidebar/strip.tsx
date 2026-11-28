@@ -25,7 +25,7 @@ import { StripFoot } from "./foot";
 export function HomeMark({ rail = false }: { rail?: boolean }) {
   return (
     <button type="button" aria-label="Home" onClick={newChat} className={cx("flex shrink-0 cursor-pointer items-center justify-center rounded-icon-button text-foreground focus-visible:focus-ring", rail ? "size-9" : "h-7 w-7.25")}>
-      <BrigadierMark className="size-icon-mark" />
+      <BrigadierMark under2x={24} className="size-icon-mark" />
     </button>
   );
 }

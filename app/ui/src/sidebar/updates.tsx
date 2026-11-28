@@ -117,7 +117,9 @@ function BarItem({ show, axis = "x", children }: { show: boolean; axis?: "x" | "
   );
 }
 
-const Glyph = ({ item, className }: { item: UpdateItem; className: string }) => (item.target === "app" ? <BrigadierMark aria-hidden className={className} /> : <ProviderMark mark={item.mark} className={className} />);
+/** `pixels`: the size its class draws it at, for Brigadier's small cut under 2x. */
+const Glyph = ({ item, className, pixels }: { item: UpdateItem; className: string; pixels: number }) =>
+  item.target === "app" ? <BrigadierMark aria-hidden under2x={pixels} className={className} /> : <ProviderMark mark={item.mark} className={className} />;
 
 /** "Codex update available", "Brigadier and Codex updates available", "Updating Codex". */
 function rowLabel(items: readonly UpdateItem[]) {
@@ -139,7 +141,7 @@ function Marks({ items, column }: { items: readonly UpdateItem[]; column: boolea
   return (
     <span className={cx("flex shrink-0 items-center gap-1 text-foreground foot-narrow:gap-0.5", column && "flex-col")}>
       {items.slice(0, count > 3 ? 2 : 3).map((item, at) => (
-        <Glyph key={item.target} item={item} className={cx("size-icon-sm shrink-0", count > 2 && at > 0 && "foot-narrow:hidden")} />
+        <Glyph key={item.target} item={item} pixels={14} className={cx("size-icon-sm shrink-0", count > 2 && at > 0 && "foot-narrow:hidden")} />
       ))}
       {count > 3 && <span className="text-2xs font-medium tabular-nums foot-narrow:hidden">+{count - 2}</span>}
       {count > 2 && <span className="hidden text-2xs font-medium tabular-nums foot-narrow:inline">+{count - 1}</span>}
@@ -153,7 +155,7 @@ function UpdateRow({ item, onUpdate, onSkip }: { item: UpdateItem; onUpdate: () 
   return (
     <div className="flex flex-col gap-1.5 px-1.5 py-1.5">
       <div className="flex items-center gap-2.5">
-        <Glyph item={item} className="size-icon-md shrink-0" />
+        <Glyph item={item} pixels={16} className="size-icon-md shrink-0" />
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-sm">{item.name}</span>
           <span className="text-xs text-muted-foreground tabular-nums">{progress.type === "updated" ? `Updated to ${item.current}` : `${item.current} → ${item.latest}`}</span>

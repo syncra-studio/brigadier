@@ -88,10 +88,11 @@ export function serveTray(): void {
       image.setTemplateImage(true);
       return image;
     };
-    // The black mark is macOS's template image; elsewhere the app's own icon, as the old app had on Windows.
+    // The black mark is macOS's template image; elsewhere the app's own icon, as the old app had on Windows. Linux's
+    // comes cut for a tray's 24 px, with its @2x, since a desktop shrinking the 512 px one blurs the stripes (scripts/icons).
     if (process.platform === "darwin") icons = { idle: icon("tray.png"), using: icon("tray-active.png") };
     else {
-      const own = nativeImage.createFromPath(OWN_ICON);
+      const own = nativeImage.createFromPath(process.platform === "linux" ? path.join(__dirname, "../icons/tray-linux.png") : OWN_ICON);
       icons = { idle: own, using: own };
     }
     tray = new Tray(icons.idle);

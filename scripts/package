@@ -168,7 +168,8 @@ await build({
     // and off macOS the window's, the tray's and the taskbar badge's (tray.ts, notices.ts).
     files: ["package.json", "app/main/dist/**", "app/main/browser/browser_agent.js", "app/ui/dist/**",
       "app/ui/src/theme.css", "app/ui/src/shortcuts.json", "app/main/icons/tray.png", "app/main/icons/tray-active.png",
-      ...(OS === "mac" ? [] : ["app/main/icons/icon.png", "app/main/icons/icon.ico", "app/main/icons/badge.png"]), "!node_modules",
+      ...(OS === "mac" ? [] : ["app/main/icons/icon.png", "app/main/icons/icon.ico", "app/main/icons/badge.png",
+        "app/main/icons/tray-linux.png", "app/main/icons/tray-linux@2x.png"]), "!node_modules",
       ...[...updater.keys()].map((name) => `node_modules/${name}/**`)],
     npmRebuild: false,
     // CFBundleVersion stays the version, as before, not CI's run number.

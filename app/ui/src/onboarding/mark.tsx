@@ -92,8 +92,21 @@ function SmallCut({ size }: { size: number }) {
   );
 }
 
-/** `pixels`: the size it's drawn at, when small, to draw the small cut for that grid instead of the master. */
-export function BrigadierMark({ spinOnHover = false, pixels, ...props }: SVGProps<SVGSVGElement> & { spinOnHover?: boolean; pixels?: number }) {
+/**
+ * `pixels`: the size it's drawn at, when small, to draw the small cut for that grid instead of the master. `under2x`: the
+ * same, only on screens under 2x (Windows and Linux at 100-150%), where a CSS pixel is not a whole number of device
+ * pixels, so the cut is laid on the device's grid; at 2x and up the master draws.
+ */
+export function BrigadierMark({
+  spinOnHover = false,
+  pixels,
+  under2x,
+  ...props
+}: SVGProps<SVGSVGElement> & { spinOnHover?: boolean; pixels?: number; under2x?: number }) {
+  // shortcut: read at render, so a window dragged to a screen of another scale redraws it on its next render.
+  const ratio = window.devicePixelRatio;
+  const small = pixels ?? (ratio < 2 ? under2x : undefined);
+  const grid = small && (ratio < 2 ? Math.max(2, Math.round((small * ratio) / 2) * 2) : small);
   const [hovered, setHovered] = useState(false);
   const offset = useSpinOffset(spinOnHover && hovered);
   const t = offset / COLUMN_GAP;
@@ -108,8 +121,8 @@ export function BrigadierMark({ spinOnHover = false, pixels, ...props }: SVGProp
       onPointerLeave={spinOnHover ? () => setHovered(false) : undefined}
       {...props}
     >
-      {pixels ? (
-        <SmallCut size={pixels} />
+      {grid ? (
+        <SmallCut size={grid} />
       ) : (
         <>
           {COLUMNS.map((column) => bar(`s${column}`, x(column), 4.4, height(STRIPES, column)))}
