@@ -9,7 +9,8 @@ const path = require("node:path");
 const { app, BrowserWindow } = require("electron");
 
 const ICONS = path.join(__dirname, "../app/main/icons");
-const ICO_SIZES = [16, 20, 24, 32, 40, 48, 64, 256];
+// 30 and 36: the taskbar's 24 px at 125% and 150%, which tray.ts hands the window.
+const ICO_SIZES = [16, 20, 24, 30, 32, 36, 40, 48, 64, 256];
 /** Up to this tile size the mark is drawn as the small cut. */
 const SMALL_MAX = 48;
 
@@ -20,6 +21,7 @@ function draw(master, size, small) {
   const BOX = 326 / 512;
   const CX = 256 / 512;
   const CY = 246 / 512;
+  const SMALL_BOX = 0.8;
   // mark.tsx's grid: the first column's centre, the gap between columns, each thin stroke's height.
   const FIRST_COLUMN_X = 27.2;
   const COLUMN_GAP = 14.4;
@@ -33,7 +35,8 @@ function draw(master, size, small) {
       g.imageSmoothingQuality = "high";
       g.drawImage(image, 0, 0, size, size);
       if (small) {
-        const mark = Math.round((size * BOX) / 2) * 2;
+        // Bigger than the master's share (10 px of a 16 px tile reads as a blob), as small icon cuts are drawn.
+        const mark = Math.round((size * SMALL_BOX) / 2) * 2;
         const left = Math.round(size * CX - mark / 2);
         const top = Math.round(size * CY - mark / 2);
         g.fillStyle = "#181818";

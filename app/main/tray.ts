@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { app, type BrowserWindow, ipcMain, Menu, nativeImage, Tray } from "electron";
+import { app, type BrowserWindow, ipcMain, Menu, nativeImage, screen, Tray } from "electron";
 
 /** A menu bar icon's height on macOS, in points: it draws the PNG by height, in its text colour. */
 const ICON_POINTS = 18;
@@ -16,6 +16,21 @@ const TITLE_CHARS = 48;
 
 /** The app's own icon off macOS, for the item and the window, which a dev run has no packaged one for. */
 const OWN_ICON = path.join(__dirname, `../icons/${process.platform === "win32" ? "icon.ico" : "icon.png"}`);
+
+/**
+ * The icon.ico image nearest `size` px. Windows draws the taskbar's 24 px button from the window's big icon, 32 px when
+ * given the file, and that scaling blurs the stripes, so the window gets the taskbar's own size.
+ */
+function icoImage(size: number): Electron.NativeImage {
+  const ico = readFileSync(OWN_ICON);
+  const entries = Array.from({ length: ico.readUInt16LE(4) }, (_, i) => ({
+    size: ico[6 + 16 * i] || 256,
+    length: ico.readUInt32LE(14 + 16 * i),
+    offset: ico.readUInt32LE(18 + 16 * i),
+  }));
+  const best = entries.reduce((a, b) => (Math.abs(b.size - size) < Math.abs(a.size - size) ? b : a));
+  return nativeImage.createFromBuffer(ico.subarray(best.offset, best.offset + best.length));
+}
 
 // Held here: a tray nobody holds is collected, and leaves the menu bar.
 let tray: Tray | null = null;
@@ -111,7 +126,9 @@ export const allowQuit = () => void (quitting = true);
 /** Closing the app's window hides it, and the Dock icon with it, while the item can bring it back. */
 export function keepOnClose(window: BrowserWindow): void {
   main = window;
-  if (process.platform !== "darwin") window.setIcon(OWN_ICON);
+  // shortcut: sized for the screen it opens on; a move to a screen of another scale keeps it until the next launch.
+  if (process.platform === "win32") window.setIcon(icoImage(Math.round(24 * screen.getDisplayMatching(window.getBounds()).scaleFactor)));
+  else if (process.platform !== "darwin") window.setIcon(OWN_ICON);
   window.on("close", (event) => {
     if (quitting || !tray || process.platform === "linux") return;
     event.preventDefault();
