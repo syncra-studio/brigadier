@@ -1,5 +1,6 @@
 // A session's row and a project as Rust keeps them, and the facts a row carries, for both apps [D58].
 import type { StepKind } from "./thread";
+import { hhmm, resetWords } from "./words";
 
 export type Daemon = { pid: number; version: string; build: number };
 /** A project as Rust keeps it [D165, D171]: `trusted` is null until the owner answers; `include` (paths to copy into worktrees) and `setup` are Project settings' [D178, D202]; `removing` while Remove project runs [D172]. */
@@ -161,4 +162,81 @@ export function applyListFrame(frame: Record<string, any>, rows: Map<string, Row
   for (const id of frame.gone as string[]) rows.delete(id);
   for (const project of (frame.projects ?? []) as Project[]) projects.set(project.id, project);
   for (const id of (frame.projects_gone ?? []) as string[]) projects.delete(id);
+}
+
+// Each state's words in the hover card, so no code name ever shows (O12). Null says nothing.
+const STATE_WORDS: Record<string, string | null> = {
+  waiting_answer: "Needs you · question",
+  asking: "Working",
+  sign_in: "Needs you · sign-in",
+  logged: "Starting",
+  starting: "Starting",
+  working: "Working",
+  silent: "Working",
+  retrying: "Reconnecting",
+  reconnecting: "Reconnecting",
+  checking: "Running safety checks",
+  idle_jobs: "Background job",
+  failed: "Failed",
+  out_of_credits: "Out of credits",
+  interrupted: "Interrupted",
+  undelivered: "Couldn't send your message",
+  uncertain: "Couldn't confirm your message arrived",
+  unresumable: "Can't resume on this account",
+  stalled: "Stalled · no output for a while",
+  unresponsive: "Not responding",
+  no_turn_started: "Not started yet",
+  error: "Couldn't read this session",
+  stopped: "Stopped",
+  idle: null,
+  new: null,
+};
+
+// A state this build has no words for yet still says what its mark means.
+const MARK_WORDS: Record<NonNullable<Mark>, string> = { working: "Working", needs: "Needs you", amber: "Failed", unread: "New reply", background: "Background job" };
+
+/** Whether a limit's reset time is still to come; once it has passed the words stop naming it [D379]. */
+export const resetAhead = (resets: number | null): resets is number => resets !== null && resets > Date.now();
+
+/** What a row's mark means, in plain words ("Needs you · sign-in", "Usage limit · resets 14:10"); null for nothing. */
+export function statusWords(row: Pick<Row, "mark" | "state" | "resets" | "reset" | "switching"> & { reason?: unknown }): string | null {
+  if (row.mark === "unread") return MARK_WORDS.unread;
+  // A worker may move to another model, not only another account [D2037].
+  if (row.switching) return "Switching automatically";
+  if (row.state === "limited") {
+    // Spinning, an automatic switch waits it out [D51]; otherwise it's stuck until you act.
+    const words = row.mark === "working" ? "Waiting for usage limit" : "Usage limit";
+    const carry = resetWords(row.reset);
+    if (carry) return `${words} · ${carry}`;
+    return resetAhead(row.resets) ? `${words} · resets ${hhmm(row.resets)}` : words;
+  }
+  // A pending approval waits as a question does; only its reason says which [D173].
+  if (row.state === "waiting_answer" && typeof row.reason === "object" && row.reason !== null && "approval" in row.reason) return "Needs you · approval";
+  // Answered, but its block stays open on its subagents [D118], or its mockup card waits on you.
+  if ((row.mark === "working" || row.mark === "needs") && (row.state === "idle" || row.state === "idle_jobs")) return MARK_WORDS[row.mark];
+  if (Object.hasOwn(STATE_WORDS, row.state)) return STATE_WORDS[row.state];
+  return row.mark && MARK_WORDS[row.mark];
+}
+
+/**
+ * Whether a project row or strip square shows its one blue mark: a session under it needs you, failed, warned or
+ * finished unseen, every kind the same mark [D844]; the open session left out.
+ */
+export const attentionOf = (rows: readonly Pick<Row, "id" | "mark">[], active: string | null) => rows.some((row) => row.id !== active && (row.mark === "needs" || row.mark === "amber" || row.mark === "unread"));
+
+/** Which of `count` hues a project's tile takes: FNV-1a of its name, mixed (murmur3's finaliser) so names alike spread
+ *  over the hues; the same name always gets the same hue. Their constants in decimal, as FNV publishes its own [D283]. */
+export function hueOf(name: string, count: number): number {
+  let hash = 2166136261;
+  for (const char of name) hash = Math.imul(hash ^ char.codePointAt(0)!, 16777619);
+  hash = Math.imul(hash ^ (hash >>> 16), 2246822507);
+  hash = Math.imul(hash ^ (hash >>> 13), 3266489909);
+  return ((hash ^ (hash >>> 16)) >>> 0) % count;
+}
+
+/** A project's initials for its badge: the first letters of its first two words, else its first two. */
+export function projectInitials(name: string): string {
+  const [first = "", second] = name.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const letters = second === undefined ? [...first].slice(0, 2) : [[...first][0], [...second][0]];
+  return letters.join("").toUpperCase();
 }

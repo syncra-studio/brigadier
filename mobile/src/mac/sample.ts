@@ -18,8 +18,9 @@ import { sessionMenu, sheet } from "../sheets/Sheets";
 import { keepImage } from "../thread/Image";
 import { lists, thread } from "./mac";
 
+// Sent `ago` minutes back: the list goes by the last send, as the desktop's.
 const row = (id: string, title: string, project: string | null, mark: Row["mark"], ago: number): Row =>
-  ({ id, title, project, mark, state: "idle", reason: null, resets: null, sent: 0, finished: 0, backend: "claude", updated: Date.now() - ago * 60_000, items: 1, error: null }) as Row;
+  ({ id, title, project, mark, state: "idle", reason: null, resets: null, sent: Date.now() - ago * 60_000, finished: 0, backend: "claude", updated: Date.now() - ago * 60_000, items: 1, error: null }) as Row;
 
 /** `powers`: s1 has the level and Overnight pills, a night under way, and a `!` command running that a message waits for; `reply`: s1 is the markdown sample alone. */
 export function loadSample(powers = false, reply = false) {

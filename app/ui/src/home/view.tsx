@@ -21,6 +21,8 @@ import { BranchPicker, type RepoState } from "./branch";
 import { type DraftProject, ProjectPicker, RepoCount, UtilityBar, type WorkIn, WorkInPicker } from "./pills";
 import { OVERNIGHT } from "../sessions/overnight";
 import { nightLook } from "../sessions/overnight-parts";
+import { COMPOSER_WORDS } from "../../../shared/session/composer";
+import { HOME_WORDS } from "../../../shared/words";
 
 /** "Good morning" from five until noon, "Good afternoon" until six, else "Good evening" (the old app's). */
 function greeting(now: number): string {
@@ -106,7 +108,7 @@ export function HomeView(props: HomeProps) {
   const noModel = props.groups !== null && !props.model;
   const noWorktree = project && props.workIn === "existing" && !props.worktree;
   const holder = project ? props.localHolder : undefined;
-  const blocked = offline ? "Reconnecting…" : !projects ? "Loading your projects…" : !props.model ? "Pick a model first" : noWorktree ? "Pick a worktree first" : holder ? "Start in a new worktree" : undefined;
+  const blocked = offline ? COMPOSER_WORDS.reconnecting : !projects ? "Loading your projects…" : !props.model ? HOME_WORDS.pickModel : noWorktree ? "Pick a worktree first" : holder ? "Start in a new worktree" : undefined;
   const field = useRef<ComposerFieldHandle>(null);
   const modelDisabled = offline || props.groups === null;
   // What the field last reported, for drawing: reading the field mid-draw flushes its update into the draw (React error 520).
@@ -180,7 +182,7 @@ export function HomeView(props: HomeProps) {
                       </a>
                     )
                   }
-                >{`Couldn't start this conversation. ${refused.error}`}</NoticeRow>
+                >{`${HOME_WORDS.couldntStart} ${refused.error}`}</NoticeRow>
               </ul>
             </RailItem>
           )}
@@ -205,7 +207,7 @@ export function HomeView(props: HomeProps) {
                     )
                   }
                 >
-                  No model is available.
+                  {HOME_WORDS.noModel}
                 </NoticeRow>
               </ul>
             </RailItem>
@@ -258,7 +260,7 @@ export function HomeView(props: HomeProps) {
       <ComposerField
         ref={field}
         initial={props.initial}
-        placeholder={props.review ? "Ask about this pull request" : props.overnight ? "What should be done by morning?" : "Do anything"}
+        placeholder={props.review ? "Ask about this pull request" : props.overnight ? "What should be done by morning?" : COMPOSER_WORDS.placeholder}
         autoFocus
         attachments={files.attachments}
         onAttach={files.attach}
@@ -289,11 +291,11 @@ export function HomeView(props: HomeProps) {
         <h1 className="text-center font-display text-hero font-normal tracking-hero">
           {project && projects ? (
             <>
-              What should we build in{" "}
+              {HOME_WORDS.buildIn}{" "}
               <ProjectPicker heading projects={projects} value={project} onChange={props.onProject} onAdd={props.onAddProject} onNone={props.onNoProject} />?
             </>
           ) : (
-            "What should we build?"
+            HOME_WORDS.build
           )}
         </h1>
       </div>

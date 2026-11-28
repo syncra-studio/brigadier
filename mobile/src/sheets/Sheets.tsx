@@ -1,10 +1,9 @@
 // The open thread's sheets, one at a time: from the header's ⋯ (changes, background, plan, fork from the latest answer,
 // rewind to a message) or a `!` command's row (its output). A held message selects its text, so nothing hangs on that.
 import { useSyncExternalStore } from "react";
-import { ActionSheetIOS, Alert, Pressable, Text } from "react-native";
+import { ActionSheetIOS, Alert, Text } from "react-native";
 import type { Draft } from "../../../app/shared/draft";
 import { store } from "../../../app/shared/store";
-import { DotsHorizontal } from "../../../app/ui/src/icons";
 import { Fork } from "../fork/Fork";
 import { thread } from "../mac/mac";
 import { macNow } from "../link";
@@ -27,16 +26,7 @@ export const sheet = store<(Open & { id: string }) | null>(null);
 const choose = (actions: [string, () => void][], title?: string) =>
   ActionSheetIOS.showActionSheetWithOptions({ title, options: [...actions.map(([each]) => each), "Cancel"], cancelButtonIndex: actions.length }, (at) => actions[at]?.[1]());
 
-/** The thread header's ⋯. */
-export function SessionMenu({ id }: { id: string }) {
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel="More" hitSlop={12} onPress={() => sessionMenu(id)}>
-      <DotsHorizontal className="size-icon-md text-foreground" />
-    </Pressable>
-  );
-}
-
-/** Its menu: the sheets, Fork and Rewind. */
+/** The thread header's ⋯ menu: the sheets, Fork and Rewind. */
 export function sessionMenu(id: string) {
   const open = (each: Open) => sheet.set({ ...each, id });
   const session = () => (thread.get()?.id === id ? thread.get()?.session : null);

@@ -433,3 +433,13 @@ export function mockupWords(moment: MockupMoment, name: string): [string, string
       return [name, "stopped"];
   }
 }
+
+/** The sidebar's words: an untitled row, its sections, an empty project's line, a folded list's dot, a project's pencil. */
+export const SIDEBAR_WORDS = { untitled: "New session", pinned: "Pinned", projects: "Projects", chats: "Chats", noChats: "No chats", noChatsYet: "No chats yet", attention: "A session needs your attention" } as const;
+export const newSessionIn = (project: string) => `New session in ${project}`;
+
+/** A chat's own tab, the title over its thread: untitled, and its "…" [D45]. */
+export const CHAT_TAB_WORDS = { untitled: "Chat", actions: "Chat actions" } as const;
+
+/** Home's hero over a new session's composer, and what it says while it can't start one [D161, D388]. */
+export const HOME_WORDS = { buildIn: "What should we build in", build: "What should we build?", pickBranch: "Pick a branch", noModel: "No model is available.", pickModel: "Pick a model first", couldntStart: "Couldn't start this conversation." } as const;

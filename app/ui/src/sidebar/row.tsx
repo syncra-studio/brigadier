@@ -13,6 +13,7 @@ import { ArchiveRowAction } from "../sessions/archive";
 import { useMark } from "../session/turn";
 import { RowMenuItems } from "./menu";
 import { hueOf, type Mark, type Project, projectInitials, type SessionRow, useStatusWords } from "./words";
+import { SIDEBAR_WORDS } from "../../../shared/words";
 
 const SLOT = "flex size-icon-lg shrink-0 items-center justify-center";
 
@@ -190,7 +191,7 @@ export function SessionRowItem({
 }) {
   const mark = useMark(row, active);
   const words = useStatusWords(row);
-  const title = row.title || "New session";
+  const title = row.title || SIDEBAR_WORDS.untitled;
   // Archived rows bring their own menu (Restore, Delete), and no Pin or Archive.
   const live = !menu && !row.archived;
   const items = menu ?? <RowMenuItems row={row} project={canPin ? project : undefined} canPin={canPin} onRename={() => onRename(row)} />;

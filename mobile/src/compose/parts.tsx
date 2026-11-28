@@ -6,7 +6,7 @@ import { agentChipWords, type Chip as PanelChip, commentAt } from "../../../app/
 import { type Chip, type Draft, plainText } from "../../../app/shared/draft";
 import type { Going } from "../../../app/shared/session/uncertain";
 import { baseName, COMPOSER_WORDS, failedWords, kindOf } from "../../../app/shared/session/composer";
-import { color, spacing, radius, text, shadow, opacity, mono, night } from "../theme";
+import { color, spacing, radius, text, shadow, opacity, mono, night, touch } from "../theme";
 import { Comment, FileDocument, FileImage, Paperclip, Spinner, Warning, X } from "../../../app/ui/src/icons";
 import { Terminal } from "../../../app/ui/src/icons/thread";
 import { Sparkles, XCircle } from "../../../app/ui/src/landing/icons";
@@ -232,8 +232,10 @@ export function OnItsWay({ id, entry }: { id: string; entry: Going }) {
   );
 }
 
+// A finger's height around the line of words.
+const LINK_SLOP = { top: (touch - (text.sm.lineHeight ?? 0)) / 2, bottom: (touch - (text.sm.lineHeight ?? 0)) / 2, left: 8, right: 8 };
 export const Link = ({ title, disabled, onPress }: { title: string; disabled?: boolean; onPress: () => void }) => (
-  <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} hitSlop={8} style={disabled && { opacity: opacity.disabled }}>
+  <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} hitSlop={LINK_SLOP} style={disabled && { opacity: opacity.disabled }}>
     <Text style={st.link}>{title}</Text>
   </Pressable>
 );

@@ -9,6 +9,7 @@ import { Branch, Check, Folder } from "../icons";
 import { errorText, run } from "../onboarding/api";
 import { PickerSearch, RAIL_PILL, type WorkIn } from "./pills";
 import { baseBranches, type RepoInfo } from "../../../shared/rows";
+import { HOME_WORDS } from "../../../shared/words";
 
 export type { RepoInfo };
 export type RepoState = { info?: RepoInfo; error?: string; loading: boolean; refresh: () => void };
@@ -102,7 +103,7 @@ export function BranchPicker({
       pick(matches[highlighted]!.key);
     }
   };
-  const label = local ? (info?.current ?? (loading ? "…" : "No branch")) : existing ? (picked ? (worktreeName ?? folderName(picked)) : "Pick a worktree") : (picked ?? (loading ? "…" : "Pick a branch"));
+  const label = local ? (info?.current ?? (loading ? "…" : "No branch")) : existing ? (picked ? (worktreeName ?? folderName(picked)) : "Pick a worktree") : (picked ?? (loading ? "…" : HOME_WORDS.pickBranch));
   const kind = existing ? "worktrees" : "branches";
   return (
     <Popover

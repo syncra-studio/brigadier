@@ -3,7 +3,7 @@
 // picks the worktree and the project's level. Refused, Rust gives the words back into this draft; nothing is sent again
 // by itself.
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ActionSheetIOS, KeyboardAvoidingView, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActionSheetIOS, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { type Chip, type Draft, EMPTY_DRAFT, plainText } from "../../../app/shared/draft";
@@ -12,14 +12,17 @@ import { asGroups, type ModelChoice, type ModelGroup, type ModelRow } from "../.
 import { failure } from "../../../app/shared/session/run";
 import { flagOf, type Going, UNCONFIRMED } from "../../../app/shared/session/uncertain";
 import { Confirm } from "../act/Confirm";
-import { Button } from "../Button";
 import { streamNow } from "../link";
-import { ArrowUp, Bolt } from "../../../app/ui/src/icons";
+import { ArrowUp, Bolt, Branch } from "../../../app/ui/src/icons";
+import { BrigadierMark } from "../../../app/ui/src/onboarding/mark";
 import { ProviderMark } from "../compose/KindIcons";
-import { effortLabel } from "../../../app/shared/session/composer";
+import { COMPOSER_WORDS, effortLabel } from "../../../app/shared/session/composer";
+import { HOME_WORDS } from "../../../app/shared/words";
+import { Link, st as cs } from "../compose/parts";
+import { Pill } from "../compose/Pill";
 import { canned, forMac, newId } from "../compose/state";
 import { lists } from "../mac/mac";
-import { color, text } from "../theme";
+import { color, fontWeight, opacity, space, spacing, text, touch, tracking } from "../theme";
 
 /**
  * A kept start as the phone sends it: one the Mac's book brought back is its stored command (`--home` or `--slot` in
@@ -49,6 +52,7 @@ export function Start({ project, name, onStarted }: { project: string; name: str
   const { run, drafts, unsaved, uncertain } = forMac();
   const key = `@home:${project}`;
   const header = useHeaderHeight();
+  const { height } = useWindowDimensions();
   const conn = useSyncExternalStore(lists.subscribe, () => (lists.get().ready ? streamNow() : -1));
   // A sample screen's canned replies stand in for the Mac.
   const connected = conn >= 0 || !!canned.reply;
@@ -201,62 +205,83 @@ export function Start({ project, name, onStarted }: { project: string; name: str
     });
   };
 
-  const ready = connected && !!choice && (words.trim() !== "" || files.ids.length + files.chips.length > 0);
+  const blank = words.trim() === "" && files.ids.length + files.chips.length === 0;
+  // Why Start waits, in the desktop's words for its Send.
+  const waits = !connected ? COMPOSER_WORDS.reconnecting : groups && !choice ? HOME_WORDS.pickModel : undefined;
+  const off = blank || !choice || waits !== undefined;
+  const branch = base ?? repo?.current ?? HOME_WORDS.pickBranch;
+  const model = choice && found(choice);
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: color.background }} behavior="padding" keyboardVerticalOffset={header}>
-      <SafeAreaView edges={["bottom"]} style={st.page}>
-        <Text style={st.muted}>New chat in {name}</Text>
+      {/* The desktop's home/view.tsx: the hero ends a little above the middle, the composer sits at the bottom; each takes half. */}
+      <View style={st.hero}>
+        <BrigadierMark className="size-16 text-foreground opacity-60" />
+        <Text style={st.heroText}>{`${HOME_WORDS.buildIn} ${name}?`}</Text>
+      </View>
+      <SafeAreaView edges={{ bottom: "maximum" }} style={[cs.column, st.half]}>
+        {landed && (
+          <View style={cs.going}>
+            <Text style={cs.goingText} numberOfLines={2}>{landed.title}</Text>
+            <Text style={cs.error}>{landed.error}</Text>
+            <View style={cs.actions}>
+              <Link title="Open the session" onPress={() => onStarted(landed.id, landed.title)} />
+            </View>
+          </View>
+        )}
+        {held.map((entry) => (
+          <View key={entry.cid} style={cs.going}>
+            <Text style={cs.goingText} numberOfLines={2}>{textOf(entry.op) || plainText(entry.draft.parts)}</Text>
+            {/* None held here is on its way: one kept with no answer (a relaunch mid-way) couldn't be confirmed. */}
+            <Text style={cs.error}>{entry.stuck ?? UNCONFIRMED}</Text>
+            <View style={cs.actions}>
+              {!entry.left && <Link title="Try again" disabled={busy.has(entry.cid) || !connected || !!asking} onPress={() => setAsking({ entry: { ...entry, op: phoneOp(entry) }, fresh: false })} />}
+              <Link title="Discard" disabled={busy.has(entry.cid) || !connected || !!asking} onPress={() => discard(entry)} />
+            </View>
+          </View>
+        ))}
         {files.ids.length + files.chips.length > 0 && (
-          <Text style={st.muted}>
+          <Text style={cs.muted}>
             {(() => {
               const n = new Set([...files.ids, ...files.chips.map((chip) => ("attachmentId" in chip ? chip.attachmentId : ""))]).size;
               return n === 1 ? "1 file goes with it · " : `${n} files go with it · `;
             })()}
-            <Text style={{ color: color.link }} accessibilityRole="button" onPress={() => typed(words$.current, NO_FILES)}>Remove</Text>
+            <Text style={cs.link} accessibilityRole="button" onPress={() => typed(words$.current, NO_FILES)}>Remove</Text>
           </Text>
         )}
-        <View style={st.field}>
-          <TextInput style={st.input} multiline autoFocus value={words} onChangeText={typed} placeholder={connected ? "Do anything" : "Not connected"} placeholderTextColor={color.mutedForeground} accessibilityLabel="Message" />
-          <View style={st.bar}>
-            <View style={st.pills}>
-              <Pressable accessibilityRole="button" accessibilityLabel={`Model: ${choice ? shown(choice) : "none"}`} disabled={offered.length === 0} onPress={pick} style={({ pressed }) => [st.pill, pressed && { opacity: 0.6 }]}>
-                {choice ? (
-                  <>
-                    <ProviderMark mark={found(choice)?.group.mark} />
-                    <Text style={st.pillText} numberOfLines={1}>{found(choice)?.model.name ?? choice.model}</Text>
-                    {choice.fast ? <Bolt className="size-icon-xs text-glyph-5" /> : null}
-                    {choice.effort ? <Text style={[st.pillText, { color: color.mutedForeground }]}>{effortLabel(choice.effort)}</Text> : null}
-                  </>
-                ) : (
-                  <Text style={st.pillText} numberOfLines={1}>{groups ? "No model available" : "Loading models…"}</Text>
-                )}
-              </Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel={`Base branch: ${base ?? repo?.current ?? "none"}`} disabled={listed.length === 0} onPress={pickBase} style={({ pressed }) => [st.pill, pressed && { opacity: 0.6 }]}>
-                <Text style={st.pillText} numberOfLines={1}>{base ?? repo?.current ?? (repo ? "No branch" : "Loading branches…")}</Text>
+        {/* The desktop's NoticeRow over the composer: the whole refusal, never cut. */}
+        {error ? <Text style={cs.error}>{`${HOME_WORDS.couldntStart} ${error}`}</Text> : null}
+        {/* The rail's utility bar: the branch pill, held unseen in its place until the first read. */}
+        <View style={cs.rail}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.bar}>
+            <View style={!repo && { opacity: 0 }} pointerEvents={repo ? "auto" : "none"}>
+              <Pill label={`Base branch: ${branch}`} disabled={listed.length === 0} onPress={pickBase} style={{ maxWidth: space(80) }}>
+                <Branch className="size-icon-md text-foreground" />
+                <Text style={st.pillText} numberOfLines={1}>{branch}</Text>
+              </Pill>
+            </View>
+          </ScrollView>
+        </View>
+        <View style={cs.card}>
+          <TextInput style={[cs.input, { maxHeight: height * 0.25 }]} multiline autoFocus value={words} onChangeText={typed} placeholder={COMPOSER_WORDS.placeholder} placeholderTextColor={color.placeholder} accessibilityLabel="Message" />
+          <View style={cs.footer}>
+            <View style={cs.end}>
+              {!error && groups && !choice ? <Text style={cs.status} numberOfLines={2}>{HOME_WORDS.noModel}</Text> : null}
+              {choice && (
+                <Pill label={`Model: ${shown(choice)}`} disabled={offered.length === 0} onPress={pick}>
+                  <ProviderMark mark={model?.group.mark} />
+                  <Text style={st.pillText} numberOfLines={1}>{model?.model.name ?? choice.model}</Text>
+                  {choice.fast ? <Bolt className="size-icon-xs text-glyph-5" /> : null}
+                  {choice.effort ? <Text style={st.effort} numberOfLines={1}>{effortLabel(choice.effort)}</Text> : null}
+                </Pill>
+              )}
+              <Pressable accessibilityRole="button" accessibilityLabel={waits ?? "Start"} accessibilityState={{ disabled: off }} disabled={off} onPress={start} hitSlop={(touch - spacing.controlSm) / 2} style={({ pressed }) => [cs.send, off ? { opacity: opacity.disabled } : pressed && { opacity: 0.8 }]}>
+                <ArrowUp className="size-icon-md text-primary-fg" />
               </Pressable>
             </View>
-            <Pressable accessibilityRole="button" accessibilityLabel="Start" disabled={!ready} onPress={start} style={({ pressed }) => [st.send, (pressed || !ready) && { opacity: 0.4 }]}>
-              <ArrowUp className="size-icon-md text-primary-fg" />
-            </Pressable>
           </View>
         </View>
-        {error && <Text style={st.error}>{error}</Text>}
-        {landed && (
-          <View style={st.held}>
-            <Text style={st.pillText} numberOfLines={2}>{landed.title}</Text>
-            <Text style={st.error}>{landed.error}</Text>
-            <Button title="Open the session" secondary onPress={() => onStarted(landed.id, landed.title)} />
-          </View>
-        )}
-        {held.map((entry) => (
-          <View key={entry.cid} style={st.held}>
-            <Text style={st.pillText} numberOfLines={2}>{textOf(entry.op) || plainText(entry.draft.parts)}</Text>
-            {/* None held here is on its way: one kept with no answer (a relaunch mid-way) couldn't be confirmed. */}
-            <Text style={st.error}>{entry.stuck ?? UNCONFIRMED}</Text>
-            {!entry.left && <Button title="Try again" secondary disabled={busy.has(entry.cid) || !connected || !!asking} onPress={() => setAsking({ entry: { ...entry, op: phoneOp(entry) }, fresh: false })} />}
-            <Button title="Discard" secondary disabled={busy.has(entry.cid) || !connected || !!asking} onPress={() => discard(entry)} />
-          </View>
-        ))}
+        {/* Why Start waits: the desktop's tip for its Send, which a phone can't hover. */}
+        {waits && (!blank || !connected) ? <Text style={cs.waits}>{waits}</Text> : null}
       </SafeAreaView>
       {asking && (
         <Confirm
@@ -271,16 +296,15 @@ export function Start({ project, name, onStarted }: { project: string; name: str
   );
 }
 
+const half = { flexGrow: 1, flexBasis: 0, justifyContent: "flex-end" } as const;
 const st = StyleSheet.create({
-  page: { flex: 1, padding: 12, gap: 8 },
-  field: { flex: 1, borderRadius: 20, borderWidth: 1, borderColor: color.border, backgroundColor: color.codeSurface, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8, gap: 8 },
-  input: { ...text.base, flex: 1, color: color.foreground, padding: 0, textAlignVertical: "top" },
-  bar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  pills: { flexDirection: "row", gap: 8, flexShrink: 1 },
-  pill: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 999, backgroundColor: color.fill, paddingHorizontal: 12, paddingVertical: 6, maxWidth: 260 },
-  pillText: { ...text.sm, color: color.foreground },
-  send: { width: 32, height: 32, borderRadius: 16, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
-  muted: { ...text.sm, color: color.mutedForeground },
-  error: { ...text.sm, color: color.destructive },
-  held: { gap: 8, borderRadius: 12, backgroundColor: color.fill, padding: 12 },
+  // The hero: items-center justify-end gap-6 px-4 pb-11; its words text-hero, normal, tracking-hero.
+  hero: { ...half, alignItems: "center", gap: space(6), paddingHorizontal: space(4), paddingBottom: space(11) },
+  heroText: { ...text.hero, fontWeight: fontWeight.normal, letterSpacing: tracking.hero * text.hero.fontSize, color: color.foreground, textAlign: "center" },
+  half,
+  // UtilityBar: px-1 py-1.25, its pills gap-2.
+  bar: { flexDirection: "row", alignItems: "center", gap: space(2), paddingHorizontal: space(1), paddingVertical: space(1.25) },
+  // A rail pill's bright words (RAIL_PILL), and the model pill's as compose/Model.tsx draws them.
+  pillText: { ...text.sm, color: color.foreground, flexShrink: 1 },
+  effort: { ...text.sm, color: color.mutedForeground, flexShrink: 0 },
 });

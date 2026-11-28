@@ -22,6 +22,7 @@ import { RowMenuItems } from "./menu";
 import { ProjectMenuItems } from "./project-row";
 import { ProjectBadge, SidebarMark } from "./row";
 import { type SessionRow, useStatusWords } from "./words";
+import { attentionOf } from "../../../shared/rows";
 
 /*
  * The strip's squares, a project's or a session's [D805, D811], and its lists, each opening beside it to pick from
@@ -150,11 +151,7 @@ export function NoProjects({ onAdd }: { onAdd: () => void }) {
   );
 }
 
-/**
- * Whether a project row or strip square shows its one blue mark: a session under it needs you, failed, warned or
- * finished unseen, every kind the same mark [D844]; the open session left out.
- */
-export const attentionOf = (rows: SessionRow[], active: string | null) => rows.some((row) => row.id !== active && (row.mark === "needs" || row.mark === "amber" || row.mark === "unread"));
+export { attentionOf };
 
 /** A project's square in the strip: its logo or initials, a dot while something in it needs you; a click opens its list,
  *  styled as Chats': New chat in it, its chats, then its settings [D278 D176]; a right-click its row's menu. */

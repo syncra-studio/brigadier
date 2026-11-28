@@ -22,6 +22,7 @@ import { openRemoveProject, readRemoval } from "../projects/remove";
 import { archiveRows } from "../sessions/archive";
 import { HIDE_ON_HOVER, ProjectBadge, ROOM_FOR_TWO, SidebarMark } from "./row";
 import type { SessionRow } from "./words";
+import { newSessionIn, SIDEBAR_WORDS } from "../../../shared/words";
 
 /** The project a rename or an Archive chats asks about, with the chats it would archive. */
 const asking = store<{ project: Project; archive?: SessionRow[] } | null>(null);
@@ -47,7 +48,7 @@ export function ProjectRow({ project, open, onToggle, attention, chats, children
         <ContextMenuTrigger render={<div className="group/row relative" />}>
           <NavRow aria-expanded={open} className={cx("ps-8 pe-1.5", ROOM_FOR_TWO)} onClick={onToggle}>
             <span className="min-w-0 flex-1 truncate">{project.name}</span>
-            <span className={cx("flex shrink-0 empty:hidden", HIDE_ON_HOVER)}>{!open && attention && <SidebarMark mark="unread" label="A session needs your attention" />}</span>
+            <span className={cx("flex shrink-0 empty:hidden", HIDE_ON_HOVER)}>{!open && attention && <SidebarMark mark="unread" label={SIDEBAR_WORDS.attention} />}</span>
           </NavRow>
           {/* Its logo, else its initials, in place of a folder [D28], over the room the row leaves it: a button can't hold another. */}
           <Tooltip>
@@ -67,7 +68,7 @@ export function ProjectRow({ project, open, onToggle, attention, chats, children
               <DropdownMenuContent align="start">{items}</DropdownMenuContent>
             </DropdownMenu>
             <Tooltip>
-              <TooltipTrigger render={<RowAction aria-label={`New session in ${project.name}`} onClick={() => newSession(project.id)} />}>
+              <TooltipTrigger render={<RowAction aria-label={newSessionIn(project.name)} onClick={() => newSession(project.id)} />}>
                 <ComposeEditSquare />
               </TooltipTrigger>
               <TooltipContent side="bottom">New session</TooltipContent>
@@ -83,7 +84,7 @@ export function ProjectRow({ project, open, onToggle, attention, chats, children
             <div className="project-chats scroll-fade-source hide-scrollbar">
               <NavList>
                 {children}
-                {chats.length === 0 && <li className="flex h-nav-row items-center ps-8 text-sm text-faint-foreground">No chats</li>}
+                {chats.length === 0 && <li className="flex h-nav-row items-center ps-8 text-sm text-faint-foreground">{SIDEBAR_WORDS.noChats}</li>}
               </NavList>
             </div>
             <ScrollFade side="top" surface="sidebar" whileMore />

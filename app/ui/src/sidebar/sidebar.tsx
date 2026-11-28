@@ -27,6 +27,7 @@ import { ProjectAsk, ProjectRow } from "./project-row";
 import { SessionRowItem, SidebarMark } from "./row";
 import { type Grouping, type Sort, useShowFilter, ViewMenu, ViewTrigger } from "./view";
 import type { SessionRow } from "./words";
+import { SIDEBAR_WORDS } from "../../../shared/words";
 
 /*
  * The app's sidebar [D22–D33 D59–D66]: its name with View and ⌘K's search, New chat, then what View's Organize
@@ -281,7 +282,7 @@ export function AppSidebar({
             ) : (
               <>
                 {(pinned.length > 0 || (!pinsSessions && pinnedProjects.length > 0)) && (
-                  <NavSection title="Pinned" open={isOpen("pinned")} onOpenChange={(open) => setOpen("pinned", open)}>
+                  <NavSection title={SIDEBAR_WORDS.pinned} open={isOpen("pinned")} onOpenChange={(open) => setOpen("pinned", open)}>
                     <NavList>{pinsSessions ? pinned.map((each) => row(each, { badged: true })) : pinnedProjects.map(projectRow)}</NavList>
                   </NavSection>
                 )}
@@ -290,7 +291,7 @@ export function AppSidebar({
                     title="Recents"
                     open={isOpen("open")}
                     onOpenChange={(open) => setOpen("open", open)}
-                    steadyEnd={!isOpen("open") && attentionOf(rest, active) && <SidebarMark mark="unread" label="A session needs your attention" />}
+                    steadyEnd={!isOpen("open") && attentionOf(rest, active) && <SidebarMark mark="unread" label={SIDEBAR_WORDS.attention} />}
                   >
                     <NavList>
                       {rest.map((each) => row(each, { badged: true }))}
@@ -299,7 +300,7 @@ export function AppSidebar({
                   </NavSection>
                 ) : (
                   <NavSection
-                    title="Projects"
+                    title={SIDEBAR_WORDS.projects}
                     open={isOpen("projects")}
                     onOpenChange={(open) => setOpen("projects", open)}
                     actions={
@@ -320,7 +321,7 @@ export function AppSidebar({
                 {/* Sessions with no project; shown while ticked in View, empty or not [D224, D655, D812]. */}
                 {grouping === "project" && !show.hideChats && (
                   <NavSection
-                    title="Chats"
+                    title={SIDEBAR_WORDS.chats}
                     open={isOpen("none")}
                     onOpenChange={(open) => setOpen("none", open)}
                     actions={
@@ -334,7 +335,7 @@ export function AppSidebar({
                   >
                     <NavList>
                       {homeless.map((each) => row(each))}
-                      {homeless.length === 0 && <EmptyState as="li" title="No chats yet" />}
+                      {homeless.length === 0 && <EmptyState as="li" title={SIDEBAR_WORDS.noChatsYet} />}
                     </NavList>
                   </NavSection>
                 )}

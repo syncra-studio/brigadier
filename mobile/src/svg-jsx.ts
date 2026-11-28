@@ -2,10 +2,10 @@
 // files this JSX runtime (metro.config.js), which swaps their svg tags for react-native-svg's and their Tailwind
 // classes for the theme's values.
 import { Fragment, jsx as reactJsx } from "react/jsx-runtime";
-import { Circle, Path, Svg, Text } from "react-native-svg";
+import { Circle, Path, Rect, Svg, Text } from "react-native-svg";
 import { color, colorOf, opacity, space, spacing } from "./theme";
 
-const TAGS: Record<string, unknown> = { svg: Svg, path: Path, circle: Circle, text: Text };
+const TAGS: Record<string, unknown> = { svg: Svg, path: Path, circle: Circle, rect: Rect, text: Text };
 const camel = (s: string) => s.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase());
 
 /** The classes an icon carries, as the props they mean; the rest (shrink-0, a CSS hook) draws nothing here. */

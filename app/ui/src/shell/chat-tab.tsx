@@ -17,6 +17,7 @@ import { RenameDialog, RowMenuItems } from "../sidebar/menu";
 import { ProjectBadge, RowMark } from "../sidebar/row";
 import { type SessionRow, useStatusWords } from "../sidebar/words";
 import { CHAT, closeOthers, closeRight, HOME, selectTab } from "./tab-store";
+import { CHAT_TAB_WORDS } from "../../../shared/words";
 
 /* The tabs that aren't a session's own: its Chat tab and the draft's (tab-bar.tsx) [D848]. */
 // A tab [D44]: 32 tall on the row's middle line, its fill (session-tab's ::after) in front and on hover only.
@@ -104,7 +105,7 @@ export function ChatTab({ owner, row, active, plain, separator, order, keycap }:
   const words = useStatusWords(row);
   const archived = Boolean(row.archived);
   // A start Rust hasn't titled yet shows no name, not "Chat", for the moment until its title lands [D102].
-  const title = row.title || (row.state === "starting" ? "" : "Chat");
+  const title = row.title || (row.state === "starting" ? "" : CHAT_TAB_WORDS.untitled);
   const working = useMark(row, true) === "working" && !archived;
   const startRename = archived ? undefined : () => setRenaming(true);
   const label = archived ? `${title} (Archived)` : words ? [title, words].filter(Boolean).join(" · ") : title;
@@ -152,7 +153,7 @@ export function ChatTab({ owner, row, active, plain, separator, order, keycap }:
         {/* Never at the row's end [D200]: its own toggle right after the plain title [D222], or in the tab where another's × is. */}
         {!archived && !keycap && (
           <DropdownMenu modal={false}>
-            <DropdownMenuTrigger render={plain ? <TooltipIconButton look="bar" tooltip="Chat actions" className={cx("shrink-0", working && cx("opacity-0", SWAP_IN))} /> : <button type="button" aria-label="Chat actions" className={working ? cx(CLOSE_AT_REST, SWAP_IN) : CLOSE} />}>
+            <DropdownMenuTrigger render={plain ? <TooltipIconButton look="bar" tooltip={CHAT_TAB_WORDS.actions} className={cx("shrink-0", working && cx("opacity-0", SWAP_IN))} /> : <button type="button" aria-label={CHAT_TAB_WORDS.actions} className={working ? cx(CLOSE_AT_REST, SWAP_IN) : CLOSE} />}>
               <DotsHorizontal className={plain ? undefined : "size-icon-sm"} />
             </DropdownMenuTrigger>
             {actions}

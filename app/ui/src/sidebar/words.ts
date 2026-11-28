@@ -1,7 +1,6 @@
 import { useEffect, useReducer } from "react";
 
 import type { Row } from "../daemon";
-import { hhmm } from "../thread/words";
 
 export type { Mark, Reset } from "../../../shared/rows";
 import type { Mark, Reset } from "../../../shared/rows";
@@ -37,62 +36,9 @@ export type SessionRow = {
 
 export type Project = { id: string; name: string; folder: string; icon?: string | null };
 
-// Each state's words in the hover card, so no code name ever shows (O12). Null says nothing.
-const STATE_WORDS: Record<string, string | null> = {
-  waiting_answer: "Needs you · question",
-  asking: "Working",
-  sign_in: "Needs you · sign-in",
-  logged: "Starting",
-  starting: "Starting",
-  working: "Working",
-  silent: "Working",
-  retrying: "Reconnecting",
-  reconnecting: "Reconnecting",
-  checking: "Running safety checks",
-  idle_jobs: "Background job",
-  failed: "Failed",
-  out_of_credits: "Out of credits",
-  interrupted: "Interrupted",
-  undelivered: "Couldn't send your message",
-  uncertain: "Couldn't confirm your message arrived",
-  unresumable: "Can't resume on this account",
-  stalled: "Stalled · no output for a while",
-  unresponsive: "Not responding",
-  no_turn_started: "Not started yet",
-  error: "Couldn't read this session",
-  stopped: "Stopped",
-  idle: null,
-  new: null,
-};
-
-// A state this build has no words for yet still says what its mark means.
-const MARK_WORDS: Record<NonNullable<Mark>, string> = { working: "Working", needs: "Needs you", amber: "Failed", unread: "New reply", background: "Background job" };
-
 export { resetWords } from "../../../shared/words";
-import { resetWords } from "../../../shared/words";
-
-/** Whether a limit's reset time is still to come; once it has passed the words stop naming it [D379]. */
-const resetAhead = (resets: number | null): resets is number => resets !== null && resets > Date.now();
-
-/** What a row's mark means, in plain words ("Needs you · sign-in", "Usage limit · resets 14:10"); null for nothing. */
-export function statusWords(row: SessionRow): string | null {
-  if (row.mark === "unread") return MARK_WORDS.unread;
-  // A worker may move to another model, not only another account [D2037].
-  if (row.switching) return "Switching automatically";
-  if (row.state === "limited") {
-    // Spinning, an automatic switch waits it out [D51]; otherwise it's stuck until you act.
-    const words = row.mark === "working" ? "Waiting for usage limit" : "Usage limit";
-    const carry = resetWords(row.reset);
-    if (carry) return `${words} · ${carry}`;
-    return resetAhead(row.resets) ? `${words} · resets ${hhmm(row.resets)}` : words;
-  }
-  // A pending approval waits as a question does; only its reason says which [D173].
-  if (row.state === "waiting_answer" && typeof row.reason === "object" && row.reason !== null && "approval" in row.reason) return "Needs you · approval";
-  // Answered, but its block stays open on its subagents [D118], or its mockup card waits on you.
-  if ((row.mark === "working" || row.mark === "needs") && (row.state === "idle" || row.state === "idle_jobs")) return MARK_WORDS[row.mark];
-  if (Object.hasOwn(STATE_WORDS, row.state)) return STATE_WORDS[row.state];
-  return row.mark && MARK_WORDS[row.mark];
-}
+export { hueOf, projectInitials, statusWords } from "../../../shared/rows";
+import { resetAhead, statusWords } from "../../../shared/rows";
 
 /** statusWords for a row left on screen: it draws again until the limit's reset time has passed [D379]. */
 export function useStatusWords(row: SessionRow): string | null {
@@ -105,21 +51,4 @@ export function useStatusWords(row: SessionRow): string | null {
     return () => clearInterval(timer);
   }, [ahead]);
   return statusWords(row);
-}
-
-/** Which of `count` hues a project's tile takes: FNV-1a of its name, mixed (murmur3's finaliser) so names alike spread
- *  over the hues; the same name always gets the same hue. Their constants in decimal, as FNV publishes its own [D283]. */
-export function hueOf(name: string, count: number): number {
-  let hash = 2166136261;
-  for (const char of name) hash = Math.imul(hash ^ char.codePointAt(0)!, 16777619);
-  hash = Math.imul(hash ^ (hash >>> 16), 2246822507);
-  hash = Math.imul(hash ^ (hash >>> 13), 3266489909);
-  return ((hash ^ (hash >>> 16)) >>> 0) % count;
-}
-
-/** A project's initials for its badge: the first letters of its first two words, else its first two. */
-export function projectInitials(name: string): string {
-  const [first = "", second] = name.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-  const letters = second === undefined ? [...first].slice(0, 2) : [[...first][0], [...second][0]];
-  return letters.join("").toUpperCase();
 }
