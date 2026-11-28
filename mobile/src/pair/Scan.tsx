@@ -1,11 +1,11 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { Button } from "../Button";
-import { page } from "../Notice";
-import { color, text, fontWeight } from "../theme";
+import { DialogButton } from "../Button";
+import { Screen, st } from "../Notice";
+import { color, radius, space } from "../theme";
 
-/** The QR scanner. `sample` draws it without the camera, for simulator screenshots. */
+/** The QR scanner, where the Mac's QR step shows its code (size-48 rounded-settings). `sample` draws it without the camera, for simulator screenshots. */
 export function Scan({ onScanned, onBack, sample }: { onScanned: (url: string) => void; onBack: () => void; sample?: boolean }) {
   const [permission, request] = useCameraPermissions();
   const done = useRef(false);
@@ -14,8 +14,8 @@ export function Scan({ onScanned, onBack, sample }: { onScanned: (url: string) =
   }, [permission]);
   const denied = !sample && permission && !permission.granted && !permission.canAskAgain;
   return (
-    <View style={styles.page}>
-      <Text style={styles.title}>Scan the code on your Mac</Text>
+    <Screen title="Scan the code on your Mac" actions={<DialogButton title="Back" variant="secondary" onPress={onBack} />}>
+      {denied && <Text style={st.warning}>Brigadier may not use the camera. Allow it in Settings › Brigadier, or enter the code instead.</Text>}
       <View style={styles.frame}>
         {!sample && permission?.granted && (
           <CameraView
@@ -28,16 +28,11 @@ export function Scan({ onScanned, onBack, sample }: { onScanned: (url: string) =
             }}
           />
         )}
-        {denied && <Text style={styles.body}>Brigadier may not use the camera. Allow it in Settings › Brigadier, or enter the code instead.</Text>}
       </View>
-      <Button title="Back" onPress={onBack} secondary />
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { ...page, gap: 24 },
-  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground },
-  frame: { flex: 1, borderRadius: 24, overflow: "hidden", backgroundColor: color.surfaceUnder, justifyContent: "center", padding: 24 },
-  body: { ...text.base, color: color.mutedForeground, textAlign: "center" },
+  frame: { alignSelf: "center", width: space(48), height: space(48), borderRadius: radius.settings, overflow: "hidden", backgroundColor: color.surfaceUnder },
 });

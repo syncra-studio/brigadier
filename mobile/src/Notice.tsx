@@ -1,7 +1,8 @@
-import { StyleSheet, Text, View } from "react-native";
-import { Button } from "./Button";
+import type { ReactNode } from "react";
+import { KeyboardAvoidingView, StyleSheet, Text, View } from "react-native";
+import { DialogButton } from "./Button";
 import type { Problem } from "./pair/pair";
-import { color, text, fontWeight } from "./theme";
+import { color, fontWeight, space, text } from "./theme";
 
 export const PROBLEMS: Record<Problem, { title: string; body: string }> = {
   expired: { title: "This code can't be used", body: "It has expired or was already used. On your Mac, choose Add again for a new one." },
@@ -33,24 +34,38 @@ export const PROBLEMS: Record<Problem, { title: string; body: string }> = {
   badQr: { title: "That isn't a Brigadier code", body: "Scan the code in Brigadier › Settings › Connections on your Mac." },
 };
 
-/** A whole-screen message with one way on. */
-export function Notice({ title, body, action, onPress }: { title: string; body: string; action: string; onPress: () => void }) {
+/**
+ * A pairing step as the whole screen: the desktop's Add dialog (settings/connections.tsx) without its card, as the
+ * screen is the dialog: an icon, its Head, what the step shows, then its buttons, centred and 20 apart (gap-5 p-6
+ * text-center). A field in it stays above the keyboard.
+ */
+export function Screen({ icon, title, line, children, actions }: { icon?: ReactNode; title: string; line?: string; children?: ReactNode; /** The dialog's buttons, secondary first. */ actions?: ReactNode }) {
   return (
-    <View style={styles.page}>
-      <View style={styles.top}>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.body}>{body}</Text>
+    <KeyboardAvoidingView behavior="padding" style={st.page}>
+      {icon ? <View style={st.icon}>{icon}</View> : null}
+      <View style={st.head}>
+        <Text accessibilityRole="header" style={st.title}>{title}</Text>
+        {line ? <Text style={st.line}>{line}</Text> : null}
       </View>
-      <Button title={action} onPress={onPress} />
-    </View>
+      {children}
+      {actions ? <View style={st.actions}>{actions}</View> : null}
+    </KeyboardAvoidingView>
   );
 }
 
-export const page = { flex: 1, backgroundColor: color.background, padding: 24, paddingTop: 120, paddingBottom: 56 } as const;
+/** A whole-screen message with one way on. */
+export function Notice({ icon, title, body, action, onPress }: { icon?: ReactNode; title: string; body: string; action: string; onPress: () => void }) {
+  return <Screen icon={icon} title={title} line={body} actions={<DialogButton title={action} onPress={onPress} />} />;
+}
 
-const styles = StyleSheet.create({
-  page: { ...page, justifyContent: "space-between" },
-  top: { gap: 12 },
-  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground },
-  body: { ...text.base, color: color.mutedForeground },
+export const st = StyleSheet.create({
+  page: { flex: 1, justifyContent: "center", gap: space(5), padding: space(6), backgroundColor: color.background },
+  icon: { alignSelf: "center" },
+  // Head: the DialogTitle's px-6 text-lg leading-none medium, its DialogDescription text-sm muted, 8 apart.
+  head: { gap: space(2) },
+  title: { ...text.lg, lineHeight: text.lg.fontSize, fontWeight: fontWeight.medium, color: color.foreground, paddingHorizontal: space(6), textAlign: "center" },
+  line: { ...text.sm, color: color.mutedForeground, textAlign: "center" },
+  // A warning over what the step shows (text-label text-warning).
+  warning: { ...text.label, color: color.warning, textAlign: "center" },
+  actions: { flexDirection: "row", justifyContent: "center", gap: space(2) },
 });

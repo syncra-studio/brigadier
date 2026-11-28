@@ -1,5 +1,7 @@
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
+import { CONNECTION_WORDS } from "../app/shared/words";
+import { CheckCircle } from "../app/ui/src/icons";
 import Link, { type Mac } from "./modules/link";
 import { close, onClosed } from "./src/link";
 import { start, stop } from "./src/mac/mac";
@@ -186,7 +188,7 @@ export default function App() {
         />
       )}
       {at.at === "connected" && (
-        <Notice title="You're connected" body={`${at.mac.name} is ready on this iPhone.`} action="Done" onPress={() => setAt({ at: "mac", mac: at.mac })} />
+        <Notice icon={<CheckCircle className="size-icon-lg" />} title={CONNECTION_WORDS.connected} body={`${at.mac.name} is ready on this iPhone.`} action={CONNECTION_WORDS.done} onPress={() => setAt({ at: "mac", mac: at.mac })} />
       )}
       {at.at === "notice" && (
         <Notice

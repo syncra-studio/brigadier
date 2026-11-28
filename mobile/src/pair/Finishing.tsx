@@ -1,34 +1,29 @@
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { Button } from "../Button";
-import { page } from "../Notice";
-import { color, text, fontWeight } from "../theme";
+import { ActivityIndicator, StyleSheet, Text } from "react-native";
+import { checkWords } from "../../../app/shared/words";
+import { DialogButton } from "../Button";
+import { Screen } from "../Notice";
+import { color, mono, text, tracking } from "../theme";
 
-/** While the Mac asks its owner: the 6 digits both sides show, once the phone has signed. */
+/** While the Mac asks its owner: the 6 digits both sides show, once the phone has signed, as the Mac's check step shows them. */
 export function Finishing({ check, onCancel }: { check?: string; onCancel: () => void }) {
   return (
-    <View style={styles.page}>
-      <View style={styles.top}>
-      <Text style={styles.title}>Finishing secure setup…</Text>
+    <Screen
+      title="Finishing secure setup…"
+      line={check ? "Check that your Mac shows the same 6 digits, then click Allow there." : undefined}
+      actions={<DialogButton title="Cancel" variant="secondary" onPress={onCancel} />}
+    >
       {check ? (
-        <>
-          <Text style={styles.digits} accessibilityLabel={check.split("").join(" ")}>
-            {`${check.slice(0, 3)} ${check.slice(3)}`}
-          </Text>
-          <Text style={styles.body}>Check that your Mac shows the same 6 digits, then click Allow there.</Text>
-        </>
+        <Text style={styles.digits} accessibilityLabel={check.split("").join(" ")}>
+          {checkWords(check)}
+        </Text>
       ) : (
         <ActivityIndicator color={color.foreground} />
       )}
-      </View>
-      <Button title="Cancel" onPress={onCancel} secondary />
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { ...page, justifyContent: "space-between" },
-  top: { gap: 24 },
-  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground },
-  digits: { fontSize: 44, lineHeight: 52, fontWeight: "600", color: color.foreground, fontVariant: ["tabular-nums"], letterSpacing: 4 },
-  body: { ...text.base, color: color.mutedForeground },
+  // font-mono text-page-title tracking-widest.
+  digits: { ...text.pageTitle, fontFamily: mono, letterSpacing: tracking.widest * text.pageTitle.fontSize, color: color.foreground, textAlign: "center" },
 });

@@ -1,20 +1,22 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { sentAt } from "../../../app/shared/words";
+// The paired Macs as the desktop's Settings › Connections lists its devices (settings/connections.tsx,
+// connections-device.tsx, parts.tsx SettingsPage, components/settings-card.tsx): the page's title with Add at its end,
+// then one card, a row each, hairlines between.
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { CONNECTION_WORDS, sentAt } from "../../../app/shared/words";
 import type { Mac } from "../../modules/link";
-import { Button } from "../Button";
-import { page, PROBLEMS } from "../Notice";
+import { DialogButton } from "../Button";
+import { PROBLEMS } from "../Notice";
 import type { Problem } from "../pair/pair";
-import { StateDot } from "../StateDot";
-import { color, space, text, fontWeight } from "../theme";
+import { color, fontWeight, radius, space, text } from "../theme";
 
 /** `seen`: the relay says the Mac is offline, and when it was last there (unix s, 0 if never). */
 export type Status = "connecting" | "connected" | Problem | "cancelled" | { seen: number };
 
 const said = (s: Status) =>
   typeof s === "object" ? (s.seen ? `Offline · last online ${sentAt(s.seen * 1000)}` : "Offline")
-  : s === "connected" ? "Connected" : s === "connecting" ? "Connecting…" : s === "cancelled" ? "Not connected" : PROBLEMS[s].title;
+  : s === "connected" ? CONNECTION_WORDS.ready : s === "connecting" ? CONNECTION_WORDS.connecting : s === "cancelled" ? "Not connected" : PROBLEMS[s].title;
 
-/** The paired Macs: a dot and its name, how each stands, and Forget this Mac. */
+/** The paired Macs: each one's name, how it stands, Open or Try again, and Forget this Mac, as a device's row and its Revoke access. */
 export function Macs({ macs, status, onConnect, onForget, onAdd }: {
   macs: Mac[];
   status: Record<string, Status>;
@@ -23,47 +25,45 @@ export function Macs({ macs, status, onConnect, onForget, onAdd }: {
   onAdd: () => void;
 }) {
   return (
-    <View style={styles.page}>
-      <Text style={styles.title}>Your Macs</Text>
-      {macs.map((mac) => {
-        const s = status[mac.pk] ?? "cancelled";
-        return (
-          <View key={mac.pk} style={styles.row}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: space(2) }}>
-              <StateDot tone={s === "connected" ? "ready" : "off"} />
-              <Text style={styles.name}>{mac.name}</Text>
-            </View>
-            <Text style={styles.status}>{said(s)}</Text>
-            <View style={styles.actions}>
-              {s === "connected" && <Action title="Open" onPress={() => onConnect(mac)} />}
-              {s !== "connected" && s !== "connecting" && <Action title="Try again" onPress={() => onConnect(mac)} />}
-              <Action title="Forget this Mac" onPress={() => onForget(mac)} />
-            </View>
-          </View>
-        );
-      })}
-      <View style={styles.add}>
-        <Button title="Add a Mac" onPress={onAdd} secondary />
+    <ScrollView style={st.page} contentContainerStyle={st.column} contentInsetAdjustmentBehavior="automatic">
+      <View style={st.header}>
+        <Text accessibilityRole="header" style={st.title}>Your Macs</Text>
+        <DialogButton title={CONNECTION_WORDS.add} size="sm" onPress={onAdd} />
       </View>
-    </View>
+      <View style={st.card}>
+        {macs.map((mac, index) => {
+          const s = status[mac.pk] ?? "cancelled";
+          return (
+            <View key={mac.pk} style={st.row}>
+              <View style={st.rowText}>
+                <Text style={st.rowTitle}>{mac.name}</Text>
+                <Text style={st.rowLine}>{said(s)}</Text>
+              </View>
+              {s === "connected" && <DialogButton title="Open" variant="soft" size="sm" onPress={() => onConnect(mac)} />}
+              {s !== "connected" && s !== "connecting" && <DialogButton title="Try again" variant="soft" size="sm" onPress={() => onConnect(mac)} />}
+              <DialogButton title="Forget this Mac" variant="soft" size="sm" onPress={() => onForget(mac)} />
+              {index < macs.length - 1 && <View pointerEvents="none" style={st.hair} />}
+            </View>
+          );
+        })}
+      </View>
+    </ScrollView>
   );
 }
 
-function Action({ title, onPress }: { title: string; onPress: () => void }) {
-  return (
-    <Pressable accessibilityRole="button" onPress={onPress} hitSlop={8}>
-      <Text style={styles.link}>{title}</Text>
-    </Pressable>
-  );
-}
-
-const styles = StyleSheet.create({
-  page: { ...page, gap: 16 },
-  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground },
-  row: { backgroundColor: color.surfaceUnder, borderColor: color.border, borderWidth: 1, borderRadius: 16, padding: 16, gap: 4 },
-  name: { ...text.lg, fontWeight: "600", color: color.foreground },
-  status: { ...text.sm, color: color.mutedForeground },
-  actions: { flexDirection: "row", gap: 20, marginTop: 8 },
-  link: { ...text.sm, fontWeight: "600", color: color.foreground },
-  add: { marginTop: "auto" },
+const st = StyleSheet.create({
+  // SettingsPage: px-5, its header py-3 gap-4, its title text-page-title medium, its sections pt-5 below; pb-12.
+  page: { flex: 1, backgroundColor: color.background },
+  column: { paddingHorizontal: space(5), paddingBottom: space(12), gap: space(5) },
+  header: { flexDirection: "row", alignItems: "flex-start", gap: space(4), paddingVertical: space(3) },
+  title: { ...text.pageTitle, fontWeight: fontWeight.medium, color: color.foreground, flex: 1 },
+  // SettingsCard: rounded-settings, border-divider, bg-card; its rows' hairlines 16 in.
+  card: { borderRadius: radius.settings, borderWidth: 1, borderColor: color.divider, backgroundColor: color.card, overflow: "hidden" },
+  hair: { position: "absolute", start: space(4), end: space(4), bottom: 0, height: 1, backgroundColor: color.divider },
+  // DeviceRow: items-center gap-3 px-4 py-3; RowText: text-label medium over text-xs quiet, 4 apart.
+  // Wraps its buttons under the words when a large text size leaves no room beside them.
+  row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space(3), paddingHorizontal: space(4), paddingVertical: space(3) },
+  rowText: { flexGrow: 1, flexShrink: 1, flexBasis: "40%", gap: space(1) },
+  rowTitle: { ...text.label, fontWeight: fontWeight.medium, color: color.foreground },
+  rowLine: { ...text.xs, color: color.quietForeground },
 });

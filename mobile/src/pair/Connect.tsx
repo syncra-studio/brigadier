@@ -1,30 +1,19 @@
-import { StyleSheet, Text, View } from "react-native";
-import { Button } from "../Button";
-import { color, text, fontWeight } from "../theme";
+import { View } from "react-native";
+import { CONNECTION_WORDS } from "../../../app/shared/words";
+import { DialogButton } from "../Button";
+import { Screen, st } from "../Notice";
 
-/** The first screen: pairing starts on the Mac, in Settings › Connections. */
+/** The first screen: pairing starts on the Mac, in Settings › Connections; Enter code manually last, as the Mac's QR step has it. */
 export function Connect({ onScan, onCode, onBack }: { onScan?: () => void; onCode?: () => void; onBack?: () => void }) {
   return (
-    <View style={styles.page}>
-      <View style={styles.top}>
-        <Text style={styles.title}>Connect your Mac</Text>
-        <Text style={styles.body}>
-          On your Mac, open Brigadier › Settings › Connections and choose Add. Then scan the code it shows, or type it.
-        </Text>
+    <Screen title="Connect your Mac" line="On your Mac, open Brigadier › Settings › Connections and choose Add. Then scan the code it shows, or type it.">
+      <View style={st.actions}>
+        {onBack && <DialogButton title="Back" variant="secondary" onPress={onBack} />}
+        <DialogButton title="Scan QR code" onPress={onScan} />
       </View>
-      <View style={styles.actions}>
-        <Button title="Scan QR code" onPress={onScan} />
-        <Button title="Enter code manually" onPress={onCode} secondary />
-        {onBack && <Button title="Back" onPress={onBack} secondary />}
+      <View style={st.actions}>
+        <DialogButton title={CONNECTION_WORDS.enterCode} variant="link-blue" size="inline" onPress={onCode} />
       </View>
-    </View>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: color.background, padding: 24, paddingTop: 120, justifyContent: "space-between" },
-  top: { gap: 12 },
-  title: { ...text.pageTitle, fontWeight: fontWeight.semibold, color: color.foreground },
-  body: { ...text.base, color: color.mutedForeground },
-  actions: { gap: 12, paddingBottom: 32 },
-});

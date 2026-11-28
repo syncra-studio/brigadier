@@ -6,7 +6,7 @@ import { Alert, Pressable, SectionList, StyleSheet, Text, TextInput, View } from
 import { attentionOf, hueOf, type Hit, type Project, projectInitials, type Row, statusWords } from "../../../app/shared/rows";
 import { deleteAsk, deleteFailed, laidOver } from "../../../app/shared/session/actions";
 import { store } from "../../../app/shared/store";
-import { newSessionIn, SIDEBAR_WORDS } from "../../../app/shared/words";
+import { CONNECTION_WORDS, newSessionIn, SIDEBAR_WORDS } from "../../../app/shared/words";
 import { Chat, ChevronDown, ComposeEditSquare, MagnifyingGlassSearch, SidebarSpinner } from "../../../app/ui/src/icons";
 import { Confirm } from "../act/Confirm";
 import { Spin } from "../compose/motion";
@@ -155,7 +155,7 @@ export function Sessions({ onOpen, onSamples, onNew }: { onOpen: (row: Row) => v
           <Text style={[st.empty, item.indent && st.indent, !item.indent && { color: color.quietForeground }]}>{item.words}</Text>
         )
       }
-      ListEmptyComponent={<Text style={st.empty}>{needle ? `No sessions match “${needle}”` : "Connecting…"}</Text>}
+      ListEmptyComponent={<Text style={st.empty}>{needle ? `No sessions match “${needle}”` : CONNECTION_WORDS.connecting}</Text>}
       ListFooterComponent={
         <Pressable accessibilityRole="link" accessibilityLabel="Samples" onPress={onSamples} style={st.footer}>
           <Text style={st.faint}>Samples</Text>

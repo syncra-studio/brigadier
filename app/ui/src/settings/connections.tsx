@@ -8,6 +8,7 @@ import { Segmented } from "../components/segmented";
 import { RowText, SettingsCard } from "../components/settings-card";
 import { SettingsRow } from "../components/settings-row";
 import { Switch } from "../components/switch";
+import { checkWords, codeWords, CONNECTION_WORDS } from "../../../shared/words";
 import { ChatCompose, CheckCircle, Desktop, Reload, Sparkle, Sun } from "../icons";
 import { errorText, run } from "../onboarding/api";
 import { useSave } from "./general";
@@ -125,7 +126,7 @@ export function ConnectionsPage() {
                 <Reload aria-hidden />
               </Button>
               <Button size="sm" onClick={add}>
-                Add
+                {CONNECTION_WORDS.add}
               </Button>
             </>
           )
@@ -136,7 +137,7 @@ export function ConnectionsPage() {
           <div className="flex flex-col items-center gap-3 pb-2">
             <EmptyState variant="centered" icon={Desktop} title={CONNECTIONS_ROWS.devices.description} className="pb-0" />
             <Button size="sm" onClick={add}>
-              Add
+              {CONNECTION_WORDS.add}
             </Button>
           </div>
         )}
@@ -212,7 +213,7 @@ function AddDialog({ status, step, setStep, allow, load, awakeRow, error }: { st
           <>
             <Head title={`Allow “${pending.device}” to control this Mac?`} line="Check that your device shows the same code." />
             <p data-slot="remote-check" className="font-mono text-page-title tracking-widest">
-              {pending.check.replace(/^(\d{3})(\d{3})$/, "$1 $2")}
+              {checkWords(pending.check)}
             </p>
             <ErrorLine error={act.error} />
             <div className="flex justify-center gap-2">
@@ -226,10 +227,10 @@ function AddDialog({ status, step, setStep, allow, load, awakeRow, error }: { st
         {shown === "connected" && (
           <>
             <CheckCircle aria-hidden className="mx-auto size-icon-lg" />
-            <Head title="You’re connected" line="Make the most out of your new connection. You can change these later in Settings." />
+            <Head title={CONNECTION_WORDS.connected} line="Make the most out of your new connection. You can change these later in Settings." />
             {awakeRow && <SettingsCard className="text-start">{awakeRow}</SettingsCard>}
             <div className="flex justify-center gap-2">
-              <Button onClick={close}>Done</Button>
+              <Button onClick={close}>{CONNECTION_WORDS.done}</Button>
             </div>
           </>
         )}
@@ -285,11 +286,11 @@ function Offer({ status, load, error }: { status: Status; load: () => Promise<un
       {offer?.code &&
         (typed ? (
           <p data-slot="remote-code" className="font-mono text-base tracking-wider select-all">
-            {offer.code.replace(/(.{4})(?=.)/g, "$1 ")}
+            {codeWords(offer.code)}
           </p>
         ) : (
           <Button variant="link-blue" size="inline" className="mx-auto" onClick={() => setTyped(true)}>
-            Enter code manually
+            {CONNECTION_WORDS.enterCode}
           </Button>
         ))}
     </>

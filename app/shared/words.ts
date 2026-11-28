@@ -468,6 +468,13 @@ export const CHAT_TAB_WORDS = { untitled: "Chat", actions: "Chat actions" } as c
 /** Home's hero over a new session's composer, and what it says while it can't start one [D161, D388]. */
 export const HOME_WORDS = { buildIn: "What should we build in", build: "What should we build?", pickBranch: "Pick a branch", noModel: "No model is available.", pickModel: "Pick a model first", couldntStart: "Couldn't start this conversation." } as const;
 
+/** Settings › Connections and the phone's pairing: Add, the typed code, the end, and how a connection stands [D45]. */
+export const CONNECTION_WORDS = { add: "Add", enterCode: "Enter code manually", connected: "You’re connected", done: "Done", connecting: "Connecting…", ready: "Connected" } as const;
+/** The 6 digits both screens show while the Mac asks its owner, in threes: "042 917". */
+export const checkWords = (check: string) => check.replace(/^(\d{3})(\d{3})$/, "$1 $2");
+/** The 16 characters a phone may type instead of scanning, in fours: "ABCD EFGH IJKL MNOP". */
+export const codeWords = (code: string) => code.replace(/(.{4})(?=.)/g, "$1 ");
+
 /** "1 file", "3 files". */
 export const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 

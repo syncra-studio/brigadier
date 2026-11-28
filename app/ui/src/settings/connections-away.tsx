@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { CONNECTION_WORDS } from "../../../shared/words";
 import { Button } from "../components/button";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { cx } from "../components/cx";
@@ -71,7 +72,7 @@ export function AwaySection({ relay, paired, load, offline }: { relay: Relay; pa
   const choose = (next: Mode) => (next === "own" || next === relay.mode ? setPicked(next === relay.mode ? null : next) : ask([next]));
   const url = address.trim();
   const shown = picked === null && relay.mode !== "off" && !offline;
-  const state = busy ? "Connecting…" : relay.ready ? "Connected" : relay.closed === null ? "Connecting…" : (CLOSED[relay.closed] ?? `The relay closed the connection (${relay.closed})`);
+  const state = busy ? CONNECTION_WORDS.connecting : relay.ready ? CONNECTION_WORDS.ready : relay.closed === null ? CONNECTION_WORDS.connecting : (CLOSED[relay.closed] ?? `The relay closed the connection (${relay.closed})`);
   return (
     <SettingsSection title={AWAY_ROW.label} description={AWAY_ROW.description} setting={AWAY_ROW.label}>
       <SettingsCard>
