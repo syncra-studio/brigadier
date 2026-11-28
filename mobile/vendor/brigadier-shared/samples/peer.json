@@ -1,0 +1,35 @@
+{
+  "items": [
+    {
+      "kind": "peer",
+      "mid": "m1",
+      "to": "s-api",
+      "text": "Is the endpoint live?",
+      "wait": true,
+      "state": "sent",
+      "why": null,
+      "waited": "replied",
+      "id": "peer-1"
+    },
+    {
+      "kind": "peer",
+      "mid": "m2",
+      "to": "s-api",
+      "text": "Ping",
+      "wait": false,
+      "state": "refused",
+      "why": "That session has ended",
+      "id": "peer-2"
+    },
+    {
+      "kind": "peer",
+      "mid": "m3",
+      "to": "s-docs",
+      "text": "Docs please",
+      "wait": false,
+      "state": "uncertain",
+      "why": null,
+      "id": "peer-3"
+    }
+  ]
+}

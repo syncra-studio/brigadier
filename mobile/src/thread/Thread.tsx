@@ -1,0 +1,138 @@
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
+import type { Session } from "../../vendor/brigadier-shared/thread";
+import { datedMessages } from "../../vendor/brigadier-shared/words";
+import { lists, older, openThread, thread } from "../mac/mac";
+import { request, streamNow } from "../link";
+import { Composer } from "../compose/Composer";
+import type { NativeStackScreenProps } from "@react-navigation/native-stack";
+import type { Screens } from "../mac/MacScreens";
+import { Sheets } from "../sheets/Sheets";
+import { color, text } from "../theme";
+import { Cards } from "./Cards";
+import { type Line, lineMaker, workKey } from "../../vendor/brigadier-shared/lines";
+import { Row } from "./Row";
+
+/** The open session's thread, read only: its rows as the desktop draws them, its waiting cards under them. */
+export function Thread({ navigation }: NativeStackScreenProps<Screens, "thread">) {
+  const open = useSyncExternalStore(thread.subscribe, thread.get);
+  useSeen(open?.status === "missing" ? undefined : open?.id);
+  if (!open || (!open.session && open.status === "loading")) return <Centered><ActivityIndicator color={color.foreground} /></Centered>;
+  const problem = open.status === "missing" ? "This session is no longer on your Mac." : open.status === "error" ? "Couldn't open this session." : null;
+  if (!open.session) return <Centered><Text style={styles.muted}>{problem}</Text></Centered>;
+  return (
+    <View style={styles.page}>
+      {/* Its rows as last seen stay under the reason they're no longer live. */}
+      {problem && <Text style={[styles.muted, styles.banner]}>{problem}</Text>}
+      <Rows session={open.session} />
+      {open.status !== "missing" && <Composer key={open.id} id={open.id} />}
+      <Sheets
+        id={open.id}
+        onOpen={(id, title) => {
+          openThread(id);
+          navigation.setParams({ id, title });
+        }}
+      />
+    </View>
+  );
+}
+
+/**
+ * The open session is read up to the end its row shows, as the desktop's sidebar/seen.ts: on opening it, on each
+ * later end while it stays open, and again once signed in after a lost stream. That clears its dot here and on the Mac.
+ */
+function useSeen(id: string | undefined) {
+  const finished = useSyncExternalStore(lists.subscribe, () => {
+    const row = id ? lists.get().rows.find((each) => each.id === id) : undefined;
+    // A mockup's news counts as an end [D560]; the shared row type doesn't name it.
+    return row ? Math.max(row.finished ?? 0, (row as { news?: number }).news ?? 0) : -1;
+  });
+  const conn = useSyncExternalStore(lists.subscribe, () => (lists.get().ready ? streamNow() : -1));
+  useEffect(() => {
+    if (id && finished >= 0 && conn >= 0) seen(id, finished);
+  }, [id, finished, conn]);
+}
+
+/** Per chat: the `seen` on its way, and the latest end asked for meanwhile, so an older one never lands last. */
+const seenGoing = new Map<string, number | null>();
+function seen(id: string, finished: number) {
+  if (seenGoing.has(id)) return void seenGoing.set(id, finished);
+  seenGoing.set(id, null);
+  try {
+    request({ op: "run", args: ["seen", id, String(finished)] }, (reply) => {
+      const next = seenGoing.get(id);
+      seenGoing.delete(id);
+      // The stream ended: nothing more on it; the hook sends again once signed in.
+      if (reply.error !== "closed" && next != null && next !== finished) seen(id, next);
+    });
+  } catch {
+    // Not connected: sent again once signed in.
+    seenGoing.delete(id);
+  }
+}
+
+/** Rows of a session, newest at the bottom; scrolling up past the first loads the page before it. */
+export function Rows({ session, onOlder = older }: { session: Session; onOlder?: () => void }) {
+  const make = useMemo(lineMaker, []);
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+  const turns = useMemo(() => new Map(session.turns.map((t) => [t.id, t])), [session.turns]);
+  const work = useMemo(() => new Map((session.work ?? []).map((w) => [w.turnId, w])), [session.work]);
+  const lines = withSetup(make(session.items, turns, work, opened), session);
+  const dated = useMemo(() => datedMessages(session.items), [session.items]);
+  // Inverted, so it opens at the newest row and stays there as rows come.
+  const data = useMemo(() => lines.slice().reverse(), [lines]);
+  const toggle = (id: string) =>
+    setOpened((was) => {
+      const next = new Set(was);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  return (
+    <FlatList
+      style={styles.page}
+      inverted
+      data={data}
+      keyExtractor={(line) => line.id}
+      renderItem={({ item }) => <Row line={item} onToggle={toggle} dated={dated.has(item.id)} />}
+      contentContainerStyle={styles.content}
+      // Rows coming in keep the one being read in place; near the newest, it follows them.
+      maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 40 }}
+      onEndReached={() => void onOlder()}
+      onEndReachedThreshold={0.5}
+      // Inverted: the header is at the bottom, under the newest row.
+      ListHeaderComponent={<Cards approvals={session.approvals} questions={session.questions} session={session.id} />}
+      ListFooterComponent={session.before != null ? <ActivityIndicator style={{ padding: 16 }} color={color.mutedForeground} /> : undefined}
+    />
+  );
+}
+
+/** The worktree's setup row under its input, as the desktop's thread.tsx places it [D70, D77, D85]. */
+function withSetup(rows: Line[], session: Session): Line[] {
+  const setup = session.setup;
+  if (!setup) return rows;
+  // Before its input is in (a start still setting up, or one that failed doing it), it is the newest row.
+  if (setup.after === null) return [...rows, { type: "setup", id: `${session.id}:setup`, gap: rows.length ? "turn" : "first", setup }];
+  const at = rows.findIndex((row) => row.id === setup.after);
+  if (at < 0) return rows;
+  // Its turn's work's first item: folded away with it.
+  const next = rows[at + 1];
+  if (next?.type === "work" && next.open === false) return rows;
+  const input = rows[at]!;
+  const turn = input.type === "item" ? input.turn : undefined;
+  const line: Line = { type: "setup", id: `${session.id}:setup`, gap: next?.type === "work" || turn ? "part" : "turn", setup };
+  if (next?.type === "work") return [...rows.slice(0, at + 2), line, ...rows.slice(at + 2)];
+  if (!turn) return [...rows.slice(0, at + 1), line, ...rows.slice(at + 1)];
+  const head: Line = { type: "work", id: workKey(turn.id), gap: "turn", turn, work: undefined, open: null };
+  return [...rows.slice(0, at + 1), head, line, ...rows.slice(at + 1)];
+}
+
+function Centered({ children }: { children: React.ReactNode }) {
+  return <View style={[styles.page, { alignItems: "center", justifyContent: "center", padding: 24 }]}>{children}</View>;
+}
+
+const styles = StyleSheet.create({
+  page: { flex: 1, backgroundColor: color.background },
+  content: { paddingHorizontal: 16, paddingVertical: 12 },
+  muted: { ...text.base, color: color.mutedForeground, textAlign: "center" },
+  banner: { padding: 12, borderBottomWidth: 1, borderBottomColor: color.border },
+});

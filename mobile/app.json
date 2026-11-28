@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "Brigadier",
+    "slug": "brigadier",
+    "version": "1.0.0",
+    "platforms": [
+      "ios"
+    ],
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#181818",
+    "ios": {
+      "bundleIdentifier": "sh.brigadier.mobile",
+      "appleTeamId": "7JQSPMWT79",
+      "buildNumber": "3",
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "Face ID keeps Brigadier locked and confirms what you ask your Mac to do.",
+        "NSLocalNetworkUsageDescription": "Brigadier finds and connects to your Mac on this Wi-Fi.",
+        "NSBonjourServices": [
+          "_brigadier._tcp"
+        ]
+      }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Brigadier uses the camera to scan the code your Mac shows.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Brigadier attaches the photos you pick to your message for your Mac.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Brigadier attaches the photos you pick to your message for your Mac.",
+          "savePhotosPermission": "Brigadier saves the images you choose to your photos.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
+      "expo-document-picker"
+    ]
+  }
+}

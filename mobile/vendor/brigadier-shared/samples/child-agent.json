@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "kind": "childAgent",
+      "sessionId": "s-sub1",
+      "title": "Find every login call",
+      "progress": "done",
+      "startedAt": 1793000000000,
+      "endedAt": 1793000042000,
+      "answer": "Three callers, all in src/auth.",
+      "id": "child-agent-1"
+    },
+    {
+      "kind": "childAgent",
+      "sessionId": "s-sub2",
+      "title": "Check the logout path",
+      "progress": "running",
+      "startedAt": 1793000000000,
+      "id": "child-agent-2"
+    }
+  ]
+}

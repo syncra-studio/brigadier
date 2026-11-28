@@ -1,0 +1,36 @@
+{
+  "items": [
+    {
+      "kind": "started",
+      "session": "s-new1",
+      "state": "starting",
+      "replay": false,
+      "text": "Write the docs",
+      "title": "Write the docs",
+      "id": "started-1"
+    },
+    {
+      "kind": "started",
+      "session": "s-new2",
+      "state": "started",
+      "replay": false,
+      "text": "Add a retry",
+      "title": "Add a retry",
+      "base": "main",
+      "id": "started-2"
+    },
+    {
+      "kind": "started",
+      "session": "s-new3",
+      "state": "failed",
+      "replay": false,
+      "text": "Rename the module",
+      "title": "Rename the module",
+      "error": "The worktree couldn't be made",
+      "left": [
+        "/tmp/wt-3"
+      ],
+      "id": "started-3"
+    }
+  ]
+}

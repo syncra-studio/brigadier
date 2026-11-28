@@ -1,0 +1,18 @@
+{
+  "items": [
+    {
+      "kind": "reasoning",
+      "text": "**Checking the redirect**\n\nThe cookie is set after the first navigation.",
+      "streaming": false,
+      "heading": "Checking the redirect",
+      "id": "reasoning-1"
+    },
+    {
+      "kind": "reasoning",
+      "text": "**Reading the logout handler**",
+      "streaming": true,
+      "heading": "Reading the logout handler",
+      "id": "reasoning-2"
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "items": [
+    {
+      "kind": "group",
+      "steps": [
+        {
+          "kind": "read",
+          "n": 2
+        },
+        {
+          "kind": "search",
+          "n": 3
+        },
+        {
+          "kind": "run",
+          "n": 4
+        }
+      ],
+      "span": [
+        2,
+        4
+      ],
+      "id": "group-1"
+    },
+    {
+      "kind": "tool",
+      "name": "read",
+      "input": "src/login.ts",
+      "output": "",
+      "progress": "done",
+      "exitCode": null,
+      "step": "read",
+      "id": "group-2"
+    },
+    {
+      "kind": "tool",
+      "name": "grep",
+      "input": "waitForURL",
+      "output": "src/login.test.ts:12",
+      "progress": "done",
+      "exitCode": 0,
+      "step": "search",
+      "id": "group-3"
+    },
+    {
+      "kind": "tool",
+      "name": "shell",
+      "input": "pnpm test login",
+      "output": "1 passed",
+      "progress": "done",
+      "exitCode": 0,
+      "step": "run",
+      "command": "pnpm test login",
+      "id": "group-4"
+    }
+  ]
+}
