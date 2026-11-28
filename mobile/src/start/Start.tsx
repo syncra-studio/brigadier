@@ -13,6 +13,8 @@ import { flagOf, type Going, UNCONFIRMED } from "../../../app/shared/session/unc
 import { Confirm } from "../act/Confirm";
 import { Button } from "../Button";
 import { streamNow } from "../link";
+import { ArrowUp, Bolt } from "../../../app/ui/src/icons";
+import { ProviderMark } from "../compose/KindIcons";
 import { effortLabel } from "../compose/Model";
 import { canned, forMac, newId } from "../compose/state";
 import { lists } from "../mac/mac";
@@ -112,10 +114,9 @@ export function Start({ project, name, onStarted }: { project: string; name: str
   const lastChoice = last && { provider: last.backend, model: last.model!, effort: last.effort ?? null, fast: last.fast === true };
   const first = offered[0] && { provider: offered[0].group.provider, model: offered[0].model.id, effort: offered[0].model.defaultEffort ?? null };
   const choice = [picked, lastChoice, first].find(has) ?? null;
-  const shown = (each: ModelChoice) => {
-    const model = offered.find(({ group, model }) => group.provider === each.provider && model.id === each.model)?.model;
-    return [model?.name ?? each.model, each.fast ? "⚡" : null, each.effort ? effortLabel(each.effort) : null].filter(Boolean).join(" ");
-  };
+  const found = (each: ModelChoice) => offered.find(({ group, model }) => group.provider === each.provider && model.id === each.model);
+  // Its words for a screen reader, as the desktop's modelWords: "GPT-5.5, Fast, High".
+  const shown = (each: ModelChoice) => [found(each)?.model.name ?? each.model, each.fast ? "Fast" : null, each.effort ? effortLabel(each.effort) : null].filter(Boolean).join(", ");
   const pick = () =>
     ActionSheetIOS.showActionSheetWithOptions({ title: "Model", options: [...offered.map(({ group, model }) => `${group.short ?? group.label} · ${model.name}`), "Cancel"], cancelButtonIndex: offered.length }, (at) => {
       const was = offered[at];
@@ -206,10 +207,19 @@ export function Start({ project, name, onStarted }: { project: string; name: str
           <TextInput style={st.input} multiline autoFocus value={words} onChangeText={typed} placeholder={connected ? "Do anything" : "Not connected"} placeholderTextColor={color.mutedForeground} accessibilityLabel="Message" />
           <View style={st.bar}>
             <Pressable accessibilityRole="button" accessibilityLabel={`Model: ${choice ? shown(choice) : "none"}`} disabled={offered.length === 0} onPress={pick} style={({ pressed }) => [st.pill, pressed && { opacity: 0.6 }]}>
-              <Text style={st.pillText} numberOfLines={1}>{choice ? shown(choice) : groups ? "No model available" : "Loading models…"}</Text>
+              {choice ? (
+                <>
+                  <ProviderMark mark={found(choice)?.group.mark} />
+                  <Text style={st.pillText} numberOfLines={1}>{found(choice)?.model.name ?? choice.model}</Text>
+                  {choice.fast ? <Bolt className="size-icon-xs text-glyph-5" /> : null}
+                  {choice.effort ? <Text style={[st.pillText, { color: color.mutedForeground }]}>{effortLabel(choice.effort)}</Text> : null}
+                </>
+              ) : (
+                <Text style={st.pillText} numberOfLines={1}>{groups ? "No model available" : "Loading models…"}</Text>
+              )}
             </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel="Start" disabled={!ready} onPress={start} style={({ pressed }) => [st.send, (pressed || !ready) && { opacity: 0.4 }]}>
-              <Text style={st.sendGlyph}>↑</Text>
+              <ArrowUp className="size-icon-md text-primary-fg" />
             </Pressable>
           </View>
         </View>
@@ -249,10 +259,9 @@ const st = StyleSheet.create({
   field: { flex: 1, borderRadius: 20, borderWidth: 1, borderColor: color.border, backgroundColor: color.codeSurface, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8, gap: 8 },
   input: { ...text.base, flex: 1, color: color.foreground, padding: 0, textAlignVertical: "top" },
   bar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  pill: { borderRadius: 999, backgroundColor: color.fill, paddingHorizontal: 12, paddingVertical: 6, maxWidth: 260 },
+  pill: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 999, backgroundColor: color.fill, paddingHorizontal: 12, paddingVertical: 6, maxWidth: 260 },
   pillText: { ...text.sm, color: color.foreground },
   send: { width: 32, height: 32, borderRadius: 16, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
-  sendGlyph: { fontSize: 16, fontWeight: "700", color: color.primaryFg },
   muted: { ...text.sm, color: color.mutedForeground },
   error: { ...text.sm, color: color.destructive },
   held: { gap: 8, borderRadius: 12, backgroundColor: color.fill, padding: 12 },

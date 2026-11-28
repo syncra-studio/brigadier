@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import { ActionSheetIOS, Alert, Pressable, Text } from "react-native";
 import type { Draft } from "../../../app/shared/draft";
 import { store } from "../../../app/shared/store";
+import { DotsHorizontal } from "../../../app/ui/src/icons";
 import { Fork } from "../fork/Fork";
 import { thread } from "../mac/mac";
 import { macNow } from "../link";
@@ -30,7 +31,7 @@ const choose = (actions: [string, () => void][], title?: string) =>
 export function SessionMenu({ id }: { id: string }) {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel="More" hitSlop={12} onPress={() => sessionMenu(id)}>
-      <Text style={{ ...text.lg, color: color.foreground }}>⋯</Text>
+      <DotsHorizontal className="size-icon-md text-foreground" />
     </Pressable>
   );
 }

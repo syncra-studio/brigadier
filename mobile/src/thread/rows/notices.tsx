@@ -2,6 +2,7 @@
 import { Text } from "react-native";
 import type { Item, Progress } from "../../../../app/shared/thread";
 import { COMPACTION, duration, FAILED_CAUSE, hhmm, TURN_FAILED } from "../../../../app/shared/words";
+import { ArrowRotateCw, ExclamationMarkCircle, Info, PauseCircle, Plug, ShieldExclamation, Sparkle, Stop, TextShorterConcise, Warning } from "../../../../app/ui/src/icons";
 import { color } from "../../theme";
 import { Divider, ErrorState, s } from "./parts";
 
@@ -10,7 +11,8 @@ function NoticeRow({ level, text }: { level: "info" | "warning" | "error"; text:
   const error = level === "error";
   return (
     <Text style={[s.row, error && { color: color.destructive }]} accessibilityRole={error ? "alert" : undefined}>
-      <Text style={level === "warning" ? { color: color.warning } : undefined}>{error ? "⊘" : level === "warning" ? "⚠" : "ⓘ"}  </Text>
+      {error ? <ExclamationMarkCircle className="size-4 text-destructive" /> : level === "warning" ? <Warning className="size-4 text-warning" /> : <Info className="size-4 text-row-foreground" />}
+      {"  "}
       {text}
     </Text>
   );
@@ -20,51 +22,51 @@ export function NoticeItem({ item }: { item: Extract<Item, { kind: "notice" }> }
   if (!("reason" in item)) return <NoticeRow level={item.level} text={item.text} />;
   switch (item.reason) {
     case "blocked":
-      return <Divider tip={item.text || undefined}>⚠ The agent’s safety checks held this reply back</Divider>;
+      return <Divider icon={ShieldExclamation} tip={item.text || undefined}>The agent’s safety checks held this reply back</Divider>;
     case "failed":
       // Brigadier carried it on once the network was back: a quiet line, the error's words its tip [D339].
-      if (item.resumed) return <Divider tip={item.text || undefined}>↻ Connection lost · tried again once it was back</Divider>;
+      if (item.resumed) return <Divider icon={ArrowRotateCw} tip={item.text || undefined}>Connection lost · tried again once it was back</Divider>;
       return <ErrorState summary={item.cause ? FAILED_CAUSE[item.cause] : TURN_FAILED[item.why]} details={item.text} />;
     case "untrusted":
       return <NoticeRow level="info" text="This folder is no longer trusted, so this turn runs under Ask." />;
     case "sign-in":
       // A library server's is a quiet line; an agent's is an error. Their Sign in and Open Providers are the Mac's.
-      return item.plugin ? <Divider>{item.text}</Divider> : <NoticeRow level="error" text={item.text} />;
+      return item.plugin ? <Divider icon={Plug}>{item.text}</Divider> : <NoticeRow level="error" text={item.text} />;
   }
 }
 
 /** The agent shortening its context, as a divider across the column; one not yet started reads as under way (D186). */
 export function Compaction({ progress: reported = "done" }: { progress?: Progress }) {
   const progress = reported === "pending" ? "running" : reported;
-  return <Divider>{COMPACTION[progress]}</Divider>;
+  return <Divider icon={TextShorterConcise}>{COMPACTION[progress]}</Divider>;
 }
 
 /** Rust's `line` row in words: what changed, and the rest on its ⓘ. */
 export function ChangeLine({ item }: { item: Extract<Item, { kind: "line" }> }) {
   switch (item.reason) {
     case "limit-reset":
-      return <Divider>↻ Usage limit reset · {item.carried ? `carried on at ${hhmm(item.carried)}` : hhmm(item.at)}</Divider>;
+      return <Divider icon={ArrowRotateCw}>Usage limit reset · {item.carried ? `carried on at ${hhmm(item.carried)}` : hhmm(item.at)}</Divider>;
     case "model":
       return item.why === "changed" ? (
-        <Divider tip={`${item.from ? `From ${item.from}. ` : ""}Answers may read differently from here on.`}>✦ {item.live ? `Switching model to ${item.to}…` : `Switched model to ${item.to}`}</Divider>
+        <Divider icon={Sparkle} tip={`${item.from ? `From ${item.from}. ` : ""}Answers may read differently from here on.`}>{item.live ? `Switching model to ${item.to}…` : `Switched model to ${item.to}`}</Divider>
       ) : (
-        <Divider tip={item.from ? `The agent sent this request on from ${item.from}.` : "The agent sent this request on to another model."}>✦ This request went to {item.to}</Divider>
+        <Divider icon={Sparkle} tip={item.from ? `The agent sent this request on from ${item.from}.` : "The agent sent this request on to another model."}>This request went to {item.to}</Divider>
       );
     case "stopped":
       // shortcut: the session that stopped it is named from the Mac's rows, which the phone doesn't have: "Stopped".
-      if (item.by === "lead") return <Divider>■ {item.ms === null ? "Stopped" : `Stopped after ${duration(item.ms)}`}</Divider>;
-      return <Divider>■ {item.ms === null ? "You stopped" : `You stopped after ${duration(item.ms)}`}</Divider>;
+      if (item.by === "lead") return <Divider icon={Stop}>{item.ms === null ? "Stopped" : `Stopped after ${duration(item.ms)}`}</Divider>;
+      return <Divider icon={Stop}>{item.ms === null ? "You stopped" : `You stopped after ${duration(item.ms)}`}</Divider>;
     case "paused":
-      return <Divider>‖ {item.ms === null ? "You paused" : `You paused after ${duration(item.ms)}`}</Divider>;
+      return <Divider icon={PauseCircle}>{item.ms === null ? "You paused" : `You paused after ${duration(item.ms)}`}</Divider>;
     case "interrupted":
-      return <Divider>■ Interrupted · the run stopped before it finished</Divider>;
+      return <Divider icon={Stop}>Interrupted · the run stopped before it finished</Divider>;
     case "review-ended":
-      return <Divider tip="It turned down too many actions in a row. Say more about the task, or change the permission level, to go on.">⚠ The automatic reviewer ended this turn</Divider>;
+      return <Divider tip="It turned down too many actions in a row. Say more about the task, or change the permission level, to go on." icon={ShieldExclamation}>The automatic reviewer ended this turn</Divider>;
     case "stalled":
       // Its Continue is the Mac's.
-      return <Divider>■ Stopped: this task keeps filling its context without making progress</Divider>;
+      return <Divider icon={Stop}>Stopped: this task keeps filling its context without making progress</Divider>;
     case "retried":
-      return <Divider>↻ Sent again · the previous attempt was replaced</Divider>;
+      return <Divider icon={ArrowRotateCw}>Sent again · the previous attempt was replaced</Divider>;
   }
 }
 
@@ -82,7 +84,7 @@ export function SwitchRow({ item: change }: { item: Switch }) {
   const back = change.reason !== "usage-limit" ? "" : change.resets && change.resets > Date.now() ? ` · try again at ${hhmm(change.resets)}` : " · try again later";
   switch (change.state) {
     case "limit":
-      return <Divider>⚠ {hit + back}</Divider>;
+      return <Divider icon={Warning}>{hit + back}</Divider>;
     case "switching":
       return <Divider>{refused ? `Starting a new conversation on ${to}…` : to ? `Switching to ${to}…` : "Switching…"}</Divider>;
     case "switched":
@@ -91,9 +93,9 @@ export function SwitchRow({ item: change }: { item: Switch }) {
       if (change.moved) return <Divider tip={hit}>{change.moved}</Divider>;
       return <Divider tip={hit}>{refused ? `Continued in a new conversation on ${to}` : `Switched ${change.automatic ? "automatically " : ""}to ${to}`}</Divider>;
     case "failed":
-      if (change.automatic) return <Divider tip={change.error || undefined}>⚠ {hit + back} {to ? `· couldn’t switch to ${to}` : "· couldn’t switch automatically"}</Divider>;
+      if (change.automatic) return <Divider icon={Warning} tip={change.error || undefined}>{hit + back} {to ? `· couldn’t switch to ${to}` : "· couldn’t switch automatically"}</Divider>;
       return <Divider tip={change.error || undefined}>Couldn’t switch to {to} · the thread is unchanged</Divider>;
     case "over":
-      return <Divider>⚠ {hit}</Divider>;
+      return <Divider icon={Warning}>{hit}</Divider>;
   }
 }

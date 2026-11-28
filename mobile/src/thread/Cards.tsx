@@ -227,7 +227,7 @@ function QuestionCard({ question, session, error, onDismiss }: { question: Pendi
         const press = !session ? undefined : item.multiSelect ? () => keep({ ...state, marked: marked ? state.marked.filter((m) => m !== n) : [...state.marked, n] }) : () => answer(option.label);
         return (
           <Pressable key={n} onPress={press} accessibilityRole={session ? "button" : undefined} accessibilityState={item.multiSelect ? { checked: marked } : undefined} style={({ pressed }) => [st.option, (marked || pressed) && st.optionOn]}>
-            <Text style={st.number}>{item.multiSelect && session ? (marked ? "☑" : "☐") : n + 1}</Text>
+            <Text style={st.number}>{n + 1}</Text>
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={st.label}>
                 {option.label}

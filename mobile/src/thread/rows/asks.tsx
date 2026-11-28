@@ -1,10 +1,11 @@
 // Approvals and questions in the thread, after the desktop's components/thread/cards.tsx and composer/approval.tsx's describe.
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { Text, View } from "react-native";
 import type { PendingApproval, PendingQuestion, QuestionItem } from "../../../../app/shared/cards";
 import type { ApprovalAction, Item, SentFile, Turn } from "../../../../app/shared/thread";
+import { Chat, Commit, Cursor, Dock, Globe, type IconProps, Key, PencilSquare, QuestionMarkCircle, Sparkle, Tools } from "../../../../app/ui/src/icons";
 import { color } from "../../theme";
-import { Box, Glyph, Line, Opening, s, Words } from "./parts";
+import { Box, Line, Opening, s, StepIcon, Words } from "./parts";
 
 const WITHDRAWN = "withdrawn";
 /** The session that started a worker, which a request it answers names [D131]; the desktop's own default name. */
@@ -76,8 +77,19 @@ export function describe(approval: PendingApproval): { kind: string; title: stri
   }
 }
 
-/** A glyph for what an approval asks to do, in place of the desktop's icons. */
-const ACTIONS: Record<ApprovalAction, string> = { command: "$", edit: "✎", network: "◎", permission: "⚿", plan: "✦", land: "⑂", message: "✉", browser: "◎", computer: "⌖", other: "⚙" };
+/** What an approval asks to do, as the old app's approval kinds drew it. */
+const ACTIONS: Record<ApprovalAction, ComponentType<IconProps>> = {
+  command: Dock,
+  edit: PencilSquare,
+  network: Globe,
+  permission: Key,
+  plan: Sparkle,
+  land: Commit,
+  message: Chat,
+  browser: Globe,
+  computer: Cursor,
+  other: Tools,
+};
 
 /**
  * An approval, read like a question: "Asking for approval · waiting", then "Asked for approval · allowed" or
@@ -89,7 +101,7 @@ export function ApprovalRow({ item, turn }: { item: Extract<Item, { kind: "appro
   const subject = request.command || request.host || request.paths?.join(", ") || request.input || undefined;
   const toParent = item.to === "parent";
   const action = request.action;
-  const glyph = <Glyph g={ACTIONS[action] ?? ACTIONS.other} />;
+  const glyph = <StepIcon icon={ACTIONS[action] ?? ACTIONS.other} />;
   if (decision === null || decision === "withdrawn") {
     const waiting = decision === null && (turn?.status === "running" || turn?.held === true);
     const asking = toParent ? `Asking ${PARENT}` : "Asking for approval";
@@ -138,7 +150,7 @@ export function QuestionRow({ item, turn }: { item: Extract<Item, { kind: "quest
   const count = Math.max(items.length, 1);
   const title = round?.title ? ` · ${round.title}` : "";
   const asked = toParent ? `${PARENT} answered${title}` : `Asked ${count === 1 ? "a question" : `${count} questions`}${title}`;
-  const glyph = <Glyph g="?" />;
+  const glyph = <StepIcon icon={QuestionMarkCircle} />;
   if (item.answer === null) {
     const asking = toParent ? `Asking ${PARENT}` : count === 1 ? "Asking a question" : "Asking questions";
     return <Line>{glyph}<Words verb={waiting ? `${asking} · waiting` : `${toParent ? `Asked ${PARENT}${title}` : asked} · ${WITHDRAWN}`} live={waiting} /></Line>;

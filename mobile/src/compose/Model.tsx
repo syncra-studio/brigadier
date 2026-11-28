@@ -7,7 +7,8 @@ import { failure } from "../../../app/shared/session/run";
 import { store } from "../../../app/shared/store";
 import { Button } from "../Button";
 import { color, spacing, radius, text, fontWeight, touch } from "../theme";
-import { Glyph } from "./Glyph";
+import { Bolt, Check, ChevronDown, MagnifyingGlassSmSearch, Star, StarFilled } from "../../../app/ui/src/icons";
+import { ProviderMark } from "./KindIcons";
 import { fuzzyMatch, MatchedText } from "./Menus";
 import { Pill } from "./Pill";
 import type { Runner } from "../../../app/shared/session/run";
@@ -74,8 +75,9 @@ export function ModelPill({ id, row, connected, open: opened = false }: { id: st
       {error ? <Text style={st.error} numberOfLines={2}>{error}</Text> : null}
       {picked && row?.running ? <SwitchAfter key={row.setup_op ?? ""} id={id} name={groups?.find((group) => group.provider === picked.backend)?.label ?? picked.backend} now={picked.now === true} onError={setError} /> : null}
       <Pill label={`Model: ${model?.name ?? value.model}${fast ? ", Fast" : ""}${effort ? `, ${effort}` : ""}`} open={open} disabled={!connected || !groups || Boolean(row?.worker)} onPress={show} style={{ maxWidth: 200 }}>
+        <ProviderMark mark={groups?.find((group) => group.provider === value.provider)?.mark} />
         <Text style={st.pillText} numberOfLines={1}>{model?.name ?? value.model}</Text>
-        {fast ? <Glyph name="bolt" size={spacing.iconXs} color={color.glyph5} /> : null}
+        {fast ? <Bolt className="size-icon-xs text-glyph-5" /> : null}
         {effort ? <Text style={st.effort} numberOfLines={1}>{effort}</Text> : null}
       </Pill>
       {open && groups ? <Sheet group={groups.find((group) => group.provider === row?.backend)} value={value} onPick={change} onClose={() => setOpen(false)} /> : null}
@@ -140,13 +142,14 @@ function Sheet({ group, value, onPick, onClose }: { group: ModelGroup | undefine
     const on = stars.includes(keyOf(model));
     return (
       <Pressable key={model.id} accessibilityRole="radio" accessibilityState={{ checked: inUse(model) }} onPress={() => pick(model)} style={({ pressed }) => [st.option, pressed && { backgroundColor: color.fill }]}>
+        <ProviderMark mark={group?.mark} />
         <Text style={st.optionText} numberOfLines={2}>
           {needle ? <MatchedText words={model.name} query={needle} /> : model.name}
         </Text>
-        {inUse(model) ? <Glyph name="check" size={spacing.iconSm} label="In use" /> : null}
+        {inUse(model) ? <Check aria-label="In use" className="size-icon-sm text-foreground" /> : null}
         {model.legacy && mixed ? <Text style={st.faint}>Older</Text> : null}
         <Pressable accessibilityRole="button" accessibilityLabel={on ? "Remove from favorites" : "Add to favorites"} accessibilityState={{ selected: on }} onPress={() => star(keyOf(model))} hitSlop={12} style={{ marginLeft: "auto" }}>
-          <Glyph name={on ? "starFilled" : "star"} color={on ? color.glyph5 : color.mutedForeground} />
+          {on ? <StarFilled className="size-icon-md text-glyph-5" /> : <Star className="size-icon-md text-muted-foreground" />}
         </Pressable>
       </Pressable>
     );
@@ -160,7 +163,7 @@ function Sheet({ group, value, onPick, onClose }: { group: ModelGroup | undefine
         ) : (
           <>
             <View style={st.search}>
-              <Glyph name="search" color={color.mutedForeground} />
+              <MagnifyingGlassSmSearch className="size-icon-md text-muted-foreground" />
               <TextInput value={query} onChangeText={setQuery} placeholder="Search all models" placeholderTextColor={color.placeholder} accessibilityLabel="Search all models" autoCorrect={false} autoCapitalize="none" clearButtonMode="while-editing" style={st.searchText} />
             </View>
             {needle ? (
@@ -177,7 +180,7 @@ function Sheet({ group, value, onPick, onClose }: { group: ModelGroup | undefine
                 {hidden > 0 ? (
                   <Pressable accessibilityRole="button" onPress={() => setOlder(!older)} style={({ pressed }) => [st.option, pressed && { backgroundColor: color.fill }]}>
                     <View style={older && { transform: [{ rotate: "180deg" }] }}>
-                      <Glyph name="chevronDown" color={color.mutedForeground} />
+                      <ChevronDown className="size-icon-md text-muted-foreground" />
                     </View>
                     <Text style={st.muted}>{older ? "Show less" : `Show ${hidden} more`}</Text>
                   </Pressable>
@@ -193,11 +196,11 @@ function Sheet({ group, value, onPick, onClose }: { group: ModelGroup | undefine
                 {used.efforts.map((level) => (
                   <Pressable key={level} accessibilityRole="radio" accessibilityState={{ checked: value.effort === level }} onPress={() => pick(used, { effort: level })} style={({ pressed }) => [st.option, pressed && { backgroundColor: color.fill }]}>
                     <Text style={st.optionText}>{effortLabel(level)}</Text>
-                    {value.effort === level ? <Glyph name="check" size={spacing.iconSm} /> : level === used.defaultEffort ? <Text style={st.faint}>Default</Text> : null}
+                    {value.effort === level ? <Check aria-hidden className="size-icon-sm text-foreground" /> : level === used.defaultEffort ? <Text style={st.faint}>Default</Text> : null}
                   </Pressable>
                 ))}
                 <View style={[st.option, st.fast]}>
-                  <Glyph name="bolt" size={spacing.iconSm} color={value.fast && used.fast ? color.glyph5 : color.placeholder} />
+                  <Bolt className={value.fast && used.fast ? "size-icon-sm text-glyph-5" : "size-icon-sm text-placeholder"} />
                   <View style={{ flex: 1 }}>
                     <Text style={[st.optionText, !used.fast && { color: color.placeholder }]}>Fast</Text>
                     <Text style={st.muted}>{used.fast ?? `${used.name} has no fast tier`}</Text>

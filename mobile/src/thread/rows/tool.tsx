@@ -7,8 +7,9 @@ import { connectorName, VERBS } from "../../../../app/shared/words";
 import { running, type Group } from "../../../../app/shared/lines";
 import { thread } from "../../mac/mac";
 import { sheet } from "../../sheets/Sheets";
+import { Check, Mcp, Stop } from "../../../../app/ui/src/icons";
 import { color } from "../../theme";
-import { Box, Capped, ErrorLine, Glyph, Line, Opening, s, useKept, Words } from "./parts";
+import { Box, Capped, ErrorLine, Line, Opening, s, StepIcon, useKept, Words } from "./parts";
 import { GroupLine } from "./work";
 
 type Tool = Extract<Item, { kind: "tool" }>;
@@ -130,7 +131,7 @@ export function ToolRow({
   const label = what ? `${verb} ${what}` : verb;
   const head = (
     <>
-      <Glyph g={progress === "cancelled" ? "■" : progress === "failed" ? "✕" : command ? "$" : "·"} tone={progress === "failed" ? color.destructive : undefined} />
+      <StepIcon kind={bare && command ? "run" : kind} icon={progress === "cancelled" ? Stop : server ? Mcp : undefined} />
       <Words verb={verb} object={what} live={progress === "running"} />
     </>
   );
@@ -184,7 +185,12 @@ export function ShellBox({ keep, command, output, progress, exitCode }: { keep: 
         </Text>
       </Pressable>
       {output ? <Capped keep={keep} text={output} tail style={{ color: color.mutedForeground }} /> : <Text style={[s.code, { color: color.mutedForeground }]}>No output</Text>}
-      {ending && <Text style={[s.small, { alignSelf: "flex-end" }]}>{ending === "Success" ? "✓ " : ""}{ending}</Text>}
+      {ending && (
+        <View style={st.ending}>
+          {ending === "Success" && <Check className="size-icon-sm text-muted-foreground" />}
+          <Text style={s.small}>{ending}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -219,5 +225,6 @@ export function ShellRow({ item }: { item: Extract<Item, { kind: "shell" }> }) {
 
 const st = StyleSheet.create({
   under: { paddingLeft: 24, paddingTop: 4 },
+  ending: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-end" },
   shell: { gap: 6, marginTop: 4, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: color.fill, backgroundColor: color.fill, padding: 8 },
 });

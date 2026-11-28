@@ -4,7 +4,7 @@ import type { PendingApproval } from "../../../../app/shared/cards";
 import type { FileChange, Item, Progress } from "../../../../app/shared/thread";
 import { FILE_VERBS } from "../../../../app/shared/words";
 import { color } from "../../theme";
-import { Capped, Glyph, Line, Opening, s, Words } from "./parts";
+import { Capped, Line, Opening, s, StepIcon, Words } from "./parts";
 import { Allowed } from "./tool";
 
 /** A diff past this many lines isn't drawn. */
@@ -36,7 +36,7 @@ function FileChangeRow({ keep, change, progress, approval }: { keep: string; cha
     progress === "pending" ? [`Waiting to ${waiting}`, object] : progress === "cancelled" ? ["Rejected", name] : [live ? doing : done, progress === "failed" ? `${object} — failed` : object];
   const head = (
     <>
-      <Glyph g="✎" />
+      <StepIcon kind="edit" />
       <Words verb={verb} object={what} live={progress === "running"} />
     </>
   );

@@ -1,4 +1,9 @@
 {
   "extends": "expo/tsconfig.base",
-  "compilerOptions": { "strict": true }
+  "compilerOptions": {
+    "strict": true,
+    // The desktop's icon files (../app/ui/src/icons) take React's types from here, for tsc alone: app.json turns off
+    // Expo's reading these paths, which would send Metro to the types instead of React [D99].
+    "paths": { "react": ["./node_modules/@types/react"], "react/*": ["./node_modules/@types/react/*"] }
+  }
 }

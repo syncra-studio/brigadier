@@ -3,14 +3,15 @@ import type { Mac } from "../../modules/link";
 import { Button } from "../Button";
 import { page, PROBLEMS } from "../Notice";
 import type { Problem } from "../pair/pair";
-import { color, text, fontWeight } from "../theme";
+import { StateDot } from "../StateDot";
+import { color, space, text, fontWeight } from "../theme";
 
 export type Status = "connecting" | "connected" | Problem | "cancelled";
 
 const said = (s: Status) =>
   s === "connected" ? "Connected" : s === "connecting" ? "Connecting…" : s === "cancelled" ? "Not connected" : PROBLEMS[s].title;
 
-/** The paired Macs: "● <name>", how each stands, and Forget this Mac. */
+/** The paired Macs: a dot and its name, how each stands, and Forget this Mac. */
 export function Macs({ macs, status, onConnect, onForget, onAdd }: {
   macs: Mac[];
   status: Record<string, Status>;
@@ -25,10 +26,10 @@ export function Macs({ macs, status, onConnect, onForget, onAdd }: {
         const s = status[mac.pk] ?? "cancelled";
         return (
           <View key={mac.pk} style={styles.row}>
-            <Text style={styles.name}>
-              <Text style={{ color: s === "connected" ? color.success : color.mutedForeground }}>● </Text>
-              {mac.name}
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: space(2) }}>
+              <StateDot tone={s === "connected" ? "ready" : "off"} />
+              <Text style={styles.name}>{mac.name}</Text>
+            </View>
             <Text style={styles.status}>{said(s)}</Text>
             <View style={styles.actions}>
               {s === "connected" && <Action title="Open" onPress={() => onConnect(mac)} />}

@@ -7,7 +7,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import type { ModelRow } from "../../../app/shared/session/model";
 import { Confirm } from "../act/Confirm";
 import { Button } from "../Button";
-import { Glyph, Shield } from "../compose/Glyph";
+import { Check, HandRaised, ShieldExclamation, ShieldTerminal } from "../../../app/ui/src/icons";
 import { Pill } from "../compose/Pill";
 import { forMac, newId } from "../compose/state";
 import { color, radius, text, opacity, touch } from "../theme";
@@ -18,11 +18,11 @@ type Level = "ask" | "auto" | "full";
 /** The desktop's Full Access confirm words. */
 export const FULL_ACCESS = { title: "Turn on Full Access?", body: "Agents can use all of these without asking.", shown: "Files · Commands · Internet" };
 
-/** The desktop's levels; HandRaised, ShieldTerminal and ShieldExclamation drawn as shields. */
-const LEVELS: { level: Level; label: string; detail: string; mark?: string }[] = [
-  { level: "ask", label: "Ask", detail: "Asks before edits and commands" },
-  { level: "auto", label: "Auto", detail: "Works on its own, asks before risky actions", mark: "›" },
-  { level: "full", label: "Full access", detail: "Unrestricted access to the internet and all your files", mark: "!" },
+/** The desktop's levels (composer/pickers.tsx), each with its icon. */
+const LEVELS: { level: Level; label: string; detail: string; Icon: typeof Check }[] = [
+  { level: "ask", label: "Ask", detail: "Asks before edits and commands", Icon: HandRaised },
+  { level: "auto", label: "Auto", detail: "Works on its own, asks before risky actions", Icon: ShieldTerminal },
+  { level: "full", label: "Full access", detail: "Unrestricted access to the internet and all your files", Icon: ShieldExclamation },
 ];
 
 /** A session's row with what its next turn runs at; `level_op`, the last pick Rust took [D30]. */
@@ -40,7 +40,7 @@ export function LevelPill({ id, row, connected }: { id: string; row: LevelRow | 
   const value = held ? "ask" : (pending?.level ?? row?.level ?? levels[0] ?? "ask");
   const shown = LEVELS.find((each) => each.level === value)!;
   const offered = LEVELS.filter((each) => levels.includes(each.level));
-  const orange = value === "full" ? color.warning : color.mutedForeground;
+  const orange = value === "full" ? color.fullAccess : color.mutedForeground;
   const pick = (level: Level) => {
     if (level === value) return setOpen(false);
     setError(null);
@@ -67,7 +67,7 @@ export function LevelPill({ id, row, connected }: { id: string; row: LevelRow | 
       {/* An agent with no levels runs as its CLI always has: no pill, though a sheet already open stays. */}
       {levels.length > 0 ? (
         <Pill label={`Permission level: ${shown.label}`} open={open} disabled={!connected} onPress={() => setOpen(true)} style={{ maxWidth: 160 }}>
-          <Shield mark={shown.mark} color={orange} />
+          <shown.Icon className="size-icon-md" color={orange} />
           <Text style={[st.pillText, { color: orange }]} numberOfLines={1}>{shown.label}</Text>
         </Pill>
       ) : null}
@@ -80,15 +80,15 @@ export function LevelPill({ id, row, connected }: { id: string; row: LevelRow | 
             {offered.map((each) => {
               const on = each.level === value;
               const disabled = held && each.level !== "ask";
-              const tone = each.level === "full" ? color.warning : color.foreground;
+              const tone = each.level === "full" ? color.fullAccess : color.foreground;
               return (
                 <Pressable key={each.level} accessibilityRole="radio" accessibilityState={{ checked: on, disabled }} disabled={disabled} onPress={() => pick(each.level)} style={({ pressed }) => [st.option, pressed && { backgroundColor: color.fill }, disabled && { opacity: opacity.disabled }]}>
-                  <Shield mark={each.mark} color={tone} />
+                  <each.Icon className="size-icon-md" color={tone} />
                   <View style={{ flex: 1 }}>
                     <Text style={[st.optionText, { color: tone }]}>{each.label}</Text>
                     <Text style={[st.detail, each.level === "full" && { color: color.warning }]}>{each.detail}</Text>
                   </View>
-                  {on ? <Glyph name="check" color={tone} /> : null}
+                  {on ? <Check className="size-icon-md" color={tone} /> : null}
                 </Pressable>
               );
             })}

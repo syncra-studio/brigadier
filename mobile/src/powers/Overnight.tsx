@@ -8,7 +8,7 @@ import type { Overnight, Row } from "../../../app/shared/rows";
 import { store } from "../../../app/shared/store";
 import { duration } from "../../../app/shared/words";
 import { Confirm } from "../act/Confirm";
-import { Glyph } from "../compose/Glyph";
+import { Moon } from "../../../app/ui/src/icons";
 import { Pill, PillDivider } from "../compose/Pill";
 import { newId } from "../compose/state";
 import { color, spacing, radius, text, opacity } from "../theme";
@@ -90,7 +90,7 @@ export function OvernightPill({ night, connected }: { night: Night; connected: b
     <>
       <PillDivider />
       <Pill label="Overnight" selected={on} disabled={!connected} onPress={() => night.ask(on ? "off" : "on")} style={on && { backgroundColor: color.pickedRow }}>
-        <Glyph name="moon" color={on ? color.tileViolet : color.mutedForeground} />
+        <Moon className="size-icon-md" color={on ? color.tileViolet : color.mutedForeground} />
         <Text style={[st.pillText, on && { color: color.tileViolet }]} numberOfLines={1}>Overnight</Text>
       </Pill>
     </>
@@ -109,7 +109,7 @@ export function OvernightStrip({ night, connected }: { night: Night; connected: 
   if (!now) return null;
   return (
     <View style={st.strip} accessibilityLabel="Overnight">
-      <Glyph name="moon" color={color.tileViolet} />
+      <Moon className="size-icon-md text-tile-violet" />
       <Text style={st.words} numberOfLines={1}>
         {now.since ? `${duration(tick - now.since)} in` : "Overnight"}
         <Text style={st.muted}>
@@ -130,7 +130,7 @@ export function StartNight({ label, night, connected }: { label: string; night: 
     <View style={st.actions}>
       <Text style={st.label}>{label}</Text>
       <Pressable accessibilityRole="button" disabled={!connected} onPress={() => night.ask("start")} hitSlop={6} style={({ pressed }) => [st.primary, (pressed || !connected) && { opacity: connected ? 0.8 : opacity.disabled }]}>
-        <Glyph name="moon" size={spacing.iconSm} color={color.primaryFg} />
+        <Moon className="size-icon-sm text-primary-fg" />
         <Text style={st.primaryText}>Start night</Text>
       </Pressable>
     </View>

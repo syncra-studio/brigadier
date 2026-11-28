@@ -8,7 +8,10 @@ import type { ModelRow } from "../../../app/shared/session/model";
 import type { RustQueued } from "../../../app/shared/session/queued";
 import type { Going } from "../../../app/shared/session/uncertain";
 import { color, spacing, radius, text, shadow, opacity, mono, space } from "../theme";
-import { Boxed, Glyph, Spinner, usePulse } from "./Glyph";
+import { Comment, FileDocument, FileImage, Paperclip, Spinner, Warning, X } from "../../../app/ui/src/icons";
+import { Terminal } from "../../../app/ui/src/icons/thread";
+import { Sparkles, XCircle } from "../../../app/ui/src/landing/icons";
+import { Spin, usePulse } from "./motion";
 import { chipTone, NEW_SESSION } from "./Menus";
 import { ThreadImage } from "../thread/Image";
 import { type Attachment, forMac, withChips } from "./state";
@@ -104,7 +107,7 @@ export function Field({ words, chips, shell, placeholder, night, onChange, onCur
     <View>
       {shell ? (
         <View style={st.terminal} pointerEvents="none">
-          <Boxed mark=">_" color={color.link} />
+          <Terminal className="size-icon-md text-link" />
         </View>
       ) : null}
       <TextInput
@@ -147,7 +150,7 @@ export const baseName = (name: string) => name.slice(name.lastIndexOf("/") + 1);
  */
 export const Remove = ({ label, onPress, image }: { label: string; onPress: () => void; image: boolean }) => (
   <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} hitSlop={image ? { top: 6, right: 6, left: 4, bottom: 4 } : 14} style={st.remove}>
-    <Glyph name="x" size={9} color={color.background} weight="700" />
+    <X className="size-icon-xs text-background" />
   </Pressable>
 );
 
@@ -187,7 +190,7 @@ export function Tile({ owner, file, onOpen, onRemove }: { owner: string; file: A
         <View pointerEvents="none" style={st.ring} />
         {file.state === "uploading" ? (
           <View pointerEvents="none" style={[StyleSheet.absoluteFill, st.centred]}>
-            <Spinner />
+            <Spin><Spinner aria-label="Uploading" className="size-icon-md" /></Spin>
           </View>
         ) : null}
         {remove}
@@ -195,7 +198,8 @@ export function Tile({ owner, file, onOpen, onRemove }: { owner: string; file: A
     );
   }
   const failed = file.state === "failed";
-  const icon = failed ? <Glyph name="warning" color={color.destructive} label="Upload failed" /> : file.state === "uploading" ? <Spinner /> : <Glyph name={file.mime.startsWith("image/") ? "image" : file.mime.startsWith("text/") || file.mime === "application/pdf" ? "document" : "file"} color={color.mutedForeground} />;
+  const Kind = file.mime.startsWith("image/") ? FileImage : file.mime.startsWith("text/") || file.mime === "application/pdf" ? FileDocument : Paperclip;
+  const icon = failed ? <Warning aria-label="Upload failed" className="size-icon-md text-destructive" /> : file.state === "uploading" ? <Spin><Spinner aria-label="Uploading" className="size-icon-md" /></Spin> : <Kind className="size-icon-md" />;
   return (
     <Card icon={icon} title={name} detail={failed ? (file.error ?? "Couldn't attach this file") : file.state === "uploading" ? "Attaching…" : kindOf(file.name, file.mime)} invalid={failed}>
       {remove}
@@ -215,13 +219,13 @@ export const plural = (n: number, one: string) => (n === 1 ? `1 ${one}` : `${n} 
 export function ChipTile({ chip }: { chip: PanelChip }) {
   if (chip.kind === "comment") {
     const { path, start, end, text: said, excerpt } = chip.comment;
-    return <Card icon={<Glyph name="comment" color={color.mutedForeground} />} title={said} detail={`${baseName(path)}:${start === end ? start : `${start}–${end}`}  ${excerpt}`} />;
+    return <Card icon={<Comment className="size-icon-md" />} title={said} detail={`${baseName(path)}:${start === end ? start : `${start}–${end}`}  ${excerpt}`} />;
   }
   const agent = chip.chip;
   return agent.kind === "resolve" ? (
-    <Card icon={<Glyph name="sparkles" color={color.mutedForeground} />} title={`Resolve ${plural(agent.conflicts, "conflict")}`} detail={`${plural(agent.files, "file")} · ${agent.operation} ${agent.onto}`} />
+    <Card icon={<Sparkles className="size-icon-md" />} title={`Resolve ${plural(agent.conflicts, "conflict")}`} detail={`${plural(agent.files, "file")} · ${agent.operation} ${agent.onto}`} />
   ) : (
-    <Card icon={<Glyph name="xCircle" color={color.destructive} />} title={`Fix ${agent.run}`} detail={agent.failed} />
+    <Card icon={<XCircle className="size-icon-md text-destructive" />} title={`Fix ${agent.run}`} detail={agent.failed} />
   );
 }
 
@@ -290,13 +294,11 @@ export const st = StyleSheet.create({
   shellWords: { ...text.sm, color: color.link, paddingHorizontal: 8, height: spacing.controlSm, lineHeight: spacing.controlSm, flexShrink: 1 },
   plus: { width: spacing.controlSm, height: spacing.controlSm, borderRadius: radius.iconButton, alignItems: "center", justifyContent: "center" },
   pillText: { ...text.sm, color: color.mutedForeground, flexShrink: 1 },
-  toDot: { fontSize: 10, color: color.mutedForeground },
   end: { flexDirection: "row", alignItems: "center", gap: 2, marginLeft: "auto", flexShrink: 1, minWidth: 0 },
   status: { ...text.xs, color: color.mutedForeground, flexShrink: 1, paddingHorizontal: 4 },
   send: { width: spacing.controlSm, height: spacing.controlSm, borderRadius: spacing.controlSm / 2, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
   run: { height: spacing.controlSm, borderRadius: spacing.controlSm / 2, paddingHorizontal: 12, backgroundColor: color.primary, alignItems: "center", justifyContent: "center" },
   runText: { ...text.sm, fontWeight: "500", color: color.primaryFg },
-  stop: { width: 10, height: 10, borderRadius: 2, backgroundColor: color.primaryFg },
   waits: { ...text.xs, color: color.mutedForeground, paddingHorizontal: 8, marginTop: -4 },
   tiles: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-end", gap: 8, paddingHorizontal: 4, paddingTop: 4, paddingBottom: 6 },
   thumb: { width: spacing.attachmentThumb, height: spacing.attachmentThumb, borderRadius: radius.surface, overflow: "hidden", backgroundColor: color.muted },

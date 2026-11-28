@@ -1,12 +1,13 @@
 import { DarkTheme, NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useSyncExternalStore } from "react";
-import { Pressable, Text } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { Sessions } from "../lists/Sessions";
 import { Samples } from "../samples/Samples";
 import { SessionMenu } from "../sheets/Sheets";
 import { Start } from "../start/Start";
-import { color, text } from "../theme";
+import { StateDot } from "../StateDot";
+import { color, space, text } from "../theme";
 import { Thread } from "../thread/Thread";
 import { closeThread, lists, openThread } from "./mac";
 
@@ -28,10 +29,10 @@ export function MacScreens({ name, onMacs, open }: { name: string; onMacs: () =>
             title: name,
             // The dot says whether this Mac is connected now, as the Mac list does.
             headerTitle: () => (
-              <Text style={{ ...text.lg, fontWeight: "600", color: color.foreground }}>
-                <Text style={{ color: ready ? color.success : color.mutedForeground }}>● </Text>
-                {name}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: space(2) }}>
+                <StateDot tone={ready ? "ready" : "off"} />
+                <Text style={{ ...text.lg, fontWeight: "600", color: color.foreground }}>{name}</Text>
+              </View>
             ),
             headerLeft: () => (
               <Pressable accessibilityRole="button" accessibilityLabel="Your Macs" onPress={onMacs} hitSlop={12}>

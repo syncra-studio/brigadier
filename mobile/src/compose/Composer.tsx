@@ -24,7 +24,9 @@ import { NightReady, nightPlaceholder, OvernightPill, OvernightStrip, StartNight
 import { backgroundPower, type Power, refusal, shellOf } from "../powers/powers";
 import { ImageSigns } from "../powers/View";
 import { composerSample } from "../mac/sample";
-import { Glyph, Shimmer } from "./Glyph";
+import { ArrowUp, PlayTriangle, Plus, Stop } from "../../../app/ui/src/icons";
+import { WorkerGlyph } from "../../../app/ui/src/icons/worker-glyphs";
+import { Shimmer } from "./motion";
 import { type Command, Commands, Mentions, NEW_SESSION, OVERNIGHT, PlusMenu, useCommands } from "./Menus";
 import { ModelPill } from "./Model";
 import { Pill, PillDivider } from "./Pill";
@@ -410,7 +412,7 @@ export function Composer({ id }: { id: string }) {
                   hitSlop={(touch - spacing.controlSm) / 2}
                   style={({ pressed }) => [st.plus, (pressed || plus) && { backgroundColor: color.fill }]}
                 >
-                  <Glyph name="plus" size={20} color={color.primary} />
+                  <Plus className="size-icon-md text-primary" />
                 </Pressable>
                 {!worker ? <LevelPill id={id} row={row} connected={connected} /> : null}
                 {!worker ? <OvernightPill night={night} connected={connected} /> : null}
@@ -418,7 +420,7 @@ export function Composer({ id }: { id: string }) {
                   <>
                     <PillDivider />
                     <Pill label={`To ${toWorker.name}: send to this session instead`} selected disabled={toSending} onPress={() => setTo(null)} style={{ maxWidth: 192 }}>
-                      <Text style={st.toDot}>●</Text>
+                      <WorkerGlyph id={toWorker.id} />
                       <Text style={st.pillText} numberOfLines={1}>To {toWorker.name}</Text>
                     </Pill>
                   </>
@@ -440,7 +442,7 @@ export function Composer({ id }: { id: string }) {
                 hitSlop={(touch - spacing.controlSm) / 2}
                 style={({ pressed }) => [runs ? st.run : st.send, off ? { opacity: opacity.disabled } : pressed && { opacity: 0.8 }]}
               >
-                {state === "stop" ? <View style={st.stop} /> : state === "resume" ? <Glyph name="play" size={spacing.iconSm} color={color.primaryFg} /> : runs ? <Text style={st.runText}>Run</Text> : <Glyph name="arrowUp" color={color.primaryFg} weight="700" />}
+                {state === "stop" ? <Stop className="size-icon-sm text-primary-fg" /> : state === "resume" ? <PlayTriangle className="size-icon-md text-primary-fg" /> : runs ? <Text style={st.runText}>Run</Text> : <ArrowUp className="size-icon-md text-primary-fg" />}
               </Pressable>
             </View>
           </View>

@@ -5,11 +5,12 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { request } from "../link";
 import { color, spacing, radius, text, opacity, touch } from "../theme";
-import { Boxed, Glyph } from "./Glyph";
+import { FileImage, Paperclip } from "../../../app/ui/src/icons";
+import { CommandIcon, MentionIcon } from "./KindIcons";
 import { forMac } from "./state";
 
 /** A `/` list row: the agent's command, or Brigadier's own; `run`, one the composer runs itself (/overnight). */
-export type Command = { id: string; kind: "command" | "tool" | "skill" | "mcp" | "prompt"; label: string; description?: string; instant: boolean };
+export type Command = { id: string; kind: "command" | "tool" | "skill" | "mcp" | "prompt"; label: string; description?: string; instant: boolean; /** Its own icon from Rust: an SVG mark or an image. */ icon?: string | null };
 /** An `@` row; a `direct` one sends the next message to that worker alone. */
 export type Mention = { id: string; type: string; label: string; name?: string; detail?: string; hint?: string };
 type MentionGroup = { title: string | null; items: Mention[]; note?: string };
@@ -81,14 +82,6 @@ function commandMatches(commands: readonly Command[], query: string): Command[] 
     .map(({ command }) => command);
 }
 
-/** A command's icon: its kind's in its colour (an agent's own SVG mark can't be drawn here). */
-const CommandIcon = ({ command }: { command: Command }) => <Boxed mark={command.kind === "skill" ? "✦" : command.kind === "mcp" || command.kind === "prompt" ? "◇" : "/"} color={COMMAND_TONES[command.kind]} />;
-/** A mention's icon: a chat, a worker, a tab, a note or a plugin. */
-function MentionIcon({ item }: { item: Mention }) {
-  const mark = { chat: "❝", worker: "●", direct: "●", tab: "◎", note: "▤", plugin: "◈" }[item.type] ?? "·";
-  return <Text allowFontScaling={false} style={{ width: spacing.iconMd, fontSize: 13, textAlign: "center", color: item.type === "note" ? color.warning : color.mutedForeground }}>{mark}</Text>;
-}
-
 /** The panel: opaque in a hairline over the card, as wide as it; it scrolls past 10.5 rows' worth. */
 export function Panel({ children }: { children: ReactNode }) {
   return (
@@ -126,10 +119,10 @@ export function useCommands(id: string, fresh: unknown, opened: number) {
     let live = true;
     void run(["commands", id]).then((reply) => {
       if (!live) return;
-      const list: { name: string; description?: string; kind: Command["kind"]; instant: boolean }[] = reply.ok ? (reply.commands ?? []) : [];
+      const list: { name: string; description?: string; kind: Command["kind"]; instant: boolean; icon?: string | null }[] = reply.ok ? (reply.commands ?? []) : [];
       // A prompt kept as Claude listed it before prompts had a kind of their own.
       const kindOf = (each: (typeof list)[number]) => (each.kind === "mcp" && each.name.startsWith("mcp__") ? "prompt" : each.kind);
-      setListed(list.map((each) => ({ id: `${kindOf(each)}:${each.name}`, kind: kindOf(each), label: `/${each.name}`, description: each.description || undefined, instant: each.instant })));
+      setListed(list.map((each) => ({ id: `${kindOf(each)}:${each.name}`, kind: kindOf(each), label: `/${each.name}`, description: each.description || undefined, instant: each.instant, icon: each.icon })));
     });
     try {
       request({ op: "mention", owner: id, q: "" }, (reply) => {
@@ -223,8 +216,8 @@ export function PlusMenu({ listed, chats, onPhotos, onFiles, onCommand, onChat }
   return (
     <Panel>
       <MenuHeading>Add</MenuHeading>
-      <MenuRow icon={<Glyph name="photo" color={color.mutedForeground} />} title="Photo Library" onPress={onPhotos} />
-      <MenuRow icon={<Glyph name="document" color={color.mutedForeground} />} title="Files" onPress={onFiles} />
+      <MenuRow icon={<FileImage className="size-icon-md text-muted-foreground" />} title="Photo Library" onPress={onPhotos} />
+      <MenuRow icon={<Paperclip className="size-icon-md text-muted-foreground" />} title="Files" onPress={onFiles} />
       {(["tool", "skill", "mcp", "prompt"] as const).map(kind)}
       {chats.length > 0 ? <MenuHeading>Chats</MenuHeading> : null}
       {chats.slice(0, CHAT_ROWS).map((chat) => <MenuRow key={chat.id} icon={<MentionIcon item={chat} />} title={chat.label} hint="Chat" onPress={() => onChat(chat)} />)}

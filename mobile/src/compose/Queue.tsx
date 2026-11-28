@@ -6,7 +6,9 @@ import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, Text, useWindowDimen
 import type { Draft } from "../../../app/shared/draft";
 import type { QueuedMessage } from "../../../app/shared/session/queued";
 import { color, spacing, radius, text, opacity, mono } from "../theme";
-import { Boxed, FadeIn, Glyph, type GlyphName, Shimmer, Spinner, Trash } from "./Glyph";
+import { ArrowCurvedRight, DotsHorizontal, Play, QueueGlyph, Spinner, Trash } from "../../../app/ui/src/icons";
+import { Terminal } from "../../../app/ui/src/icons/thread";
+import { FadeIn, Shimmer, Spin } from "./motion";
 
 /** The row's words: the text with each mention's and command's name in place. */
 const preview = (draft: Draft) =>
@@ -79,7 +81,7 @@ export function QueueCard({ items, running, paused, resuming, steer, canEdit, er
         <View style={st.line}>
           <View style={st.dot} />
           <Text style={st.muted} numberOfLines={1}>Queue paused because you interrupted</Text>
-          {onResume ? <Small title="Resume" icon="play" disabled={resuming} onPress={onResume} /> : null}
+          {onResume ? <Small title="Resume" icon={Play} disabled={resuming} onPress={onResume} /> : null}
         </View>
       ) : null}
       {running.map((command) => (
@@ -123,7 +125,7 @@ export function QueueCard({ items, running, paused, resuming, steer, canEdit, er
           return (
             <FadeIn key={item.id}>
               <View style={st.row} accessibilityState={{ busy: deciding }}>
-                <View style={st.glyph}>{deciding ? <Spinner color={color.queueGlyph} /> : item.shell ? <Boxed mark=">_" size={spacing.iconSm} color={color.queueGlyph} /> : <Glyph name="queue" size={spacing.iconSm} color={color.queueGlyph} />}</View>
+                <View style={st.glyph}>{deciding ? <Spin><Spinner className="size-icon-sm text-queue-glyph" /></Spin> : item.shell ? <Terminal aria-label="Shell command" className="size-icon-sm text-queue-glyph" /> : <QueueGlyph className="size-icon-sm text-queue-glyph" />}</View>
                 <Text style={[st.words, item.shell && { fontFamily: mono, fontSize: 13 }]} numberOfLines={1}>
                   {words ? (
                     <>
@@ -146,12 +148,12 @@ export function QueueCard({ items, running, paused, resuming, steer, canEdit, er
                 ) : null}
                 {lost ? <Small title="Add again" onPress={() => onAddAgain(item.id)} /> : null}
                 {/* One for a worker steers into that worker's turn, while it has one. */}
-                {(steer || item.to) && !item.to?.ended && !item.shell && !lost ? <Small title="Steer" icon="steer" accessibilityLabel="Steer: submit without interrupting the model" disabled={local} onPress={() => onSteer(item.id)} /> : null}
+                {(steer || item.to) && !item.to?.ended && !item.shell && !lost ? <Small title="Steer" icon={ArrowCurvedRight} accessibilityLabel="Steer: submit without interrupting the model" disabled={local} onPress={() => onSteer(item.id)} /> : null}
                 <Icon accessibilityLabel={item.shell ? "Delete queued command" : "Delete queued message"} disabled={local || (item.state === "delivered" && !item.refused)} onPress={() => onRemove(item.id)}>
-                  <Trash color={color.mutedForeground} />
+                  <Trash className="size-icon-sm text-muted-foreground" />
                 </Icon>
                 <Icon accessibilityLabel="Queued message actions" onPress={more}>
-                  <Glyph name="dots" color={color.mutedForeground} />
+                  <DotsHorizontal className="size-icon-sm text-muted-foreground" />
                 </Icon>
               </View>
             </FadeIn>
@@ -164,10 +166,10 @@ export function QueueCard({ items, running, paused, resuming, steer, canEdit, er
 }
 
 /** A ghost button with words, its icon first where it has one. */
-function Small({ title, icon, accessibilityLabel, disabled, onPress }: { title: string; icon?: GlyphName; accessibilityLabel?: string; disabled?: boolean; onPress: () => void }) {
+function Small({ title, icon: Icon, accessibilityLabel, disabled, onPress }: { title: string; icon?: typeof Play; accessibilityLabel?: string; disabled?: boolean; onPress: () => void }) {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? title} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} hitSlop={10} style={({ pressed }) => [st.small, pressed && { backgroundColor: color.fill }, disabled && { opacity: opacity.disabled }]}>
-      {icon ? <Glyph name={icon} size={spacing.iconSm} color={color.mutedForeground} /> : null}
+      {Icon ? <Icon className="size-icon-sm text-muted-foreground" /> : null}
       <Text style={st.smallText}>{title}</Text>
     </Pressable>
   );

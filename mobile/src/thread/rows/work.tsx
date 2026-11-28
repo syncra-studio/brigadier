@@ -2,12 +2,13 @@
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import type { Item, Turn, Work } from "../../../../app/shared/thread";
-import { duration, groupWords, workWords } from "../../../../app/shared/words";
+import { duration, groupWords, ORDER, workWords } from "../../../../app/shared/words";
+import { Lightbulb, Mcp } from "../../../../app/ui/src/icons";
 import { type Group, running, shutKey, type StepLine, workKey } from "../../../../app/shared/lines";
 import { color } from "../../theme";
 import { Body } from "./body";
 import { ThinkingLine } from "./message";
-import { s, Toggle, Words } from "./parts";
+import { s, StepIcon, Toggle, Words } from "./parts";
 
 /** Held this long with no word from what holds it, its header says so [D552]. */
 const QUIET_MS = 30 * 60_000;
@@ -62,10 +63,13 @@ export function GroupLine({ item, turn, open, steps, live, members, onToggle }: 
   const ended = members.filter((member) => !running(member) && !(member.kind === "reasoning" && member.streaming));
   if (!now && !ended.length) return null;
   const words = groupWords(ended);
+  const kind = ORDER.find((k) => item.steps.some((step) => step.kind === k));
   return (
     <View>
       {now || (
         <Toggle open={open} label={words} onPress={() => onToggle(item.id)}>
+          {/* Only MCP tools: the MCP glyph, as their own rows [D666]; only thoughts, the thought's. */}
+          <StepIcon kind={kind} icon={!kind ? Lightbulb : kind === "other" && item.steps.every((step) => step.server) ? Mcp : undefined} />
           <Words verb={words} />
         </Toggle>
       )}

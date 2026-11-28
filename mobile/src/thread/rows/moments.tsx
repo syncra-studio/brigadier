@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import type { Item } from "../../../../app/shared/thread";
 import { duration, hhmm } from "../../../../app/shared/words";
+import { BranchAlt, Chat, Check, Clock, ImageSquare, Moon, Shuffle, Sun, XCircleFilled } from "../../../../app/ui/src/icons";
 import { color, text, fontWeight } from "../../theme";
 import { ThreadImage } from "../Image";
 import { Markdown } from "../Markdown";
@@ -33,7 +34,7 @@ export function ForkedLine({ item }: { item: Extract<Item, { kind: "forked" }> }
   const words = `Forked from another ${item.where === null ? "chat" : "session"}${item.where === "worktree" ? " · works in a new worktree" : ""}${item.summary ? " · started from a summary" : ""}`;
   return (
     <View>
-      <Line><Glyph g="⑂" /><Words verb={words} /></Line>
+      <Line><Glyph><BranchAlt className="size-icon-sm shrink-0 text-row-foreground" /></Glyph><Words verb={words} /></Line>
       {item.leftOut.length > 0 && <Text style={[s.small, { paddingLeft: 24 }]}>Too big to copy: {item.leftOut.join(", ")}</Text>}
     </View>
   );
@@ -74,25 +75,27 @@ export function MockupRow({ item }: { item: Extract<Item, { kind: "mockup" }> })
       : [name, item.count === 1 ? "drawing 1 variant" : `drawing ${item.count} variants`];
   return (
     <Line>
-      <Glyph g="▣" />
+      <Glyph><ImageSquare className="size-icon-sm shrink-0 text-row-foreground" /></Glyph>
       <Text style={[s.row, s.shrink]}><Text style={{ color: color.foreground, fontWeight: "500" }}>{lead}</Text> · {rest}</Text>
     </Line>
   );
 }
 
 type Overnight = Extract<Item, { kind: "overnight" }>;
+/** A report part's icon, as the desktop's overnight-row. */
+const MARK = "mt-0.5 size-icon-md shrink-0";
 type Report = Extract<Overnight, { moment: "report" }>;
 
 /** Overnight's moments in the thread: its start, and the morning's report. */
 export function OvernightRow({ item }: { item: Overnight }) {
-  return item.moment === "started" ? <Divider>☾ Overnight since {hhmm(item.at)}</Divider> : <Morning item={item} />;
+  return item.moment === "started" ? <Divider icon={Moon}>Overnight since {hhmm(item.at)}</Divider> : <Morning item={item} />;
 }
 
 /** A part of the report: its mark, its words, opening to its proof; what can be done about it is the Mac's, said quietly. */
-function Part({ mark, tone, title, line, more, after, keep }: { mark: string; tone: string; title: string; line?: string; more?: string | null; after?: string | null; keep: string }) {
+function Part({ mark, title, line, more, after, keep }: { mark: ReactNode; title: string; line?: string; more?: string | null; after?: string | null; keep: string }) {
   const body = (
     <>
-      <Text style={[st.mark, { color: tone }]}>{mark}</Text>
+      <View style={st.mark}>{mark}</View>
       <View style={st.grow}>
         <Text style={[text.sm, { color: color.foreground }]}>{title}</Text>
         {line ? <Text style={[text.sm, { color: color.mutedForeground }]}>{line}</Text> : null}
@@ -121,7 +124,7 @@ function List({ title, count, children }: { title: string; count: number; childr
 function Morning({ item }: { item: Report }) {
   return (
     <View>
-      <Divider>☀ {item.back === false ? "Ended" : "Back"} at {hhmm(item.at)}, after {duration(item.ms)}</Divider>
+      <Divider icon={Sun}>{item.back === false ? "Ended" : "Back"} at {hhmm(item.at)}, after {duration(item.ms)}</Divider>
       <View style={st.card}>
         <View style={{ gap: 12, paddingHorizontal: 16, paddingTop: 24, paddingBottom: 20 }}>
           <View style={{ gap: 4 }}>
@@ -139,17 +142,17 @@ function Morning({ item }: { item: Report }) {
         </View>
         {item.done.length > 0 && (
           <List title="Done, with proof" count={item.done.length}>
-            {item.done.map((each, at) => <Part key={at} keep={`${item.id}:done:${at}`} mark="✓" tone={color.success} title={each.title} line={each.proof} more={each.more} />)}
+            {item.done.map((each, at) => <Part key={at} keep={`${item.id}:done:${at}`} mark={<Check className={`${MARK} text-success`} />} title={each.title} line={each.proof} more={each.more} />)}
           </List>
         )}
         {item.left.length > 0 && (
           <List title="Not done" count={item.left.length}>
-            {item.left.map((each, at) => <Part key={at} keep={`${item.id}:left:${at}`} mark="✕" tone={color.warning} title={each.title} line={each.why} after={each.next} />)}
+            {item.left.map((each, at) => <Part key={at} keep={`${item.id}:left:${at}`} mark={<XCircleFilled className={`${MARK} text-warning`} />} title={each.title} line={each.why} after={each.next} />)}
           </List>
         )}
         {item.decided.length > 0 && (
           <List title="Decided for you" count={item.decided.length}>
-            {item.decided.map((each, at) => <Part key={at} keep={`${item.id}:decided:${at}`} mark="⇄" tone={color.mutedForeground} title={each.title} line={each.why} after={each.other} />)}
+            {item.decided.map((each, at) => <Part key={at} keep={`${item.id}:decided:${at}`} mark={<Shuffle className={`${MARK} text-muted-foreground`} />} title={each.title} line={each.why} after={each.other} />)}
           </List>
         )}
       </View>
@@ -169,7 +172,7 @@ const SEND_WORDS = { sending: "Messaging ", sent: "Messaged ", refused: "Couldn�
  * to a session, waited for its reply"; opening to the whole message. Send anyway at the hop limit is the Mac's.
  */
 export function PeerRow({ item }: { item: Peer }) {
-  if (item.state === "stopped") return <Line><Glyph g="✉" /><Words verb={item.why === "rate" ? "Stopped at 20 messages a minute" : "Stopped after 8 hops"} /></Line>;
+  if (item.state === "stopped") return <Line><Glyph><Chat className="size-4 shrink-0 text-row-foreground" /></Glyph><Words verb={item.why === "rate" ? "Stopped at 20 messages a minute" : "Stopped after 8 hops"} /></Line>;
   let words: string;
   let why: string | null = null;
   let live = false;
@@ -194,7 +197,7 @@ export function PeerRow({ item }: { item: Peer }) {
   }
   const head = (
     <>
-      <Glyph g={live && words.startsWith("Waiting") ? "◷" : "✉"} />
+      <Glyph>{live && words.startsWith("Waiting") ? <Clock className="size-4 shrink-0 text-row-foreground" /> : <Chat className="size-4 shrink-0 text-row-foreground" />}</Glyph>
       <Words verb={words} live={live} />
     </>
   );
@@ -217,6 +220,6 @@ const st = StyleSheet.create({
   try: { borderRadius: 999, borderWidth: StyleSheet.hairlineWidth, borderColor: color.mutedForeground, paddingHorizontal: 12, paddingVertical: 6 },
   list: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: color.border },
   part: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
-  mark: { width: 16, fontSize: 15, lineHeight: 20, textAlign: "center" },
+  mark: { width: 16, height: 20, alignItems: "center", justifyContent: "center" },
   grow: { flex: 1 },
 });

@@ -2,11 +2,12 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { Item } from "../../../../app/shared/thread";
 import { sentAt } from "../../../../app/shared/words";
+import { Chat, ChevronRightAlt, Lightbulb } from "../../../../app/ui/src/icons";
 import { ReplyImages } from "../../powers/View";
 import { color } from "../../theme";
 import { ThreadImage } from "../Image";
 import { Markdown } from "../Markdown";
-import { Glyph, Opening, s, useKept, Words } from "./parts";
+import { Opening, s, StepIcon, useKept, Words } from "./parts";
 
 type Message = Extract<Item, { kind: "message" }>;
 
@@ -42,8 +43,9 @@ export function UserBubble({ item }: { item: Message }) {
         <View style={st.bubble}>
           <Markdown text={folds && !more ? lines.slice(0, FOLD_LINES).join("\n") : words} />
           {folds && (
-            <Pressable accessibilityRole="button" accessibilityLabel={more ? "Show less" : "Show more"} accessibilityState={{ expanded: more }} onPress={() => setMore(!more)} hitSlop={6}>
-              <Text style={[s.small, { paddingTop: 4 }]}>{more ? "Show less ⌃" : "Show more ⌄"}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel={more ? "Show less" : "Show more"} accessibilityState={{ expanded: more }} onPress={() => setMore(!more)} hitSlop={6} style={st.more}>
+              <Text style={s.small}>{more ? "Show less" : "Show more"}</Text>
+              <View style={{ transform: [{ rotate: more ? "-90deg" : "90deg" }] }}><ChevronRightAlt className="size-icon-xs text-muted-foreground" /></View>
             </Pressable>
           )}
         </View>
@@ -58,7 +60,10 @@ export function PeerBubble({ item }: { item: Message }) {
   // shortcut: the phone has no session list here, so every sender reads as the desktop's gone one, "a session".
   return (
     <View style={st.user} accessibilityLabel="Message from a session:">
-      <Text style={s.small}>Sent by a session from another session</Text>
+      <View style={st.caption}>
+        <Chat className="size-3.5 shrink-0 text-muted-foreground" />
+        <Text style={s.small}>Sent by a session from another session</Text>
+      </View>
       <View style={st.bubble}>
         <Markdown text={item.text} />
       </View>
@@ -94,7 +99,7 @@ export function ThoughtRow({ item }: { item: Extract<Item, { kind: "reasoning" }
   const words = item.heading || item.text.replace(/[*_`#>]/g, "").replace(/\s+/g, " ").trim() || "Thought";
   return (
     <Opening keep={item.id} label={words} detail={<View style={{ paddingLeft: 24 }}><Markdown text={item.text} style={{ color: color.mutedForeground }} /></View>}>
-      <Glyph g="✱" />
+      <StepIcon icon={Lightbulb} />
       <Words verb={words} />
     </Opening>
   );
@@ -147,4 +152,6 @@ const st = StyleSheet.create({
   image: { width: 120, height: 120, borderRadius: 10 },
   file: { fontSize: 13, lineHeight: 18, color: color.foreground, backgroundColor: color.muted, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, maxWidth: 220 },
   time: { color: color.faintForeground },
+  more: { flexDirection: "row", alignItems: "center", gap: 2, paddingTop: 4 },
+  caption: { flexDirection: "row", alignItems: "center", gap: 4 },
 });

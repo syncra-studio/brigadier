@@ -25,6 +25,9 @@ export const leading = strict("leading", values.leading);
 export const tracking = strict("tracking", values.tracking);
 export const duration = strict("duration", values.duration);
 
+/** A colour by its desktop name, as a class or a CSS variable writes it: "muted-foreground" is color.mutedForeground. */
+export const colorOf = (name: string) => color[name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())];
+
 /** Tailwind's numbered spacing: the desktop's `p-2` is `space(2)`. */
 export const space = (n: number) => n * values.spacing.base;
 

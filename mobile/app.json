@@ -50,6 +50,9 @@
         }
       ],
       "expo-document-picker"
-    ]
+    ],
+    "experiments": {
+      "tsconfigPaths": false
+    }
   }
 }

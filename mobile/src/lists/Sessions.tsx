@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { Pressable, SectionList, StyleSheet, Text, View } from "react-native";
 import type { Project, Row } from "../../../app/shared/rows";
 import { sentAt } from "../../../app/shared/words";
+import { ComposeEditSquare } from "../../../app/ui/src/icons";
 import { lists, needsYou, shown } from "../mac/mac";
 import { color, text } from "../theme";
 
@@ -32,7 +33,7 @@ export function Sessions({ onOpen, onSamples, onNew }: { onOpen: (row: Row) => v
           <Text style={[styles.section, { flex: 1 }]}>{section.title}</Text>
           {"project" in section && section.project && (
             <Pressable accessibilityRole="button" accessibilityLabel={`New chat in ${section.title}`} onPress={() => onNew(section.project!)} hitSlop={12} style={styles.pencil}>
-              <Text style={styles.title}>✎</Text>
+              <ComposeEditSquare className="size-icon-md text-foreground" />
             </Pressable>
           )}
         </View>

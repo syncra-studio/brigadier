@@ -2,10 +2,12 @@
 import { Text, View } from "react-native";
 import type { Setup, SetupStep } from "../../../../app/shared/thread";
 import { SETUP_TITLES } from "../../../../app/shared/words";
+import { Branch, Check, Spinner, X } from "../../../../app/ui/src/icons";
+import { Spin } from "../../compose/motion";
 import { color } from "../../theme";
 import { ErrorLine, Glyph, Line, Opening, s, Words } from "./parts";
 
-const MARKS = { running: "…", done: "✓", failed: "✕" };
+const ICONS = { running: Spinner, done: Check, failed: X };
 
 /** The old app's setupStepWords; Rust has already folded the states and ordered the steps. */
 function words(step: SetupStep): string {
@@ -32,10 +34,12 @@ export function SetupRow({ keep, setup }: { keep: string; setup: Setup }) {
       label={SETUP_TITLES[phase]}
       detail={setup.steps.map((step) => {
         const error = step.error || (step.interrupted ? "Interrupted" : step.signal != null ? `Signal ${step.signal}` : step.code != null && step.code !== 0 ? `Exit code ${step.code}` : null);
+        const Icon = ICONS[step.state];
+        const icon = <Icon className="size-4 shrink-0 text-row-foreground" />;
         return (
           <View key={step.kind}>
             <Line>
-              <Glyph g={MARKS[step.state]} tone={step.state === "failed" ? color.destructive : undefined} />
+              <Glyph>{step.state === "running" ? <Spin>{icon}</Spin> : icon}</Glyph>
               <Text style={[s.row, s.shrink, step.state === "failed" && { color: color.destructive }]}>{words(step)}</Text>
             </Line>
             {error ? <View style={{ paddingLeft: 24 }}><ErrorLine error={error} /></View> : null}
@@ -43,7 +47,7 @@ export function SetupRow({ keep, setup }: { keep: string; setup: Setup }) {
         );
       })}
     >
-      <Glyph g="⑂" />
+      <Glyph><Branch className="size-4 shrink-0 text-row-foreground" /></Glyph>
       <Words verb={SETUP_TITLES[phase]} live={phase === "running"} />
     </Opening>
   );

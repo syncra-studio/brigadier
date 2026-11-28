@@ -1,6 +1,8 @@
 // Subagents and workers in the thread, after the desktop's workers/{subagents,sentence,live}.tsx.
-import { Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import type { Item, Progress } from "../../../../app/shared/thread";
+import { Chat, PauseCircle, PlayCircle, StopCircle } from "../../../../app/ui/src/icons";
+import { WorkerGlyph } from "../../../../app/ui/src/icons/worker-glyphs";
 import { Glyph, Line, OnMac, Opening, s, useKept, Toggle, Words } from "./parts";
 
 type Agent = Extract<Item, { kind: "childAgent" }>;
@@ -33,6 +35,13 @@ function batchWords(workers: readonly Worker[]): string {
   return "stopped";
 }
 
+/** The glyphs of a sentence's workers, up front: one each, the first four, 2 apart [D103]. */
+const Glyphs = ({ ids }: { ids: readonly string[] }) => (
+  <View style={st.glyphs} accessible={false}>
+    {ids.slice(0, 4).map((id) => <WorkerGlyph key={id} id={id} className="size-4" />)}
+  </View>
+);
+
 const outcome = (worker: Worker) => (worker.kind === "working" ? "started working" : worker.kind === "done" ? "finished" : worker.word.charAt(0).toLowerCase() + worker.word.slice(1));
 
 /**
@@ -46,14 +55,14 @@ export function SubagentRow({ items }: { items: readonly Agent[] }) {
   return (
     <View>
       <Toggle open={open} label={words} onPress={() => setOpen(!open)}>
-        <Glyph g="◇" />
+        <Glyphs ids={workers.map((worker) => worker.id)} />
         <Words verb={words} />
       </Toggle>
       {open && (
         <View style={s.steps}>
           {workers.map((worker) => (
             <Line key={worker.id}>
-              <Glyph g="◇" />
+              <Glyph><WorkerGlyph id={worker.id} className="size-4 shrink-0" /></Glyph>
               <Words verb={`${worker.name} ${outcome(worker)}`} />
             </Line>
           ))}
@@ -77,25 +86,29 @@ export function TeamRow({ item }: { item: Team }) {
   if (item.kind === "team_still") return <OnMac />;
   if (item.kind === "team") {
     const merged = item.merge ? (item.merge.ok ? ` · Merged into ${item.merge.into}` : " · Not merged") : "";
-    return <Line><Glyph g="◇" /><Words verb={`${workersWord(item.workers)} ${TEAM_WORDS[item.word]}${merged}`} /></Line>;
+    return <Line><Glyphs ids={item.workers} /><Words verb={`${workersWord(item.workers)} ${TEAM_WORDS[item.word]}${merged}`} /></Line>;
   }
   const who = workersWord(item.workers).toLowerCase();
   switch (item.type) {
     case "messaged": {
       const words = `${item.byUser ? "You messaged" : "Messaged"} ${who}`;
-      if (!item.text) return <Line><Glyph g="✉" /><Words verb={words} /></Line>;
+      if (!item.text) return <Line><Glyph><Chat className="size-4 shrink-0 text-row-foreground" /></Glyph><Words verb={words} /></Line>;
       return (
         <Opening keep={item.id} label={words} detail={<Text style={[s.row, s.box]} selectable>{item.text}</Text>}>
-          <Glyph g="✉" />
+          <Glyph><Chat className="size-4 shrink-0 text-row-foreground" /></Glyph>
           <Words verb={words} />
         </Opening>
       );
     }
     case "stopped":
-      return <Line><Glyph g="■" /><Words verb={`${item.byUser ? "You ended" : "Ended"} ${who}`} /></Line>;
+      return <Line><Glyph><StopCircle className="size-4 shrink-0 text-row-foreground" /></Glyph><Words verb={`${item.byUser ? "You ended" : "Ended"} ${who}`} /></Line>;
     case "paused":
-      return <Line><Glyph g="‖" /><Words verb={`Paused ${who}`} /></Line>;
+      return <Line><Glyph><PauseCircle className="size-4 shrink-0 text-row-foreground" /></Glyph><Words verb={`Paused ${who}`} /></Line>;
     case "resumed":
-      return <Line><Glyph g="▷" /><Words verb={`Resumed ${who}`} /></Line>;
+      return <Line><Glyph><PlayCircle className="size-4 shrink-0 text-row-foreground" /></Glyph><Words verb={`Resumed ${who}`} /></Line>;
   }
 }
+
+const st = StyleSheet.create({
+  glyphs: { flexDirection: "row", alignItems: "center", gap: 2, minHeight: 21 },
+});

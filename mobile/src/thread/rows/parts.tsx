@@ -1,6 +1,8 @@
 // The thread rows' shared pieces, after the desktop's activity-row, line, labeled-divider and error-state.
-import { type ReactNode, useState } from "react";
+import { type ComponentType, type ReactNode, useState } from "react";
 import { Pressable, StyleSheet, Text, type TextStyle, View } from "react-native";
+import type { StepKind } from "../../../../app/shared/thread";
+import { ChevronRight, ChevronRightAlt, EditPencil, File, Folder, Globe, Info, type IconProps, MagnifyingGlassSmSearch, RobotHead, Terminal, Tools, ToolsSkills } from "../../../../app/ui/src/icons";
 import { color, mono } from "../../theme";
 
 // What the user opened stays open while its row scrolls out of the list and back, as the desktop's useKept.
@@ -20,10 +22,30 @@ export function Words({ verb, object, live = false }: { verb: string; object?: s
   );
 }
 
-/** A row's mark before its words: one text glyph in a 16-wide column. */
-export function Glyph({ g, tone }: { g: string; tone?: string }) {
-  return <Text style={[s.glyph, tone ? { color: tone } : null]} accessible={false}>{g}</Text>;
+/** A row's icon before its words, in a 16-wide column. */
+export function Glyph({ children }: { children: ReactNode }) {
+  return <View style={s.glyph} accessible={false}>{children}</View>;
 }
+
+const ICONS: Record<StepKind, ComponentType<IconProps>> = {
+  read: File,
+  edit: EditPencil,
+  list: Folder,
+  search: MagnifyingGlassSmSearch,
+  run: Terminal,
+  web: Globe,
+  agent: RobotHead,
+  skill: ToolsSkills,
+  other: Tools,
+};
+
+/** A step's icon, by its kind (or any icon), as the desktop's activity-row StepIcon. */
+export function StepIcon({ kind, icon: Icon = ICONS[kind ?? "other"] }: { kind?: StepKind; icon?: ComponentType<IconProps> }) {
+  return <Glyph><Icon className="size-4 shrink-0 text-row-foreground" /></Glyph>;
+}
+
+/** Turned a quarter while open, as the desktop's chevrons. */
+const turned = (open: boolean) => (open ? { transform: [{ rotate: "90deg" }] } : null);
 
 /** One row that doesn't open. */
 export function Line({ children }: { children: ReactNode }) {
@@ -35,7 +57,7 @@ export function Toggle({ open, label, onPress, children }: { open: boolean; labe
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ expanded: open }} onPress={onPress} hitSlop={6} style={({ pressed }) => [s.line, pressed && { opacity: 0.6 }]}>
       {children}
-      <Text style={s.chevron} accessible={false}>{open ? "⌄" : "›"}</Text>
+      <View style={[s.chevron, turned(open)]} accessible={false}><ChevronRightAlt className="size-icon-sm shrink-0 text-faint-foreground" /></View>
     </Pressable>
   );
 }
@@ -55,16 +77,19 @@ export function Opening({ keep, label, children, detail, trail, initial }: { kee
 }
 
 /** A line across the thread between two hairlines; its ⓘ shows the rest under it, as the desktop's tip does. */
-export function Divider({ children, tip }: { children: ReactNode; tip?: string | null }) {
+export function Divider({ icon: Icon, children, tip }: { icon?: ComponentType<IconProps>; children: ReactNode; tip?: string | null }) {
   const [shown, setShown] = useState(false);
   return (
     <View>
       <View style={s.divider}>
         <View style={s.hair} />
-        <Text style={[s.row, s.center]}>{children}</Text>
+        <Text style={[s.row, s.center]}>
+          {Icon && <><Icon className="size-icon-sm text-row-foreground" />{"  "}</>}
+          {children}
+        </Text>
         {tip ? (
           <Pressable accessibilityRole="button" accessibilityLabel={tip} accessibilityState={{ expanded: shown }} onPress={() => setShown(!shown)} hitSlop={8}>
-            <Text style={s.row}>ⓘ</Text>
+            <Info className="size-icon-sm text-row-foreground" />
           </Pressable>
         ) : null}
         <View style={s.hair} />
@@ -83,8 +108,9 @@ export function ErrorState({ summary, details }: { summary: string; details?: st
       <View style={s.wrap}>
         <Text style={[s.row, { color: color.destructive }]}>{summary}</Text>
         {words ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Details" accessibilityState={{ expanded: open }} onPress={() => setOpen(!open)} hitSlop={6}>
-            <Text style={s.row}>Details {open ? "⌄" : "›"}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Details" accessibilityState={{ expanded: open }} onPress={() => setOpen(!open)} hitSlop={6} style={s.with}>
+            <Text style={s.row}>Details</Text>
+            <View style={turned(open)}><ChevronRight className="size-icon-xs text-row-foreground" /></View>
           </Pressable>
         ) : null}
       </View>
@@ -143,8 +169,10 @@ export const s = StyleSheet.create({
   center: { flexShrink: 1, textAlign: "center" },
   line: { flexDirection: "row", alignItems: "flex-start", gap: 8, minHeight: 21 },
   wrap: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 10 },
-  glyph: { width: 16, textAlign: "center", fontSize: 13, lineHeight: 21, color: color.rowForeground },
-  chevron: { fontSize: 14, lineHeight: 21, color: color.faintForeground },
+  glyph: { width: 16, height: 21, alignItems: "center", justifyContent: "center" },
+  chevron: { height: 21, justifyContent: "center" },
+  // Details and its chevron.
+  with: { flexDirection: "row", alignItems: "center", gap: 4 },
   detail: { gap: 4, paddingTop: 4, paddingBottom: 4 },
   divider: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 },
   hair: { height: StyleSheet.hairlineWidth, flex: 1, minWidth: 16, backgroundColor: color.border },
