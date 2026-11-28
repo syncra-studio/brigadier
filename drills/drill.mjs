@@ -838,10 +838,17 @@ async function diskFull() {
   fs.mkdirSync(vol)
   // Linux's is a small tmpfs, which needs sudo without a password, as CI's runners give (proposed).
   const linux = process.platform === 'linux'
-  if (!linux) spawnSync('hdiutil', ['create', '-quiet', '-size', '24m', '-fs', 'HFS+', '-volname', 'brigadier-drill', '-ov', img])
+  // Windows' is a fixed VHD mounted on the folder, through diskpart, which needs an elevated shell (proposed).
+  const vhd = `${dir}/small.vhd`.replaceAll('/', '\\')
+  const diskpart = (lines) => (fs.writeFileSync(`${dir}/diskpart.txt`, lines.join('\r\n')), spawnSync('diskpart', ['/s', `${dir}/diskpart.txt`], { encoding: 'utf8' }))
+  if (!linux && !WIN) spawnSync('hdiutil', ['create', '-quiet', '-size', '24m', '-fs', 'HFS+', '-volname', 'brigadier-drill', '-ov', img])
   const at = linux ? spawnSync('sudo', ['-n', 'mount', '-t', 'tmpfs', '-o', `size=24m,uid=${process.getuid()},gid=${process.getgid()}`, 'brigadier-drill', vol])
+    : WIN ? diskpart([`create vdisk file="${vhd}" maximum=24 type=fixed`, `select vdisk file="${vhd}"`, 'attach vdisk', 'create partition primary', 'format fs=ntfs quick label=brigadier-drill', `assign mount="${vol.replaceAll('/', '\\')}"`])
     : spawnSync('hdiutil', ['attach', '-quiet', '-nobrowse', '-mountpoint', vol, img])
-  if (at.status !== 0) return drop(dir), { error: 'could not attach the small volume' }
+  if (at.status !== 0) {
+    if (WIN) diskpart([`select vdisk file="${vhd}"`, 'detach vdisk noerr'])
+    return drop(dir), { error: WIN ? 'could not attach the small volume (diskpart needs an elevated PowerShell)' : 'could not attach the small volume' }
+  }
   const r = {}
   try {
     DATA = make(`${vol}/data`)
@@ -849,10 +856,12 @@ async function diskFull() {
     cli(['send', 'd1', `${cid()} say:1`])
     await sleep(300)
     const filler = `${vol}/filler`
-    spawnSync('sh', ['-c', `dd if=/dev/zero of=${filler} bs=1048576 count=40 2>/dev/null; true`])
+    // Then by 4 KB, since what's left after the last whole MB (NTFS's 140 KB) holds Windows' biggest send.
+    spawnSync('sh', ['-c', `dd if=/dev/zero of=${filler} bs=1048576 count=40 2>/dev/null; dd if=/dev/zero bs=4096 count=1024 >> ${filler} 2>/dev/null; true`])
     const c = cid('full')
-    // Bigger than the space left, smaller than the OS argument limit (1 MB; Linux's is 128 KB an argument).
-    const s = cli(['send', 'd1', `${c} say:200 ${'p'.repeat((linux ? 100 : 512) << 10)}`, '--cid', c])
+    // Bigger than the space left, smaller than the OS argument limit (1 MB; Linux's is 128 KB an argument,
+    // Windows' 32K characters a command line).
+    const s = cli(['send', 'd1', `${c} say:200 ${'p'.repeat((WIN ? 24 : linux ? 100 : 512) << 10)}`, '--cid', c])
     r.send_when_full = s.out.result ?? s.out.error
     r.status_when_full = (({ state, disk_full }) => ({ state, disk_full }))(status(['d1']).d1)
     fs.rmSync(filler)
@@ -867,6 +876,7 @@ async function diskFull() {
     r.leftovers = cleanup()
   } finally {
     if (linux) spawnSync('sudo', ['-n', 'umount', vol])
+    else if (WIN) diskpart([`select vdisk file="${vhd}"`, 'detach vdisk'])
     else spawnSync('hdiutil', ['detach', '-quiet', '-force', vol])
     drop(dir)
   }
