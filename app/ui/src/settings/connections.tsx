@@ -11,6 +11,7 @@ import { Switch } from "../components/switch";
 import { ChatCompose, CheckCircle, Desktop, Reload, Sparkle, Sun } from "../icons";
 import { errorText, run } from "../onboarding/api";
 import { useSave } from "./general";
+import { AWAY_ROW, AwaySection, type Relay } from "./connections-away";
 import { type Device, DeviceRow } from "./connections-device";
 import { SettingsPage, SettingsSection } from "./parts";
 
@@ -18,6 +19,7 @@ import { SettingsPage, SettingsSection } from "./parts";
 export const CONNECTIONS_ROWS = {
   devices: { label: "Devices that can control this Mac", description: "Add device to control this Mac remotely", section: "Control this Mac" },
   allow: { label: "Allow connections", section: "Control this Mac" },
+  away: AWAY_ROW,
   awake: { label: "Keep this Mac awake", description: "Prevent sleep when this computer is plugged in and remote access is enabled", section: "Other settings" },
 } as const;
 
@@ -32,6 +34,7 @@ type Status = {
   devices: Device[];
   /** null until the daemon can hold the Mac awake for the phone (M5): the toggle hides. */
   awake: boolean | null;
+  relay: Relay;
 };
 
 /** Where Add is: the card, the Allow question, the QR, the "You're connected" card. The check is the daemon's `pending`. */
@@ -148,6 +151,7 @@ export function ConnectionsPage() {
           </SettingsCard>
         )}
       </SettingsSection>
+      {status && on && <AwaySection relay={status.relay} paired={devices.length > 0} load={load} offline={error !== null} />}
       {awakeRow && (
         <SettingsSection title="Other settings">
           <SettingsCard>{awakeRow}</SettingsCard>
