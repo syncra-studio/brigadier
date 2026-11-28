@@ -111,7 +111,8 @@ only in that build. Brigadier keeps its data in `~/Library/Application Support/B
 ## Contributing
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) and [ARCHITECTURE.md](ARCHITECTURE.md) first. `pnpm thread`
-shows the chat on made-up data.
+shows the chat on made-up data. `mobile/` is the iPhone app;
+`mobile/scripts/ios` makes its Xcode project.
 
 ## Community and support
 

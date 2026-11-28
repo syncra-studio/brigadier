@@ -14,7 +14,7 @@
 //
 // Copied unchanged from https://github.com/swift-libp2p/swift-noise, Sources/Noise/Noise.swift at commit
 // 0adfd28786322784860fb3c8f228591c6e8fd92f (2026-08-08), except one line: `import Crypto` is `import CryptoKit`,
-// which swift-crypto re-exports on Apple platforms. Its licence is LICENSE-swift-noise.md beside this file.
+// which swift-crypto re-exports on Apple platforms. Its licence is in THIRD_PARTY_NOTICES.md.
 //
 //  A Noise Protocol handshake implementation
 

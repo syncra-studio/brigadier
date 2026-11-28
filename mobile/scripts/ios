@@ -1,5 +1,10 @@
 #!/bin/sh
-# Makes ios/ from app.json and the native module, ready to open in Xcode: Brigadier.xcworkspace.
+# Makes ios/ from app.json and the native module, ready to open in Xcode; needs Node and CocoaPods. Build and upload [D68]:
+# 1. mobile/scripts/ios, then open mobile/ios/Brigadier.xcworkspace.
+# 2. Product › Archive with team SYNCRA, SRL (not Personal Team), then Distribute App › TestFlight Internal Only › Upload.
+# 3. Raise ios.buildNumber in app.json for each upload.
+# Before every upload check that the app links no encryption library other than Apple's (no OpenSSL, BoringSSL,
+# libsodium or the like) [D74].
 set -e
 cd "$(dirname "$0")/.."
 npm ci
